@@ -103,6 +103,10 @@ When document-review returns "Review complete", present next steps:
 1. **Move to planning** - Continue to `/workflows:plan` with this document
 2. **Done for now** - Brainstorming complete. To start planning later: `/workflows:plan [document-path]`
 
+**Optional tracker hookup** — if `integrations.issue_tracker_resolved == "beads"` (from `${CLAUDE_PLUGIN_ROOT}/scripts/workflow-repo-preflight.py`), offer one more option in the handoff menu:
+
+- **Capture as bead** — `bd create --title="brainstorm: <topic>" --description="See docs/brainstorms/<file>.md" --type=feature --priority=3`. Write the returned `bd-NNN` into the brainstorm doc's frontmatter as `bead_id:`. This pre-seeds the parent bead so the eventual `/workflows:plan` step can link its plan-bead as a child via `bd dep add`. Skip unless explicitly chosen — don't auto-create.
+
 ## Output Summary
 
 When complete, display:

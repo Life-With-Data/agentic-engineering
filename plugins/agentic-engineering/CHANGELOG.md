@@ -5,6 +5,33 @@ All notable changes to the agentic-engineering plugin will be documented in this
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.38.0] - 2026-05-16
+
+### Added
+
+- **Beads (`bd`) as a first-class issue tracker** alongside Linear and GitHub. Workflow commands now resolve an `issue_tracker` value (`beads | linear | github | none`) at start and dispatch accordingly.
+- **`agentic-engineering.local.md`** schema extended with `issue_tracker:` frontmatter field. Explicit override always wins over auto-detection.
+- **Preflight script** (`scripts/workflow-repo-preflight.py`) now reports `beads_installed`, `beads_initialized`, `github_cli_authed`, `issue_tracker_resolved`, `issue_tracker_source`, `issue_tracker_ambiguous`, and `beads_remember_available`.
+- **`/workflows:plan`** writes `bead_id:` into plan frontmatter when tracker is `beads`; otherwise still writes `linear_issue:` or creates a GitHub issue unchanged.
+- **`/workflows:work`** uses `bd ready`/`bd update`/`bd close` instead of TodoWrite when tracker is `beads`. For `linear`/`github`/`none`, TodoWrite is preserved (no regression).
+- **`/workflows:review`** creates findings as beads (`bd create … --tags=code-review`) instead of `todos/*.md` files when tracker is `beads`. The Linear push step (Step 2b) is now gated to run only when tracker is `linear`.
+- **`/workflows:compound`** appends `bd remember "<insight>" --link "<solution-doc>"` whenever `bd` is on PATH, regardless of tracker. Complements (does not replace) the solution doc.
+- **`/workflows:brainstorm`** offers an optional "Capture as bead" handoff step when tracker is `beads`, pre-seeding the parent bead for the eventual plan.
+- **`setup` skill** writes the auto-detected `issue_tracker:` into the generated config and surfaces ambiguous detections via AskUserQuestion.
+
+### Changed
+
+- Auto-detect priority for `issue_tracker`: `.beads/ + bd` → `beads`, then `LINEAR_API_KEY` → `linear`, then `gh auth status` → `github`, else `none`. First match wins. Existing Linear users with `LINEAR_API_KEY` set and no `.beads/` are unaffected.
+- Every workflow command prints a one-line tracker banner at start (e.g. `Tracker: beads (auto-detect)`). If both `.beads/` and `LINEAR_API_KEY` are present, the banner notes the ambiguity and points at the override.
+
+### Preserved (no behavior change)
+
+- All `agentic-plugin linear pull|push|create` calls fire unchanged when tracker is `linear`.
+- `linear_issue:` frontmatter field is still written/read for Linear users.
+- The `file-todos` skill path is still used for `todos/*.md` creation when tracker is `linear`/`github`/`none`.
+- `/workflows:work` still uses TodoWrite for in-session task management when tracker is anything other than `beads`.
+- The silent-skip-on-missing-`LINEAR_API_KEY` behavior is preserved.
+
 ## [2.37.2] - 2026-02-26
 
 ### Added

@@ -3,18 +3,27 @@
 Deterministic repository preflight for /workflows:work.
 
 Outputs a JSON object with repository state, branch context, optional PR metadata,
-Linear availability, and a recommended next action so agents can branch on explicit
-state instead of re-deriving it from prose instructions.
+issue-tracker availability, and a recommended next action so agents can branch on
+explicit state instead of re-deriving it from prose instructions.
+
+Issue-tracker resolution order (first match wins):
+  1. issue_tracker: field in agentic-engineering.local.md frontmatter (explicit override)
+  2. .beads/ directory present in repo AND `bd` on PATH         -> "beads"
+  3. LINEAR_API_KEY environment variable set                    -> "linear"
+  4. `gh auth status` returns 0                                 -> "github"
+  5. otherwise                                                  -> "none"
 """
 
 from __future__ import annotations
 
 import json
 import os
+import pathlib
+import re
 import shutil
 import subprocess
 import sys
-from typing import Any
+from typing import Any, Optional
 
 
 def run(cmd: list[str]) -> subprocess.CompletedProcess[str]:
@@ -125,6 +134,74 @@ def get_pr_context() -> dict[str, Any]:
     }
 
 
+VALID_TRACKERS = {"beads", "linear", "github", "none"}
+
+
+def read_local_config_tracker(repo_root: str) -> Optional[str]:
+    """Read issue_tracker: field from agentic-engineering.local.md frontmatter if present."""
+    config_path = pathlib.Path(repo_root) / "agentic-engineering.local.md"
+    if not config_path.is_file():
+        return None
+    try:
+        text = config_path.read_text(encoding="utf-8")
+    except OSError:
+        return None
+    if not text.startswith("---"):
+        return None
+    # Extract frontmatter block between leading --- and the next ---.
+    match = re.match(r"^---\s*\n(.*?)\n---\s*(?:\n|$)", text, re.DOTALL)
+    if not match:
+        return None
+    for line in match.group(1).splitlines():
+        m = re.match(r"^\s*issue_tracker\s*:\s*([A-Za-z]+)\s*$", line)
+        if m:
+            value = m.group(1).lower()
+            if value in VALID_TRACKERS:
+                return value
+            return None
+    return None
+
+
+def resolve_issue_tracker(
+    repo_root: str,
+    beads_initialized: bool,
+    beads_installed: bool,
+    linear_api_key_present: bool,
+    gh_authenticated: bool,
+) -> dict[str, Any]:
+    """Apply the resolution chain and return both the decision and provenance."""
+    local_override = read_local_config_tracker(repo_root)
+    if local_override is not None:
+        return {
+            "resolved": local_override,
+            "source": "agentic-engineering.local.md",
+            "local_override": local_override,
+            "ambiguous": False,
+        }
+
+    signals = []
+    if beads_initialized and beads_installed:
+        signals.append("beads")
+    if linear_api_key_present:
+        signals.append("linear")
+    if gh_authenticated:
+        signals.append("github")
+
+    if not signals:
+        resolved = "none"
+    else:
+        resolved = signals[0]
+
+    return {
+        "resolved": resolved,
+        "source": "auto-detect" if signals else "default",
+        "local_override": None,
+        # Ambiguous when beads wins but Linear also has a credential, since this is
+        # the most common surprise case for an existing Linear user.
+        "ambiguous": resolved == "beads" and linear_api_key_present,
+    }
+
+
 def build_recommendation(current_branch: str, default_branch: str, dirty: bool) -> dict[str, Any]:
     on_default = bool(default_branch) and current_branch == default_branch
 
@@ -207,12 +284,36 @@ def main() -> int:
             "working_tree_dirty": dirty,
             **counts,
         },
-        "integrations": {
-            "linear_api_key_present": bool(os.environ.get("LINEAR_API_KEY")),
-            "todos_dir_exists": os.path.isdir(os.path.join(repo_root, "todos")),
-        },
+        "integrations": {},
         "github": get_pr_context(),
     }
+
+    beads_installed = shutil.which("bd") is not None
+    beads_initialized = os.path.isdir(os.path.join(repo_root, ".beads"))
+    linear_api_key_present = bool(os.environ.get("LINEAR_API_KEY"))
+    gh_authenticated = bool(data["github"].get("gh_authenticated"))
+
+    tracker_info = resolve_issue_tracker(
+        repo_root=repo_root,
+        beads_initialized=beads_initialized,
+        beads_installed=beads_installed,
+        linear_api_key_present=linear_api_key_present,
+        gh_authenticated=gh_authenticated,
+    )
+
+    data["integrations"] = {
+        "linear_api_key_present": linear_api_key_present,
+        "todos_dir_exists": os.path.isdir(os.path.join(repo_root, "todos")),
+        "beads_installed": beads_installed,
+        "beads_initialized": beads_initialized,
+        "beads_remember_available": beads_installed,
+        "github_cli_authed": gh_authenticated,
+        "issue_tracker_local_config": tracker_info["local_override"],
+        "issue_tracker_resolved": tracker_info["resolved"],
+        "issue_tracker_source": tracker_info["source"],
+        "issue_tracker_ambiguous": tracker_info["ambiguous"],
+    }
+
     data["recommendation"] = build_recommendation(
         current_branch=current_branch,
         default_branch=default_branch,

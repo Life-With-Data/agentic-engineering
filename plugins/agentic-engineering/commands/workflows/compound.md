@@ -80,6 +80,11 @@ The orchestrating agent (main conversation) performs these steps:
 3. Validate YAML frontmatter against schema
 4. Create directory if needed: `mkdir -p docs/solutions/[category]/`
 5. Write the SINGLE final file: `docs/solutions/[category]/[filename].md`
+6. If `bd` is on PATH (check via the preflight script's `integrations.beads_remember_available`), record a one-line insight pointing back to the solution doc:
+   ```bash
+   bd remember "<one-line insight>" --link "docs/solutions/[category]/[filename].md"
+   ```
+   This is universal — it runs whenever `bd` is installed, regardless of the resolved issue tracker. It complements the solution doc; it does not replace it. Skip silently if `bd` is not available.
 
 </sequential_tasks>
 

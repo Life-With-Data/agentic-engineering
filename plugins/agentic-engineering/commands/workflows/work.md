@@ -30,7 +30,7 @@ This command takes a work document (plan, specification, or todo file) and execu
 
 2. **Setup Environment**
 
-   First, run the repo preflight script and use its JSON output as the source of truth for branch state, dirty state, PR context, and Linear availability:
+   First, run the repo preflight script and use its JSON output as the source of truth for branch state, dirty state, PR context, and issue-tracker availability:
 
    ```bash
    python3 "${CLAUDE_PLUGIN_ROOT}/scripts/workflow-repo-preflight.py"
@@ -42,7 +42,17 @@ This command takes a work document (plan, specification, or todo file) and execu
    - `repo.working_tree_dirty`
    - `github.current_branch_pr` (if `gh` is installed/authenticated)
    - `integrations.linear_api_key_present`
+   - `integrations.beads_installed`, `integrations.beads_initialized`
+   - `integrations.issue_tracker_resolved` — one of `beads | linear | github | none`
+   - `integrations.issue_tracker_source` — `agentic-engineering.local.md`, `auto-detect`, or `default`
+   - `integrations.issue_tracker_ambiguous` — `true` when both `.beads/` and `LINEAR_API_KEY` are present
    - `recommendation.action` and `recommendation.prompt`
+
+   Print a one-line tracker banner before continuing:
+   ```
+   Tracker: <issue_tracker_resolved> (<issue_tracker_source>)
+   ```
+   If `issue_tracker_ambiguous` is `true`, append: `— set issue_tracker: in agentic-engineering.local.md to override`.
 
    Follow `recommendation.action` rather than re-deriving state manually.
 
@@ -76,28 +86,63 @@ This command takes a work document (plan, specification, or todo file) and execu
    - You want to keep the default branch clean while experimenting
    - You plan to switch between branches frequently
 
-3. **Sync with Linear**
+3. **Sync with tracker**
 
-   Pull latest state and push current plan status:
-   ```bash
-   agentic-plugin linear pull --todos-dir ./todos
-   agentic-plugin linear push --file <plan-or-todo-path>
-   ```
-   (Silently skips if LINEAR_API_KEY is not set; the preflight script reports this as `integrations.linear_api_key_present`)
+   Dispatch on `integrations.issue_tracker_resolved`:
 
-4. **Create Todo List**
-   - Use TodoWrite to break plan into actionable tasks
-   - Include dependencies between tasks
-   - Prioritize based on what needs to be done first
-   - Include testing and quality check tasks
-   - Keep tasks specific and completable
+   - **`beads`**: `bd dolt pull` (no-op if no Dolt remote is configured).
+   - **`linear`**:
+     ```bash
+     agentic-plugin linear pull --todos-dir ./todos
+     agentic-plugin linear push --file <plan-or-todo-path>
+     ```
+     Silently skips if `LINEAR_API_KEY` is not set.
+   - **`github`**: no sync step.
+   - **`none`**: skip.
+
+4. **Create Task List**
+
+   Dispatch on `integrations.issue_tracker_resolved`:
+
+   - **`beads`** — create one bead per actionable task in the plan and link to the parent plan bead:
+     ```bash
+     # PLAN_BEAD=$(yq '.bead_id' <plan-path>)  # if plan frontmatter has it
+     for task in <tasks from plan>:
+       TASK_ID=$(bd q --title="<task>" --description="..." --type=task --priority=<map>)
+       bd dep add "$TASK_ID" "$PLAN_BEAD"   # only if PLAN_BEAD is set
+     ```
+     Do **not** use TodoWrite when tracker is `beads` — `bd ready` supersedes it.
+
+   - **`linear` / `github` / `none`** — use TodoWrite (existing behavior):
+     - Break the plan into actionable tasks
+     - Include dependencies between tasks
+     - Prioritize based on what needs to be done first
+     - Include testing and quality check tasks
+     - Keep tasks specific and completable
 
 ### Phase 2: Execute
 
 1. **Task Execution Loop**
 
-   For each task in priority order:
+   The claim/complete steps depend on `integrations.issue_tracker_resolved`:
 
+   **When tracker is `beads`:**
+   ```
+   while (bd ready returns items):
+     - id=$(bd ready --limit=1 --json | jq -r '.[0].id')
+     - bd update $id --claim
+     - Read any referenced files from the plan
+     - Look for similar patterns in codebase
+     - Implement following existing conventions
+     - Write tests for new functionality
+     - Run System-Wide Test Check (see below)
+     - Run tests after changes
+     - bd close $id
+     - Mark off the corresponding checkbox in the plan file ([ ] → [x])
+     - Evaluate for incremental commit (see below)
+   ```
+
+   **When tracker is `linear`, `github`, or `none`** — use the existing TodoWrite-driven loop:
    ```
    while (tasks remain):
      - Mark task as in_progress in TodoWrite
@@ -185,10 +230,10 @@ This command takes a work document (plan, specification, or todo file) and execu
    - Repeat until implementation matches design
 
 6. **Track Progress**
-   - Keep TodoWrite updated as you complete tasks
-   - Note any blockers or unexpected discoveries
-   - Create new tasks if scope expands
-   - Keep user informed of major milestones
+   - Keep your tracker updated as you complete tasks (`bd update`/`bd close` when `issue_tracker: beads`, TodoWrite otherwise).
+   - Note any blockers or unexpected discoveries.
+   - Create new tasks if scope expands.
+   - Keep user informed of major milestones.
 
 ### Phase 3: Quality Check
 
@@ -226,7 +271,7 @@ This command takes a work document (plan, specification, or todo file) and execu
    Run configured agents in parallel with Task tool. Present findings and address critical issues.
 
 4. **Final Validation**
-   - All TodoWrite tasks marked completed
+   - All tracker tasks marked completed (`bd list --status=open --parent=<plan-bead>` returns empty, or all TodoWrite items checked)
    - All tests pass
    - Linting passes
    - Code follows existing patterns
@@ -343,18 +388,31 @@ This command takes a work document (plan, specification, or todo file) and execu
    )"
    ```
 
-4. **Update Plan Status & Sync to Linear**
+4. **Update Plan Status & Sync to Tracker**
 
    If the input document has YAML frontmatter with a `status` field, update it to `completed`:
    ```
    status: active  →  status: completed
    ```
 
-   Push final state to Linear:
-   ```bash
-   agentic-plugin linear push --file <plan-or-todo-path>
-   ```
-   (Silently skips if LINEAR_API_KEY is not set)
+   Dispatch on `integrations.issue_tracker_resolved`:
+
+   - **`beads`**:
+     ```bash
+     PLAN_BEAD=$(yq '.bead_id' <plan-path>)   # if frontmatter has it
+     bd close "$PLAN_BEAD" --reason="merged in PR #<N>"
+     bd dolt push   # no-op if Dolt remote unconfigured
+     ```
+   - **`linear`**:
+     ```bash
+     agentic-plugin linear push --file <plan-or-todo-path>
+     ```
+     Silently skips if `LINEAR_API_KEY` is not set.
+   - **`github`**:
+     ```bash
+     gh issue close <issue-number> --comment "merged in PR #<N>"
+     ```
+   - **`none`**: skip.
 
 5. **Notify User**
    - Summarize what was completed
@@ -472,7 +530,7 @@ See the `orchestrating-swarms` skill for detailed swarm patterns and best practi
 Before creating PR, verify:
 
 - [ ] All clarifying questions asked and answered
-- [ ] All TodoWrite tasks marked completed
+- [ ] All tracker tasks marked completed (`bd list --status=open --parent=<plan-bead>` is empty, or all TodoWrite items checked)
 - [ ] Tests pass (run project's test command)
 - [ ] Linting passes (use linting-agent)
 - [ ] Code follows existing patterns
@@ -501,6 +559,6 @@ For most features: tests + linting + following patterns is sufficient.
 - **Skipping clarifying questions** - Ask now, not after building wrong thing
 - **Ignoring plan references** - The plan has links for a reason
 - **Testing at the end** - Test continuously or suffer later
-- **Forgetting TodoWrite** - Track progress or lose track of what's done
+- **Forgetting to track progress** - Update your tracker (`bd` or TodoWrite) as you go, or lose track of what's done
 - **80% done syndrome** - Finish the feature, don't move on early
 - **Over-reviewing simple changes** - Save reviewer agents for complex work

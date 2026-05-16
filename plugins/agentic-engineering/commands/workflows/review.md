@@ -229,7 +229,37 @@ Remove duplicates, prioritize by severity and impact.
 
 </synthesis_tasks>
 
-#### Step 2: Create Todo Files Using file-todos Skill
+#### Step 2: Create Findings (Tracker-Aware)
+
+Resolve the issue tracker first:
+
+```bash
+TRACKER=$(python3 "${CLAUDE_PLUGIN_ROOT}/scripts/workflow-repo-preflight.py" | jq -r '.integrations.issue_tracker_resolved')
+```
+
+Print a banner: `Findings will be tracked in: <TRACKER>`.
+
+**When `TRACKER == beads`** — create one bead per finding instead of a `todos/*.md` file. Skip the rest of this Step 2 and the file-todos subsections below; use this loop:
+
+```bash
+# PLAN_BEAD=$(yq '.bead_id' <plan-or-pr-frontmatter>)  # if available
+for finding in <findings>:
+  FINDING_ID=$(bd q \
+    --title="<short finding title>" \
+    --description="<problem statement + findings + proposed solutions>" \
+    --acceptance="<criteria>" \
+    --type=bug \
+    --priority=<1 for p1, 2 for p2, 3 for p3>)
+  bd tag "$FINDING_ID" code-review <category>      # e.g. security, performance
+  if [ -n "$PLAN_BEAD" ]; then
+    bd dep add "$FINDING_ID" "$PLAN_BEAD"
+  fi
+done
+```
+
+After all beads are created, jump to **Step 3: Summary Report** below — Step 2b (Linear push) is not needed for beads since state already lives in git via `refs/dolt/data`.
+
+**When `TRACKER` is `linear`, `github`, or `none`** — use the file-todos skill path documented below. (This is the original behavior; Linear users get identical output to today.)
 
 <critical_instruction> Use the file-todos skill to create todo files for ALL findings immediately. Do NOT present findings one-by-one asking for user approval. Create all todo files in parallel using the skill, then summarize results to user. </critical_instruction>
 
@@ -349,6 +379,8 @@ Examples:
 **Tagging:** Always add `code-review` tag, plus: `security`, `performance`, `architecture`, `rails`, `quality`, etc.
 
 #### Step 2b: Push Todos to Linear
+
+**Only run this step when `TRACKER == "linear"`.** For `beads`, findings are already tracked via `bd` (state lives in git). For `github` and `none`, skip.
 
 After creating all todo files, push them to Linear for tracking:
 

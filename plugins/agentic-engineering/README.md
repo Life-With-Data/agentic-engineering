@@ -84,6 +84,18 @@ Core workflow commands use `workflows:` prefix to avoid collisions with built-in
 | `/workflows:work` | Execute work items systematically (uses deterministic repo preflight script) |
 | `/workflows:compound` | Document solved problems to compound team knowledge |
 
+#### Issue tracker
+
+The workflow commands auto-detect an issue tracker (`beads | linear | github | none`) at startup and dispatch accordingly. Resolution order (first match wins):
+
+1. Explicit `issue_tracker:` in `agentic-engineering.local.md` frontmatter
+2. `.beads/` directory in repo + `bd` on PATH → `beads`
+3. `LINEAR_API_KEY` env var → `linear`
+4. `gh auth status` succeeds → `github`
+5. else → `none`
+
+For `beads`, `bd` replaces TodoWrite in `/workflows:work` and `todos/*.md` in `/workflows:review`. For `linear`/`github`/`none`, TodoWrite and the `file-todos` skill are used unchanged. To pin a tracker, run the `setup` skill or add `issue_tracker: linear` (or `beads`, etc.) to your project's `agentic-engineering.local.md`.
+
 ### Utility Commands
 
 | Command | Description |

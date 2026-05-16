@@ -189,6 +189,8 @@ type: [feat|fix|refactor]
 status: active
 date: YYYY-MM-DD
 origin: docs/brainstorms/YYYY-MM-DD-<topic>-brainstorm.md  # if originated from brainstorm, otherwise omit
+bead_id: bd-NNN          # added by `/workflows:plan` when issue_tracker == "beads"
+linear_issue: ENG-NNN    # added by `/workflows:plan` when issue_tracker == "linear"
 ---
 
 # [Issue Title]
@@ -244,6 +246,8 @@ type: [feat|fix|refactor]
 status: active
 date: YYYY-MM-DD
 origin: docs/brainstorms/YYYY-MM-DD-<topic>-brainstorm.md  # if originated from brainstorm, otherwise omit
+bead_id: bd-NNN          # added by `/workflows:plan` when issue_tracker == "beads"
+linear_issue: ENG-NNN    # added by `/workflows:plan` when issue_tracker == "linear"
 ---
 
 # [Issue Title]
@@ -319,6 +323,8 @@ type: [feat|fix|refactor]
 status: active
 date: YYYY-MM-DD
 origin: docs/brainstorms/YYYY-MM-DD-<topic>-brainstorm.md  # if originated from brainstorm, otherwise omit
+bead_id: bd-NNN          # added by `/workflows:plan` when issue_tracker == "beads"
+linear_issue: ENG-NNN    # added by `/workflows:plan` when issue_tracker == "linear"
 ---
 
 # [Issue Title]
@@ -575,7 +581,7 @@ open docs/plans/<plan_filename>.md
 
 Then use the **AskUserQuestion tool** to present these options:
 
-**Question 1:** "Plan ready at `docs/plans/YYYY-MM-DD-<type>-<name>-plan.md` (opened in editor). What would you like to do next? (You can also type freely — e.g., 'create issue' for GitHub/Linear issue creation.)"
+**Question 1:** "Plan ready at `docs/plans/YYYY-MM-DD-<type>-<name>-plan.md` (opened in editor). What would you like to do next? (You can also type freely — e.g., 'create issue' for tracker issue creation.)"
 
 **Options (4 max):**
 1. **Run `/deepen-plan`** - Enhance with parallel research agents (best practices, performance, UI)
@@ -598,7 +604,7 @@ Use the **AskUserQuestion tool** again:
 
 **Options (3):**
 1. **Start `/workflows:work`** - Begin implementing this plan
-2. **Create Issue** - Create issue in project tracker (GitHub/Linear)
+2. **Create Issue** - Create issue in project tracker (auto-detected: beads/linear/github)
 3. **Continue refining** - Loop back to Question 1
 
 Based on selection:
@@ -610,34 +616,63 @@ Based on selection:
 
 ## Issue Creation
 
-When user selects "Create Issue", detect their project tracker from CLAUDE.md:
+**Resolve the issue tracker first** — run the preflight script and read `integrations.issue_tracker_resolved`:
 
-1. **Check for tracker preference** in user's CLAUDE.md (global or project):
-   - Look for `project_tracker: github` or `project_tracker: linear`
-   - Or look for mentions of "GitHub Issues" or "Linear" in their workflow section
+```bash
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/workflow-repo-preflight.py" | jq -r '.integrations'
+```
 
-2. **If GitHub:**
+Print a one-line banner before acting:
+```
+Tracker: <resolved> (<source>)
+```
+If `integrations.issue_tracker_ambiguous` is `true`, append: `— set issue_tracker: in agentic-engineering.local.md to override`.
 
-   Use the title and type from Step 2 (already in context - no need to re-read the file):
+Then dispatch on `issue_tracker_resolved`:
 
-   ```bash
-   gh issue create --title "<type>: <title>" --body-file <plan_path>
-   ```
+### `beads`
 
-3. **If Linear:**
+```bash
+bd create \
+  --title "<type>: <title>" \
+  --description "Plan: <plan_path>\n\n$(head -40 <plan_path>)" \
+  --type=feature \
+  --priority=2 \
+  --design="<one-paragraph approach summary from the plan>" \
+  --notes="<context links: brainstorm origin, related PRs>"
+```
 
-   ```bash
-   agentic-plugin linear create <plan_path>
-   ```
+Capture the returned bead ID (e.g. `bd-123`) and write it back into the plan file's YAML frontmatter as `bead_id: bd-123`. If the plan originated from a brainstorm that also has a `bead_id:`, run `bd dep add <plan-bead> <brainstorm-bead>` to link them.
 
-   This reads the plan frontmatter, creates a Linear issue, and writes `linear_issue` back to the plan file. Silently skips if `LINEAR_API_KEY` is not set.
+Silently skip and warn if `bd` is not on PATH (this should not happen if preflight resolved to `beads`).
 
-4. **If no tracker configured:**
-   Ask user: "Which project tracker do you use? (GitHub/Linear/Other)"
-   - Suggest adding `project_tracker: github` or `project_tracker: linear` to their CLAUDE.md
+### `linear`
 
-5. **After creation:**
-   - Display the issue URL or identifier
-   - Ask if they want to proceed to `/workflows:work` or `/technical_review`
+```bash
+agentic-plugin linear create <plan_path>
+```
+
+Reads plan frontmatter, creates a Linear issue, writes `linear_issue:` back to the plan file. Silently skips if `LINEAR_API_KEY` is not set.
+
+### `github`
+
+```bash
+gh issue create --title "<type>: <title>" --body-file <plan_path>
+```
+
+Capture the returned issue number and write `github_issue: #N` back into the plan frontmatter.
+
+### `none`
+
+Print:
+```
+No issue tracker detected. Install `bd` (https://github.com/gastownhall/beads), set LINEAR_API_KEY, or run `gh auth login` to enable issue creation. Plan file is saved at <plan_path>.
+```
+Skip without error.
+
+### After creation
+
+- Display the issue URL/identifier returned by the tracker.
+- Ask if the user wants to proceed to `/workflows:work` or `/technical_review`.
 
 NEVER CODE! Just research and write the plan.
