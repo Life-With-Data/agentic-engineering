@@ -124,11 +124,13 @@ This command takes a work document (plan, specification, or todo file) and execu
 
 1. **Task Execution Loop**
 
-   The claim/complete steps depend on `integrations.issue_tracker_resolved`:
+   The claim/complete steps depend on `integrations.issue_tracker_resolved`.
+
+   > **Parent bead vs child task beads.** If the job is a single standalone bead (the common `bd ready` flow — one bead = the whole feature), it is the **parent** and stays `in_progress` until its PR merges (see Phase 4). Only **child task beads** of a parent plan get closed inside the loop below, because they represent local units of work that don't ship their own PR. When in doubt, leave the bead open and let Phase 4 handle the close.
 
    **When tracker is `beads`:**
    ```
-   while (bd ready returns items):
+   while (bd ready returns child-task items for this plan):
      - id=$(bd ready --limit=1 --json | jq -r '.[0].id')
      - bd update $id --claim
      - Read any referenced files from the plan
@@ -137,10 +139,12 @@ This command takes a work document (plan, specification, or todo file) and execu
      - Write tests for new functionality
      - Run System-Wide Test Check (see below)
      - Run tests after changes
-     - bd close $id
+     - bd close $id      # child task beads only — never the parent/standalone bead
      - Mark off the corresponding checkbox in the plan file ([ ] → [x])
      - Evaluate for incremental commit (see below)
    ```
+
+   For a standalone bead (no child tasks), skip the close step here entirely — implement, test, commit, then proceed to Phase 3 and Phase 4 with the bead still `in_progress`.
 
    **When tracker is `linear`, `github`, or `none`** — use the existing TodoWrite-driven loop:
    ```
@@ -388,9 +392,38 @@ This command takes a work document (plan, specification, or todo file) and execu
    )"
    ```
 
-4. **Update Plan Status & Sync to Tracker**
+4. **Record PR on Tracker (Do NOT Close Yet)**
 
-   If the input document has YAML frontmatter with a `status` field, update it to `completed`:
+   The PR is open, not merged. A reviewer can request changes, CI can fail, or the PR can be rejected outright — closing the bead now loses the work item before the change actually lands. Update the tracker with the PR link and keep the work item open.
+
+   Dispatch on `integrations.issue_tracker_resolved`:
+
+   - **`beads`**:
+     ```bash
+     PLAN_BEAD=$(yq '.bead_id' <plan-path>)   # if frontmatter has it; otherwise the bead you claimed in Phase 1
+     bd update "$PLAN_BEAD" --status=in_progress --notes="PR #<N> open: <pr-url>"
+     bd dolt push   # no-op if Dolt remote unconfigured
+     ```
+   - **`linear`**: leave the issue in its current state and add the PR link as a comment via the Linear MCP or:
+     ```bash
+     agentic-plugin linear push --file <plan-or-todo-path>
+     ```
+     Silently skips if `LINEAR_API_KEY` is not set.
+   - **`github`**:
+     ```bash
+     gh issue comment <issue-number> --body "PR #<N> open: <pr-url>"
+     ```
+   - **`none`**: skip.
+
+5. **Close After Merge (Separate Step)**
+
+   The close belongs at merge time, not at PR-open time. Two paths:
+
+   - **Same session**, if the user wants you to wait for merge (or invokes a loop/watch flow):
+     watch the PR, then once it merges, close the bead and update the plan.
+   - **Future session**, more common: when the PR is merged (typically by `/land-and-deploy`, a manual merge, or a follow-up `/work` invocation), close the bead with the merge commit reference.
+
+   If the input document has YAML frontmatter with a `status` field, update it to `completed` only at this point:
    ```
    status: active  →  status: completed
    ```
@@ -399,24 +432,27 @@ This command takes a work document (plan, specification, or todo file) and execu
 
    - **`beads`**:
      ```bash
-     PLAN_BEAD=$(yq '.bead_id' <plan-path>)   # if frontmatter has it
-     bd close "$PLAN_BEAD" --reason="merged in PR #<N>"
-     bd dolt push   # no-op if Dolt remote unconfigured
+     # Verify the PR is actually merged before closing
+     gh pr view <N> --json state,mergedAt --jq '.state'   # must be "MERGED"
+     bd close "$PLAN_BEAD" --reason="merged in PR #<N> (<merge-sha>)"
+     bd dolt push
      ```
    - **`linear`**:
      ```bash
      agentic-plugin linear push --file <plan-or-todo-path>
      ```
-     Silently skips if `LINEAR_API_KEY` is not set.
    - **`github`**:
      ```bash
      gh issue close <issue-number> --comment "merged in PR #<N>"
      ```
    - **`none`**: skip.
 
-5. **Notify User**
+   **Exception — stale beads.** If you encounter a bead whose described work has already shipped in a previously merged PR (discoverable from `git log` or `gh pr list --state=merged`), closing on discovery is correct: there is no open PR to wait for.
+
+6. **Notify User**
    - Summarize what was completed
    - Link to PR
+   - Note that the bead is still `in_progress` pending merge (unless you closed it under the stale-bead exception)
    - Note any follow-up work needed
    - Suggest next steps if applicable
 
@@ -530,7 +566,7 @@ See the `orchestrating-swarms` skill for detailed swarm patterns and best practi
 Before creating PR, verify:
 
 - [ ] All clarifying questions asked and answered
-- [ ] All tracker tasks marked completed (`bd list --status=open --parent=<plan-bead>` is empty, or all TodoWrite items checked)
+- [ ] All **child task** beads closed (`bd list --status=open --parent=<plan-bead>` is empty), or all TodoWrite items checked — the parent/standalone bead itself stays `in_progress` until the PR merges
 - [ ] Tests pass (run project's test command)
 - [ ] Linting passes (use linting-agent)
 - [ ] Code follows existing patterns
@@ -561,4 +597,5 @@ For most features: tests + linting + following patterns is sufficient.
 - **Testing at the end** - Test continuously or suffer later
 - **Forgetting to track progress** - Update your tracker (`bd` or TodoWrite) as you go, or lose track of what's done
 - **80% done syndrome** - Finish the feature, don't move on early
+- **Closing the bead at PR-open time** - Open PRs can be revised or rejected. Keep the bead `in_progress` with the PR link in notes; close only after the PR is merged
 - **Over-reviewing simple changes** - Save reviewer agents for complex work
