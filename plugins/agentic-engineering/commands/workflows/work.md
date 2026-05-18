@@ -129,9 +129,16 @@ This command takes a work document (plan, specification, or todo file) and execu
    > **Parent bead vs child task beads.** If the job is a single standalone bead (the common `bd ready` flow — one bead = the whole feature), it is the **parent** and stays `in_progress` until its PR merges (see Phase 4). Only **child task beads** of a parent plan get closed inside the loop below, because they represent local units of work that don't ship their own PR. When in doubt, leave the bead open and let Phase 4 handle the close.
 
    **When tracker is `beads`:**
+
+   First, decide which mode you're in:
+
+   - **Standalone bead mode** — Phase 1 set no `PLAN_BEAD` (the job is a single bead with no child tasks). **Skip this entire loop.** Implement directly, test, commit, then go to Phase 3 / Phase 4. The bead stays `in_progress`; Phase 5 closes it after merge.
+   - **Plan-with-children mode** — Phase 1 set `PLAN_BEAD` from plan frontmatter and created child task beads linked via `bd dep add`. Run the loop below, filtered to those children so `bd ready` cannot return the parent.
+
    ```
-   while (bd ready returns child-task items for this plan):
-     - id=$(bd ready --limit=1 --json | jq -r '.[0].id')
+   # Plan-with-children mode only. PLAN_BEAD must be set.
+   while (bd ready --json | jq -e --arg p "$PLAN_BEAD" '[.[] | select(.parent==$p)] | length > 0'):
+     - id=$(bd ready --json | jq -r --arg p "$PLAN_BEAD" '[.[] | select(.parent==$p)][0].id')
      - bd update $id --claim
      - Read any referenced files from the plan
      - Look for similar patterns in codebase
@@ -139,12 +146,12 @@ This command takes a work document (plan, specification, or todo file) and execu
      - Write tests for new functionality
      - Run System-Wide Test Check (see below)
      - Run tests after changes
-     - bd close $id      # child task beads only — never the parent/standalone bead
+     - bd close $id      # child task beads only — never the parent bead $PLAN_BEAD
      - Mark off the corresponding checkbox in the plan file ([ ] → [x])
      - Evaluate for incremental commit (see below)
    ```
 
-   For a standalone bead (no child tasks), skip the close step here entirely — implement, test, commit, then proceed to Phase 3 and Phase 4 with the bead still `in_progress`.
+   Do not close `$PLAN_BEAD` here under any condition. Phase 5 owns its close, gated on merge.
 
    **When tracker is `linear`, `github`, or `none`** — use the existing TodoWrite-driven loop:
    ```
@@ -392,16 +399,26 @@ This command takes a work document (plan, specification, or todo file) and execu
    )"
    ```
 
+   Capture the PR identifiers — Phase 4 and Phase 5 need them:
+
+   ```bash
+   PR_URL=$(gh pr view --json url --jq '.url')
+   PR_NUM=$(gh pr view --json number --jq '.number')
+   ```
+
 4. **Record PR on Tracker (Do NOT Close Yet)**
 
    The PR is open, not merged. A reviewer can request changes, CI can fail, or the PR can be rejected outright — closing the bead now loses the work item before the change actually lands. Update the tracker with the PR link and keep the work item open.
 
    Dispatch on `integrations.issue_tracker_resolved`:
 
-   - **`beads`**:
+   - **`beads`** — use `--append-notes` (not `--notes`); `--notes` replaces and would clobber existing design notes, history, or prior breadcrumbs:
      ```bash
-     PLAN_BEAD=$(yq '.bead_id' <plan-path>)   # if frontmatter has it; otherwise the bead you claimed in Phase 1
-     bd update "$PLAN_BEAD" --status=in_progress --notes="PR #<N> open: <pr-url>"
+     # PLAN_BEAD is either the parent bead from plan frontmatter, or the standalone
+     # bead claimed in Phase 1. It is already in_progress from the --claim; appending
+     # the PR link is all this step does.
+     PLAN_BEAD=${PLAN_BEAD:-$(yq '.bead_id' <plan-path>)}
+     bd update "$PLAN_BEAD" --append-notes "PR #${PR_NUM} open: ${PR_URL}"
      bd dolt push   # no-op if Dolt remote unconfigured
      ```
    - **`linear`**: leave the issue in its current state and add the PR link as a comment via the Linear MCP or:
@@ -411,17 +428,19 @@ This command takes a work document (plan, specification, or todo file) and execu
      Silently skips if `LINEAR_API_KEY` is not set.
    - **`github`**:
      ```bash
-     gh issue comment <issue-number> --body "PR #<N> open: <pr-url>"
+     gh issue comment <issue-number> --body "PR #${PR_NUM} open: ${PR_URL}"
      ```
    - **`none`**: skip.
 
 5. **Close After Merge (Separate Step)**
 
-   The close belongs at merge time, not at PR-open time. Two paths:
+   The close belongs at merge time, not at PR-open time. **Do not block this session waiting for the merge** — no `--watch` polling, no sleep loops. Stop after Phase 4 and let one of the following trigger Phase 5:
 
-   - **Same session**, if the user wants you to wait for merge (or invokes a loop/watch flow):
-     watch the PR, then once it merges, close the bead and update the plan.
-   - **Future session**, more common: when the PR is merged (typically by `/land-and-deploy`, a manual merge, or a follow-up `/work` invocation), close the bead with the merge commit reference.
+   - `/land-and-deploy`, which merges and then completes this phase.
+   - A follow-up `/work` invocation that finds a `MERGED` PR on the bead.
+   - A manual user request after they have merged the PR.
+
+   The only time you run Phase 5 in the same session is when the user has explicitly asked you to (e.g. "wait for the merge and then close"). Even then, prefer a single delayed check (e.g. via the `/loop` skill) over a tight polling loop.
 
    If the input document has YAML frontmatter with a `status` field, update it to `completed` only at this point:
    ```
@@ -430,20 +449,25 @@ This command takes a work document (plan, specification, or todo file) and execu
 
    Dispatch on `integrations.issue_tracker_resolved`:
 
-   - **`beads`**:
+   - **`beads`** — enforce the merged state as a real guard (the bash conditional below exits Phase 5 without closing if the PR is not yet `MERGED`):
      ```bash
-     # Verify the PR is actually merged before closing
-     gh pr view <N> --json state,mergedAt --jq '.state'   # must be "MERGED"
-     bd close "$PLAN_BEAD" --reason="merged in PR #<N> (<merge-sha>)"
+     STATE=$(gh pr view "$PR_NUM" --json state --jq '.state')
+     if [ "$STATE" != "MERGED" ]; then
+       echo "PR #${PR_NUM} state is ${STATE}; not closing $PLAN_BEAD. Phase 5 will retry after merge."
+       exit 0
+     fi
+     MERGE_SHA=$(gh pr view "$PR_NUM" --json mergeCommit --jq '.mergeCommit.oid')
+     bd close "$PLAN_BEAD" --reason="merged in PR #${PR_NUM} (${MERGE_SHA})"
      bd dolt push
      ```
    - **`linear`**:
      ```bash
      agentic-plugin linear push --file <plan-or-todo-path>
      ```
+     Silently skips if `LINEAR_API_KEY` is not set.
    - **`github`**:
      ```bash
-     gh issue close <issue-number> --comment "merged in PR #<N>"
+     gh issue close <issue-number> --comment "merged in PR #${PR_NUM}"
      ```
    - **`none`**: skip.
 
