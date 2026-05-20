@@ -5,6 +5,23 @@ All notable changes to the agentic-engineering plugin will be documented in this
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- **`/workflows:plan`** — tracker-issue creation is now a mandatory gate, not a post-action option. The command runs a new "Step 7. Create Tracker Issue" inline between `## Write Plan File` and `## Post-Generation Options`, and a precondition assertion re-verifies the plan frontmatter before any next-step menu is opened. The `Post-Generation Options` menu surfaces the tracker ID in its preamble and omits `/workflows:work` when the explicit `issue_tracker: none` carve-out is active. Closes context-eww.
+- **Frontmatter templates** (MINIMAL/MORE/A LOT) now mark `bead_id` / `linear_issue` / `github_issue` as REQUIRED fields (exactly one) rather than optional `# added by /workflows:plan` annotations.
+
+### Added
+
+- **Stop hook safety net** (`scripts/plan-tracker-guard.py`, registered via `.claude-plugin/plugin.json` `hooks.Stop`) blocks turn termination when any plan file under `docs/plans/` modified in the current session lacks a tracker ID in its frontmatter. Respects `issue_tracker: none` carve-out and `stop_hook_active` re-entry protection. Catches any agent that bypasses or forks the `/workflows:plan` workflow.
+
+### Removed
+
+- The standalone `## Issue Creation` section at the bottom of `commands/workflows/plan.md` (content moved into mandatory Step 7).
+- `Create Issue` option from Question 2 of `Post-Generation Options` (issue creation is now upstream of the menu).
+- `You can also type freely — e.g., 'create issue'` hint from Question 1 (no longer reachable).
+
 ## [2.38.0] - 2026-05-16
 
 ### Added

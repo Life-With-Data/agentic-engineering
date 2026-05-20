@@ -170,6 +170,18 @@ After planning the issue structure, run SpecFlow Analyzer to validate and refine
 
 Select how comprehensive you want the issue to be, simpler is mostly better.
 
+**Tracker-ID frontmatter contract (applies to all three templates below):**
+
+Every plan exiting `/workflows:plan` must record exactly one of:
+
+```
+bead_id: bd-NNN          # when issue_tracker == "beads"
+linear_issue: ENG-NNN    # when issue_tracker == "linear"
+github_issue: 123        # when issue_tracker == "github"
+```
+
+The field is populated by mandatory Step 7 (Create Tracker Issue) — templates show only the `bead_id:` placeholder for brevity. The Stop hook at `scripts/plan-tracker-guard.py` blocks turn termination if a created/edited plan lacks one of these fields and is not opted out via `issue_tracker: none`.
+
 #### 📄 MINIMAL (Quick Issue)
 
 **Best for:** Simple bugs, small improvements, clear features
@@ -189,8 +201,7 @@ type: [feat|fix|refactor]
 status: active
 date: YYYY-MM-DD
 origin: docs/brainstorms/YYYY-MM-DD-<topic>-brainstorm.md  # if originated from brainstorm, otherwise omit
-bead_id: bd-NNN          # added by `/workflows:plan` when issue_tracker == "beads"
-linear_issue: ENG-NNN    # added by `/workflows:plan` when issue_tracker == "linear"
+bead_id: bd-NNN          # REQUIRED — see "Tracker-ID frontmatter contract" in Section 4
 ---
 
 # [Issue Title]
@@ -246,8 +257,7 @@ type: [feat|fix|refactor]
 status: active
 date: YYYY-MM-DD
 origin: docs/brainstorms/YYYY-MM-DD-<topic>-brainstorm.md  # if originated from brainstorm, otherwise omit
-bead_id: bd-NNN          # added by `/workflows:plan` when issue_tracker == "beads"
-linear_issue: ENG-NNN    # added by `/workflows:plan` when issue_tracker == "linear"
+bead_id: bd-NNN          # REQUIRED — see "Tracker-ID frontmatter contract" in Section 4
 ---
 
 # [Issue Title]
@@ -323,8 +333,7 @@ type: [feat|fix|refactor]
 status: active
 date: YYYY-MM-DD
 origin: docs/brainstorms/YYYY-MM-DD-<topic>-brainstorm.md  # if originated from brainstorm, otherwise omit
-bead_id: bd-NNN          # added by `/workflows:plan` when issue_tracker == "beads"
-linear_issue: ENG-NNN    # added by `/workflows:plan` when issue_tracker == "linear"
+bead_id: bd-NNN          # REQUIRED — see "Tracker-ID frontmatter contract" in Section 4
 ---
 
 # [Issue Title]
@@ -569,52 +578,9 @@ Examples:
 - ❌ `docs/plans/2026-01-15-feat: user auth-plan.md` (invalid characters - colon and space)
 - ❌ `docs/plans/feat-user-auth-plan.md` (missing date prefix)
 
-## Post-Generation Options
+## Step 7. Create Tracker Issue (MANDATORY)
 
-<!-- AskUserQuestion constraint: 2-4 options max -->
-
-After writing the plan file, automatically open the plan in the user's default editor:
-
-```bash
-open docs/plans/<plan_filename>.md
-```
-
-Then use the **AskUserQuestion tool** to present these options:
-
-**Question 1:** "Plan ready at `docs/plans/YYYY-MM-DD-<type>-<name>-plan.md` (opened in editor). What would you like to do next? (You can also type freely — e.g., 'create issue' for tracker issue creation.)"
-
-**Options (4 max):**
-1. **Run `/deepen-plan`** - Enhance with parallel research agents (best practices, performance, UI)
-2. **Run `/technical_review`** - Technical feedback from code-focused reviewers
-3. **Start `/workflows:work`** - Begin implementing (add `&` suffix for background/remote execution)
-4. **Review and refine** - Structured self-review via `document-review` skill
-
-Based on selection:
-- **`/deepen-plan`** → Call the /deepen-plan command with the plan file path to enhance with research
-- **`/technical_review`** → Call the /technical_review command with the plan file path
-- **`/workflows:work`** → Call the /workflows:work command with the plan file path. For remote/web execution, run with `&` to start in background.
-- **Review and refine** → Load `document-review` skill.
-- **Free text** → Handle accordingly (e.g., "create issue" → see "Issue Creation" section below, other text → rework or specific changes)
-
-**Question 2 (after action completes, only if user did NOT pick `/workflows:work`):**
-
-Use the **AskUserQuestion tool** again:
-
-**Question:** "What would you like to do next?"
-
-**Options (3):**
-1. **Start `/workflows:work`** - Begin implementing this plan
-2. **Create Issue** - Create issue in project tracker (auto-detected: beads/linear/github)
-3. **Continue refining** - Loop back to Question 1
-
-Based on selection:
-- **`/workflows:work`** → Call the /workflows:work command with the plan file path
-- **Create Issue** → See "Issue Creation" section below
-- **Continue refining** → Loop back to Question 1
-
-**Note:** If running `/workflows:plan` with ultrathink enabled, automatically run `/deepen-plan` after plan creation for maximum depth and grounding.
-
-## Issue Creation
+**This step is a gate, not an option.** Every plan that exits `/workflows:plan` must have a tracker issue recorded in its frontmatter (`bead_id`, `linear_issue`, or `github_issue`). This step runs unconditionally — including in LFG/SLFG/`disable-model-invocation` pipeline mode. Only `AskUserQuestion` calls are skipped in pipeline mode; tracker creation itself still executes.
 
 **Resolve the issue tracker first** — run the preflight script and read `integrations.issue_tracker_resolved`:
 
@@ -644,7 +610,7 @@ bd create \
 
 Capture the returned bead ID (e.g. `bd-123`) and write it back into the plan file's YAML frontmatter as `bead_id: bd-123`. If the plan originated from a brainstorm that also has a `bead_id:`, run `bd dep add <plan-bead> <brainstorm-bead>` to link them.
 
-Silently skip and warn if `bd` is not on PATH (this should not happen if preflight resolved to `beads`).
+If `bd` is not on PATH (which should not happen if preflight resolved to `beads`), STOP and surface the error — do not proceed to Post-Generation Options without a tracker ID.
 
 ### `linear`
 
@@ -652,7 +618,9 @@ Silently skip and warn if `bd` is not on PATH (this should not happen if preflig
 agentic-plugin linear create <plan_path>
 ```
 
-Reads plan frontmatter, creates a Linear issue, writes `linear_issue:` back to the plan file. Silently skips if `LINEAR_API_KEY` is not set.
+Reads plan frontmatter, creates a Linear issue, writes `linear_issue:` back to the plan file.
+
+If `LINEAR_API_KEY` is not set (which should not happen if preflight resolved to `linear`), STOP and surface the error.
 
 ### `github`
 
@@ -660,7 +628,7 @@ Reads plan frontmatter, creates a Linear issue, writes `linear_issue:` back to t
 gh issue create --title "<type>: <title>" --body-file <plan_path>
 ```
 
-Capture the returned issue number and write `github_issue: #N` back into the plan frontmatter.
+Capture the returned issue number and write `github_issue: <N>` back into the plan frontmatter.
 
 ### `none`
 
@@ -668,11 +636,60 @@ Print:
 ```
 No issue tracker detected. Install `bd` (https://github.com/gastownhall/beads), set LINEAR_API_KEY, or run `gh auth login` to enable issue creation. Plan file is saved at <plan_path>.
 ```
-Skip without error.
 
-### After creation
+This is the only path that may exit Step 7 without writing a tracker ID. When this happens, Post-Generation Options MUST surface the lack of tracking in its preamble and MUST NOT offer `/workflows:work` as a next step.
 
-- Display the issue URL/identifier returned by the tracker.
-- Ask if the user wants to proceed to `/workflows:work` or `/technical_review`.
+Verification of the recorded tracker ID happens once, at the top of Post-Generation Options below — that's the menu gate.
+
+## Post-Generation Options
+
+<!-- AskUserQuestion constraint: 2-4 options max -->
+
+**Precondition assertion (re-verify before opening any question):**
+
+Before presenting Question 1, re-read the plan file's YAML frontmatter and verify that exactly one of `bead_id`, `linear_issue`, or `github_issue` is populated — OR that Step 7 ran and resolved `issue_tracker == none` (the documented un-tracked carve-out).
+
+If none of those fields exist and Step 7 did not record an explicit `none` resolution, **STOP** and re-run Step 7 (Create Tracker Issue). Do not advance to the questions below until either a tracker ID is in the frontmatter or the `none` carve-out is confirmed. This guards against agents that skip Step 7 or fail it silently.
+
+After verification, open the plan in the user's default editor:
+
+```bash
+open docs/plans/<plan_filename>.md
+```
+
+Then use the **AskUserQuestion tool** to present these options:
+
+**Question 1 preamble — pick the right phrasing based on the recorded tracker:**
+
+- If a tracker ID is present: `"Plan ready at docs/plans/YYYY-MM-DD-<type>-<name>-plan.md (tracked as <bead_id|linear_issue|github_issue>, opened in editor). What would you like to do next?"`
+- If `issue_tracker == none` carve-out: `"Plan ready at docs/plans/YYYY-MM-DD-<type>-<name>-plan.md (UNTRACKED — no issue tracker detected). What would you like to do next?"`
+
+**Options (4 max):**
+1. **Run `/deepen-plan`** - Enhance with parallel research agents (best practices, performance, UI)
+2. **Run `/technical_review`** - Technical feedback from code-focused reviewers
+3. **Start `/workflows:work`** - Begin implementing (add `&` suffix for background/remote execution). **Omit this option entirely when the `none` carve-out is active** — work must not start without a tracker ID.
+4. **Review and refine** - Structured self-review via `document-review` skill
+
+Based on selection:
+- **`/deepen-plan`** → Call the /deepen-plan command with the plan file path to enhance with research
+- **`/technical_review`** → Call the /technical_review command with the plan file path
+- **`/workflows:work`** → Call the /workflows:work command with the plan file path. For remote/web execution, run with `&` to start in background.
+- **Review and refine** → Load `document-review` skill.
+
+**Question 2 (after action completes, only if user did NOT pick `/workflows:work`):**
+
+Use the **AskUserQuestion tool** again:
+
+**Question:** "What would you like to do next?"
+
+**Options (2):**
+1. **Start `/workflows:work`** - Begin implementing this plan (omit when the `none` carve-out is active)
+2. **Continue refining** - Loop back to Question 1
+
+Based on selection:
+- **`/workflows:work`** → Call the /workflows:work command with the plan file path
+- **Continue refining** → Loop back to Question 1
+
+**Note:** If running `/workflows:plan` with ultrathink enabled, automatically run `/deepen-plan` after plan creation for maximum depth and grounding.
 
 NEVER CODE! Just research and write the plan.
