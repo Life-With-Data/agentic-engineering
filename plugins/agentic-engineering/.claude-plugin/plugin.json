@@ -28,5 +28,17 @@
       "type": "http",
       "url": "https://mcp.context7.com/mcp"
     }
+  },
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 ${CLAUDE_PLUGIN_ROOT}/scripts/plan-tracker-guard.py"
+          }
+        ]
+      }
+    ]
   }
 }
