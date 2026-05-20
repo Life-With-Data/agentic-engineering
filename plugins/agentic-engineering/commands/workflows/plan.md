@@ -170,6 +170,18 @@ After planning the issue structure, run SpecFlow Analyzer to validate and refine
 
 Select how comprehensive you want the issue to be, simpler is mostly better.
 
+**Tracker-ID frontmatter contract (applies to all three templates below):**
+
+Every plan exiting `/workflows:plan` must record exactly one of:
+
+```
+bead_id: bd-NNN          # when issue_tracker == "beads"
+linear_issue: ENG-NNN    # when issue_tracker == "linear"
+github_issue: 123        # when issue_tracker == "github"
+```
+
+The field is populated by mandatory Step 7 (Create Tracker Issue) — templates show only the `bead_id:` placeholder for brevity. The Stop hook at `scripts/plan-tracker-guard.py` blocks turn termination if a created/edited plan lacks one of these fields and is not opted out via `issue_tracker: none`.
+
 #### 📄 MINIMAL (Quick Issue)
 
 **Best for:** Simple bugs, small improvements, clear features
@@ -189,11 +201,7 @@ type: [feat|fix|refactor]
 status: active
 date: YYYY-MM-DD
 origin: docs/brainstorms/YYYY-MM-DD-<topic>-brainstorm.md  # if originated from brainstorm, otherwise omit
-# REQUIRED — exactly one of the following must be present before this plan exits /workflows:plan.
-# Populated by mandatory Step 7 (Create Tracker Issue). See that section for details.
-bead_id: bd-NNN          # when issue_tracker == "beads"
-linear_issue: ENG-NNN    # when issue_tracker == "linear"
-github_issue: 123        # when issue_tracker == "github"
+bead_id: bd-NNN          # REQUIRED — see "Tracker-ID frontmatter contract" in Section 4
 ---
 
 # [Issue Title]
@@ -249,11 +257,7 @@ type: [feat|fix|refactor]
 status: active
 date: YYYY-MM-DD
 origin: docs/brainstorms/YYYY-MM-DD-<topic>-brainstorm.md  # if originated from brainstorm, otherwise omit
-# REQUIRED — exactly one of the following must be present before this plan exits /workflows:plan.
-# Populated by mandatory Step 7 (Create Tracker Issue). See that section for details.
-bead_id: bd-NNN          # when issue_tracker == "beads"
-linear_issue: ENG-NNN    # when issue_tracker == "linear"
-github_issue: 123        # when issue_tracker == "github"
+bead_id: bd-NNN          # REQUIRED — see "Tracker-ID frontmatter contract" in Section 4
 ---
 
 # [Issue Title]
@@ -329,11 +333,7 @@ type: [feat|fix|refactor]
 status: active
 date: YYYY-MM-DD
 origin: docs/brainstorms/YYYY-MM-DD-<topic>-brainstorm.md  # if originated from brainstorm, otherwise omit
-# REQUIRED — exactly one of the following must be present before this plan exits /workflows:plan.
-# Populated by mandatory Step 7 (Create Tracker Issue). See that section for details.
-bead_id: bd-NNN          # when issue_tracker == "beads"
-linear_issue: ENG-NNN    # when issue_tracker == "linear"
-github_issue: 123        # when issue_tracker == "github"
+bead_id: bd-NNN          # REQUIRED — see "Tracker-ID frontmatter contract" in Section 4
 ---
 
 # [Issue Title]
@@ -639,12 +639,7 @@ No issue tracker detected. Install `bd` (https://github.com/gastownhall/beads), 
 
 This is the only path that may exit Step 7 without writing a tracker ID. When this happens, Post-Generation Options MUST surface the lack of tracking in its preamble and MUST NOT offer `/workflows:work` as a next step.
 
-### Precondition assertion (verify before proceeding)
-
-After dispatch, re-read the plan file's frontmatter and assert:
-
-- If `issue_tracker_resolved` was `beads`, `linear`, or `github`: the plan frontmatter MUST contain a populated `bead_id`, `linear_issue`, or `github_issue` field (respectively). If missing, the tracker call failed silently — re-run dispatch or surface the error to the user. Do not advance to Post-Generation Options.
-- If `issue_tracker_resolved` was `none`: continue with the un-tracked carve-out described above.
+Verification of the recorded tracker ID happens once, at the top of Post-Generation Options below — that's the menu gate.
 
 ## Post-Generation Options
 
@@ -694,8 +689,6 @@ Use the **AskUserQuestion tool** again:
 Based on selection:
 - **`/workflows:work`** → Call the /workflows:work command with the plan file path
 - **Continue refining** → Loop back to Question 1
-
-**Note:** "Create Issue" is no longer offered here — issue creation is mandatory and runs in Step 7 before this menu appears.
 
 **Note:** If running `/workflows:plan` with ultrathink enabled, automatically run `/deepen-plan` after plan creation for maximum depth and grounding.
 
