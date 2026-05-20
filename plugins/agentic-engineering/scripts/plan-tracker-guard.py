@@ -1,19 +1,8 @@
 #!/usr/bin/env python3
-"""Stop-hook safety net: block turn termination if any plan file modified in this
-session is missing a tracker ID in its YAML frontmatter.
-
-A plan is a markdown file under ``docs/plans/`` (recursively, but in practice flat).
-A tracker ID is one of ``bead_id``, ``linear_issue``, or ``github_issue``.
-
-The hook reads its input JSON from stdin (per Claude Code hook contract), inspects
-the session transcript for Write/Edit/MultiEdit/NotebookEdit tool calls that
-touched plan files, then validates each file's frontmatter. If any file is
-unfaithful to the contract, the hook emits a ``decision: block`` payload so the
-agent re-runs Step 7 of ``/workflows:plan`` before exiting the turn.
-
-If ``stop_hook_active`` is true the hook short-circuits to avoid infinite loops.
-Tracker resolution mode is read indirectly: if frontmatter says ``issue_tracker:
-none`` (explicit carve-out from Step 7), the file is allowed through.
+"""Stop-hook safety net: block turn termination if any plan file modified in
+this session lacks a tracker ID (``bead_id`` / ``linear_issue`` /
+``github_issue``) in its YAML frontmatter, unless the plan explicitly opts out
+with ``issue_tracker: none``.
 """
 from __future__ import annotations
 
@@ -22,20 +11,61 @@ import os
 import re
 import sys
 from pathlib import Path
+from typing import Final, Iterator
 
-TRACKER_FIELDS = ("bead_id", "linear_issue", "github_issue")
-PLAN_PATH_RE = re.compile(r"(?:^|/)docs/plans/[^/]+\.md$")
-EDIT_TOOLS = {"Write", "Edit", "MultiEdit", "NotebookEdit"}
+TRACKER_FIELDS: Final = ("bead_id", "linear_issue", "github_issue")
+PLAN_PATH_RE: Final = re.compile(r"(?:^|/)docs/plans/[^/]+\.md$")
+EDIT_TOOLS: Final = frozenset({"Write", "Edit", "MultiEdit", "NotebookEdit"})
+FRONTMATTER_FENCE_RE: Final = re.compile(r"^---[ \t]*$", re.MULTILINE)
+# Real tracker IDs look like "bd-42", "ENG-1234", "123", or "org/repo#42".
+REAL_TRACKER_VALUE_RE: Final = re.compile(
+    r"^([A-Za-z][A-Za-z0-9_]*-\d+|\d+|[\w.-]+/[\w.-]+#\d+)$"
+)
+# Inline comments only count when '#' is preceded by whitespace — otherwise
+# legitimate values like ``github_issue: org/repo#42`` get truncated.
+INLINE_COMMENT_RE: Final = re.compile(r"\s+#.*$")
+# Strip ANSI escapes and other control chars from paths before echoing to the
+# user-visible block reason. Allow tab/newline (paths can't have those).
+CONTROL_CHAR_RE: Final = re.compile(r"[\x00-\x08\x0b-\x1f\x7f]")
+
+
+def _walk_tool_uses(record: object) -> Iterator[dict]:
+    """Yield tool_use blocks from a transcript record.
+
+    Real Claude Code transcripts nest blocks at ``message.content[i]`` with
+    ``type == "tool_use"``, but the parent shape varies across transcript
+    versions (some have ``message`` at top level, others nest one deeper).
+    We check the common path first and fall back to a generic scan only on
+    miss so the hook survives schema drift.
+    """
+    if isinstance(record, dict):
+        msg = record.get("message")
+        if isinstance(msg, dict):
+            content = msg.get("content")
+            if isinstance(content, list):
+                yield from _filter_tool_uses(content)
+                return
+        # Fallback: scan all values recursively. Only reached if the common
+        # path missed, so the cost is paid only on schema drift.
+        for value in record.values():
+            yield from _walk_tool_uses(value)
+    elif isinstance(record, list):
+        yield from _filter_tool_uses(record)
+
+
+def _filter_tool_uses(blocks: list) -> Iterator[dict]:
+    for block in blocks:
+        if isinstance(block, dict) and block.get("type") == "tool_use":
+            yield block
 
 
 def load_transcript_paths(transcript_path: str) -> list[str]:
-    """Return the set of plan file paths touched by edit tools in the transcript."""
-    seen: list[str] = []
+    """Return ordered, de-duplicated plan paths touched by edit tools."""
+    paths: dict[str, None] = {}
     if not transcript_path or not os.path.exists(transcript_path):
-        return seen
-
+        return []
     try:
-        with open(transcript_path, "r", encoding="utf-8") as fh:
+        with Path(transcript_path).open("r", encoding="utf-8") as fh:
             for line in fh:
                 line = line.strip()
                 if not line:
@@ -44,50 +74,35 @@ def load_transcript_paths(transcript_path: str) -> list[str]:
                     record = json.loads(line)
                 except json.JSONDecodeError:
                     continue
-                # tool_use entries can live a few places depending on transcript
-                # version; scan recursively for any dict with name+input.
-                for candidate in _walk(record):
-                    if not isinstance(candidate, dict):
+                for block in _walk_tool_uses(record):
+                    if block.get("name") not in EDIT_TOOLS:
                         continue
-                    name = candidate.get("name")
-                    if name not in EDIT_TOOLS:
-                        continue
-                    inp = candidate.get("input") or {}
+                    inp = block.get("input") or {}
                     fp = inp.get("file_path") or inp.get("notebook_path")
-                    if not fp or not isinstance(fp, str):
-                        continue
-                    if PLAN_PATH_RE.search(fp) and fp not in seen:
-                        seen.append(fp)
-    except OSError:
-        pass
-    return seen
-
-
-def _walk(obj):
-    if isinstance(obj, dict):
-        yield obj
-        for value in obj.values():
-            yield from _walk(value)
-    elif isinstance(obj, list):
-        for item in obj:
-            yield from _walk(item)
+                    if isinstance(fp, str) and PLAN_PATH_RE.search(fp):
+                        paths.setdefault(fp, None)
+    except OSError as exc:
+        print(f"plan-tracker-guard: cannot read transcript: {exc}", file=sys.stderr)
+    return list(paths)
 
 
 def parse_frontmatter(text: str) -> dict[str, str]:
-    """Parse the leading ``---`` YAML frontmatter block into a flat str dict.
+    """Parse leading ``---`` YAML frontmatter into a flat string dict.
 
-    Minimal parser — only ``key: value`` lines, ignores quoting/nesting since
-    tracker fields are always scalars. Returns empty dict if no frontmatter.
+    Only handles ``key: value`` scalars — sufficient because all tracker
+    fields and the ``issue_tracker`` carve-out are scalars. Returns ``{}``
+    when no proper fenced block exists.
     """
-    if not text.startswith("---"):
+    if not text.startswith("---\n") and not text.startswith("---\r\n"):
         return {}
-    end = text.find("\n---", 3)
-    if end == -1:
+    # Find a closing fence that occupies its own line; skip the opening fence.
+    match = FRONTMATTER_FENCE_RE.search(text, pos=4)
+    if not match:
         return {}
-    block = text[3:end]
+    body = text[3 : match.start()]
     out: dict[str, str] = {}
-    for line in block.splitlines():
-        line = line.split("#", 1)[0].rstrip()
+    for line in body.splitlines():
+        line = INLINE_COMMENT_RE.sub("", line).rstrip()
         if not line or ":" not in line:
             continue
         key, _, value = line.partition(":")
@@ -101,27 +116,64 @@ def parse_frontmatter(text: str) -> dict[str, str]:
 def has_tracker_id(meta: dict[str, str]) -> bool:
     for field in TRACKER_FIELDS:
         value = meta.get(field, "").strip()
-        if not value:
-            continue
-        # Skip template placeholders like ``bd-NNN`` / ``ENG-NNN`` / ``123``.
-        if value.endswith("-NNN") or value == "123":
-            continue
-        return True
+        if value and REAL_TRACKER_VALUE_RE.match(value):
+            return True
     return False
 
 
 def is_none_carveout(meta: dict[str, str]) -> bool:
-    return meta.get("issue_tracker", "").strip().lower() == "none"
+    # Accept the YAML-ish null aliases for parity with hand-edited frontmatter.
+    return meta.get("issue_tracker", "").strip().lower() in {"none", "null", "~"}
+
+
+def safe_path_for_reason(path: str) -> str:
+    return CONTROL_CHAR_RE.sub("?", path)
+
+
+def is_safe_plan_path(path: str) -> bool:
+    """Reject paths that resolve outside ``cwd/docs/plans`` or are symlinks.
+
+    The transcript can carry attacker-influenced paths (a compromised tool
+    call could record ``../../../../etc/passwd.md`` and the regex's suffix
+    match would still pass). Containment plus symlink rejection keeps the
+    blast radius bounded to the workspace's plan directory.
+    """
+    try:
+        resolved = Path(path).resolve(strict=True)
+    except (OSError, RuntimeError):
+        return False
+    if Path(path).is_symlink():
+        return False
+    plans_dir = (Path.cwd() / "docs" / "plans").resolve()
+    try:
+        return resolved.is_relative_to(plans_dir)
+    except AttributeError:
+        # is_relative_to landed in 3.9 — should always exist in supported
+        # Pythons, but degrade gracefully.
+        try:
+            resolved.relative_to(plans_dir)
+            return True
+        except ValueError:
+            return False
 
 
 def evaluate(paths: list[str]) -> list[str]:
-    """Return a list of human-readable problems."""
+    """Return a list of plan paths that need a tracker ID but don't have one."""
     problems: list[str] = []
     for path in paths:
+        if not is_safe_plan_path(path):
+            print(
+                f"plan-tracker-guard: skipping unsafe path {safe_path_for_reason(path)!r}",
+                file=sys.stderr,
+            )
+            continue
         try:
             text = Path(path).read_text(encoding="utf-8")
-        except OSError:
-            # File deleted or unreadable — skip silently.
+        except OSError as exc:
+            print(
+                f"plan-tracker-guard: cannot read {safe_path_for_reason(path)!r}: {exc}",
+                file=sys.stderr,
+            )
             continue
         meta = parse_frontmatter(text)
         if has_tracker_id(meta) or is_none_carveout(meta):
@@ -130,17 +182,32 @@ def evaluate(paths: list[str]) -> list[str]:
     return problems
 
 
+REMEDIATION = (
+    "Refusing to end turn — the following plan files lack a tracker ID "
+    "in their YAML frontmatter (one of bead_id / linear_issue / github_issue):\n\n"
+    "{listing}\n\n"
+    "Fix each file by either:\n"
+    "  (a) Creating a tracker issue and writing the ID into the frontmatter:\n"
+    "        beads:   bd create --title '<t>' --type=feature  → set 'bead_id: bd-N'\n"
+    "        linear:  agentic-plugin linear create <plan-path>  → fills linear_issue:\n"
+    "        github:  gh issue create --title '<t>' --body-file <plan-path>\n"
+    "                   → set 'github_issue: <N>'\n"
+    "  (b) OR setting 'issue_tracker: none' in the frontmatter to opt out\n"
+    "      (the documented un-tracked carve-out).\n"
+)
+
+
 def main() -> int:
     try:
         payload = json.load(sys.stdin)
-    except (json.JSONDecodeError, ValueError):
+    except ValueError:
+        # json.JSONDecodeError is a subclass of ValueError.
         payload = {}
 
     if payload.get("stop_hook_active"):
         return 0
 
-    transcript_path = payload.get("transcript_path") or ""
-    plan_paths = load_transcript_paths(transcript_path)
+    plan_paths = load_transcript_paths(payload.get("transcript_path") or "")
     if not plan_paths:
         return 0
 
@@ -148,16 +215,8 @@ def main() -> int:
     if not problems:
         return 0
 
-    listing = "\n".join(f"  - {p}" for p in problems)
-    reason = (
-        "Refusing to end turn: the following plan files were created or modified "
-        "this session but have no tracker ID in their YAML frontmatter "
-        "(bead_id / linear_issue / github_issue). Run Step 7 of /workflows:plan "
-        "to create a tracker issue and write the ID back to the plan, or set "
-        "`issue_tracker: none` in the frontmatter if the un-tracked carve-out is "
-        "intentional.\n\n"
-        f"{listing}"
-    )
+    listing = "\n".join(f"  - {safe_path_for_reason(p)}" for p in problems)
+    reason = REMEDIATION.format(listing=listing)
     json.dump({"decision": "block", "reason": reason}, sys.stdout)
     return 0
 
