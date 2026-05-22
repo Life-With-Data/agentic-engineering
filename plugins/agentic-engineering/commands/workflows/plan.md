@@ -288,6 +288,18 @@ bead_id: bd-NNN          # REQUIRED — see "Tracker-ID frontmatter contract" in
 - **API surface parity**: [What other interfaces expose similar functionality and need the same change?]
 - **Integration test scenarios**: [Cross-layer scenarios that unit tests won't catch]
 
+## External System Wiring
+
+**REQUIRED.** For each external system this feature integrates with, document:
+
+- **System name and console URL** (e.g., Clerk Dashboard, Stripe Dashboard, Slack App config, GitHub App settings).
+- **Configuration objects this feature requires** (webhook endpoints, OAuth apps, scopes, event subscriptions, API credentials, signing secrets).
+- **Where the configuration lives** (provider UI, IaC repo, manual env var).
+- **Host-side wiring this feature requires** (middleware allowlist additions, env var scope, redirect URL allowlists, DNS records).
+- **Verification step** that proves the external config is live (not just that the code compiles or that unit tests pass). The strongest form is "send a test event from the provider's dashboard and observe X in our logs."
+
+If the feature is purely internal (no third-party config, no env vars beyond defaults, no auth/middleware allowlist changes), state explicitly: **"No external wiring required."**
+
 ## Acceptance Criteria
 
 - [ ] Detailed requirement 1
@@ -385,6 +397,20 @@ bead_id: bd-NNN          # REQUIRED — see "Tracker-ID frontmatter contract" in
 ### Interaction Graph
 
 [Map the chain reaction: what callbacks, middleware, observers, and event handlers fire when this code runs? Trace at least two levels deep. Document: "Action X triggers Y, which calls Z, which persists W."]
+
+### External System Wiring
+
+**REQUIRED.** For each external system this feature integrates with, document:
+
+- **System name and console URL** (e.g., Clerk Dashboard, Stripe Dashboard, Slack App config, GitHub App settings).
+- **Configuration objects this feature requires** (webhook endpoints, OAuth apps, scopes, event subscriptions, API credentials, signing secrets).
+- **Where the configuration lives** (provider UI, IaC repo, manual env var).
+- **Host-side wiring this feature requires** (middleware allowlist additions, env var scope, redirect URL allowlists, DNS records).
+- **Verification step** that proves the external config is live (not just that the code compiles or that unit tests pass). The strongest form is "send a test event from the provider's dashboard and observe X in our logs."
+
+The receiver code can ship in days; the provider-side subscription and host-side allowlist are dashboard-and-env-var work that's invisible to PR review. Without this section, the next webhook integration, the next OAuth provider, the next external-API listener will ship with a one-sided wiring and fail silently on first user-facing smoke test.
+
+If the feature is purely internal (no third-party config, no env vars beyond defaults, no auth/middleware allowlist changes), state explicitly: **"No external wiring required."**
 
 ### Error & Failure Propagation
 
