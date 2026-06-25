@@ -26,6 +26,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `Create Issue` option from Question 2 of `Post-Generation Options` (issue creation is now upstream of the menu).
 - `You can also type freely — e.g., 'create issue'` hint from Question 1 (no longer reachable).
 
+### Fixed
+
+- **`/workflows:work` never closed a standalone bead.** Phase 4 closed `$PLAN_BEAD`, but for the standalone-bead flow (the common `bd ready` / explicit-bead-id case) Phase 1 never set `PLAN_BEAD` and there is usually no plan file for the `yq '.bead_id'` fallback — so the bead was never claimed *or* closed (`bd close ""` silently no-op'd), and Phase 2 ("Phase 1 set no `PLAN_BEAD`") contradicted Phase 4 ("the standalone bead claimed in Phase 1"). Phase 1 now establishes and claims `PLAN_BEAD` in both standalone and plan-with-children modes; Phase 4 suppresses the `yq` error when no plan file exists and guards against an empty id (fails loudly instead of closing nothing).
+
 ## [2.38.0] - 2026-05-16
 
 ### Added

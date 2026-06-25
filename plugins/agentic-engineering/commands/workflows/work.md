@@ -104,12 +104,21 @@ This command takes a work document (plan, specification, or todo file) and execu
 
    Dispatch on `integrations.issue_tracker_resolved`:
 
-   - **`beads`** — create one bead per actionable task in the plan and link to the parent plan bead:
+   - **`beads`** — first establish `PLAN_BEAD` (the bead representing this whole unit of work — it
+     ships with the PR and is closed in Phase 4) and claim it. This happens in **both** modes:
      ```bash
-     # PLAN_BEAD=$(yq '.bead_id' <plan-path>)  # if plan frontmatter has it
+     # Standalone bead (the common `bd ready` flow, or an explicit bead-id argument):
+     #   PLAN_BEAD=<that bead id>
+     # Plan-with-children (a plan file whose frontmatter carries the parent bead id):
+     #   PLAN_BEAD=$(yq '.bead_id' <plan-path>)
+     bd update "$PLAN_BEAD" --claim          # mark the work bead in_progress
+     ```
+     Then, **only in plan-with-children mode**, create one child bead per actionable task and link
+     each to the parent so `bd ready` surfaces them under `$PLAN_BEAD`:
+     ```bash
      for task in <tasks from plan>:
        TASK_ID=$(bd q --title="<task>" --description="..." --type=task --priority=<map>)
-       bd dep add "$TASK_ID" "$PLAN_BEAD"   # only if PLAN_BEAD is set
+       bd dep add "$TASK_ID" "$PLAN_BEAD"
      ```
      Do **not** use TodoWrite when tracker is `beads` — `bd ready` supersedes it.
 
@@ -132,7 +141,7 @@ This command takes a work document (plan, specification, or todo file) and execu
 
    First, decide which mode you're in:
 
-   - **Standalone bead mode** — Phase 1 set no `PLAN_BEAD` (the job is a single bead with no child tasks). **Skip this entire loop.** Implement directly, test, commit, then go to Phase 3 / Phase 4. The bead stays `in_progress` through implementation; Phase 4 closes it after PR creation.
+   - **Standalone bead mode** — the job is a single bead with no child tasks; `PLAN_BEAD` is that bead, claimed in Phase 1. **Skip this entire loop.** Implement directly, test, commit, then go to Phase 3 / Phase 4. The bead stays `in_progress` through implementation; Phase 4 closes `$PLAN_BEAD` after PR creation.
    - **Plan-with-children mode** — Phase 1 set `PLAN_BEAD` from plan frontmatter and created child task beads linked via `bd dep add`. Run the loop below, filtered to those children so `bd ready` cannot return the parent.
 
    Then pick an **execution style** for whichever mode you're in:
@@ -431,9 +440,10 @@ This command takes a work document (plan, specification, or todo file) and execu
 
    - **`beads`**:
      ```bash
-     # PLAN_BEAD is either the parent bead from plan frontmatter, or the standalone
-     # bead claimed in Phase 1.
-     PLAN_BEAD=${PLAN_BEAD:-$(yq '.bead_id' <plan-path>)}
+     # PLAN_BEAD was established and claimed in Phase 1: the parent plan bead, or the
+     # standalone work bead. Fall back to plan frontmatter only when a plan file exists.
+     PLAN_BEAD=${PLAN_BEAD:-$(yq '.bead_id' <plan-path> 2>/dev/null)}
+     : "${PLAN_BEAD:?no work bead to close — PLAN_BEAD must be set in Phase 1}"
      bd close "$PLAN_BEAD" --reason="PR #${PR_NUM}: ${PR_URL}"
      bd dolt push   # no-op if Dolt remote unconfigured
      ```
