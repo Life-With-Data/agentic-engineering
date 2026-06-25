@@ -5,6 +5,18 @@ All notable changes to the agentic-engineering plugin will be documented in this
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.38.0] - 2026-06-25
+
+### Added
+
+- **`/workflows:work` — Orchestrated Execution (tracker-driven) mode.** When work is backed by tracked issues/beads (one issue or a whole epic), the command now runs as an orchestrator that owns the tracker state machine (claim → verify → close → block → spawn follow-on) and delegates implementation to one focused subagent per issue, looping each to a terminal state (resolved or verified blocker) before returning to the user. Includes terminal-condition definitions, a wave-based dispatch procedure, a subagent brief template, parallelism/worktree rules, and discovered-work-as-follow-on handling. Works for a single issue as well as a set.
+
+### Changed
+
+- **`/workflows:work` is now tracker-agnostic.** Phase 1 detects and syncs the task tracker across **beads (`bd`)**, **Linear**, and **file-todos** (previously Linear + TodoWrite only), with a binding table mapping the shared lifecycle to each tracker's verbs. The work set is read from the tracker when present (issues/beads) instead of always being recreated via TodoWrite. Phase 2 now opens with an execution-model selector (Inline / Orchestrated / Swarm). `argument-hint` and `description` updated to reflect issue/bead inputs.
+
+---
+
 ## [2.37.2] - 2026-02-26
 
 ### Added

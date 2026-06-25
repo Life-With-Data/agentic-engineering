@@ -1,7 +1,7 @@
 ---
 name: workflows:work
-description: Execute work plans efficiently while maintaining quality and finishing features
-argument-hint: "[plan file, specification, or todo file path]"
+description: Execute work plans, todo files, or tracked issues/beads efficiently — driving each unit of work to completion (or a verified blocker) via an orchestrator that owns the tracker state machine and delegates to subagents
+argument-hint: "[plan file, spec, todo file, or issue/bead id(s) — e.g. cre-1ul]"
 ---
 
 # Work Plan Execution Command
@@ -76,23 +76,53 @@ This command takes a work document (plan, specification, or todo file) and execu
    - You want to keep the default branch clean while experimenting
    - You plan to switch between branches frequently
 
-3. **Sync with Linear**
+3. **Detect & sync the task tracker**
 
-   Pull latest state and push current plan status:
+   This command is **tracker-agnostic**. Detect which system holds the work and use it as the
+   source of truth throughout (don't mix two). The lifecycle is identical across all three —
+   only the verbs differ (see the binding table in [Orchestrated Execution](#orchestrated-execution-tracker-driven)).
+
+   | Tracker | Detect by | Source of truth |
+   |---------|-----------|-----------------|
+   | **beads** (`bd`) | `.beads/` dir present, or input is an issue id (e.g. `cre-1ul`) | the bead DB — run `bd prime`, then `bd ready` / `bd show` |
+   | **Linear** | `integrations.linear_api_key_present` from preflight | Linear issues |
+   | **file-todos** | a plan/todo file is passed and neither of the above | `./todos` + TodoWrite |
+
+   For Linear, pull latest state and push current plan status:
    ```bash
    agentic-plugin linear pull --todos-dir ./todos
    agentic-plugin linear push --file <plan-or-todo-path>
    ```
    (Silently skips if LINEAR_API_KEY is not set; the preflight script reports this as `integrations.linear_api_key_present`)
 
-4. **Create Todo List**
-   - Use TodoWrite to break plan into actionable tasks
-   - Include dependencies between tasks
-   - Prioritize based on what needs to be done first
-   - Include testing and quality check tasks
-   - Keep tasks specific and completable
+   For beads, prime context (fresh sessions have no memory of the planning session — the beads
+   are the contract):
+   ```bash
+   bd prime && bd ready
+   ```
+
+4. **Establish the work set**
+   - **From a tracker (beads/Linear):** the work set already exists — don't recreate it. Read
+     the target issues (`bd show <id>` for an id or epic and its children; a Linear view/issue
+     list) and reconstruct dependencies from the tracker. A single issue is a valid set of one.
+   - **From a plan/spec file:** use TodoWrite to break the plan into actionable tasks, with
+     dependencies, priority, and testing/quality tasks. Keep tasks specific and completable.
+   - **Then choose an execution model** (see start of Phase 2): work backed by tracked
+     issues/beads — even a single one — should run via **Orchestrated Execution**.
 
 ### Phase 2: Execute
+
+**Choose your execution model first:**
+
+| Model | Use when | How it runs |
+|-------|----------|-------------|
+| **Inline** (below) | A plan/spec file you're implementing yourself, simple/linear work | You implement tasks directly in this session, updating TodoWrite. |
+| **Orchestrated** ([section](#orchestrated-execution-tracker-driven)) | Work is backed by tracked issues/beads — **one or many** | You act as orchestrator: own the tracker state machine and drive a subagent per issue, looping each to terminal before returning to the user. |
+| **Swarm** ([section](#swarm-mode-optional)) | 5+ independent workstreams needing maximum parallelism | A team of long-lived teammates self-claims from a shared task queue. |
+
+Even a **single** tracked issue benefits from Orchestrated Execution: the orchestrator handles
+the loop (retry, verify, unblock) and only comes back to you when the issue is done or
+verifiably blocked. The Inline loop below is the default for plan/spec files.
 
 1. **Task Execution Loop**
 
@@ -361,6 +391,105 @@ This command takes a work document (plan, specification, or todo file) and execu
    - Link to PR
    - Note any follow-up work needed
    - Suggest next steps if applicable
+
+---
+
+## Orchestrated Execution (tracker-driven)
+
+Use this model when the work is backed by tracked issues/beads — **one issue or a whole epic**.
+You become the **orchestrator**: you own the tracker's state machine end to end (claim → verify →
+close → block → spawn follow-on) and delegate the actual implementation to **one focused subagent
+per issue**. You loop each issue to a terminal state and return to the user only when the whole
+set is terminal, or you hit a blocker you genuinely can't resolve.
+
+This is worth it even for a single issue: the orchestrator absorbs the iteration (retry on failed
+gates, verify acceptance, discover and file follow-on work) so the user gets back a *finished or
+verifiably-blocked* result, not a half-step.
+
+### Terminal conditions (an issue is "done" when ONE holds)
+
+1. **Resolved** — acceptance criteria met, quality gates pass, you've **closed** it, AND every
+   follow-on issue it spawned is also terminal.
+2. **Blocked / needs human** — genuinely stuck on a decision, access, or ambiguity you can't
+   resolve from the repo or the issue. **Mark it blocked**, flag it for the user, surface the
+   question — don't guess. (Terminal for this run; re-enters the loop once the user answers.)
+
+Stop only when every target issue — initial **and** spawned follow-ons — is in state 1 or 2.
+Never report "done" while a ready issue is unstarted or a follow-on is open.
+
+### Tracker bindings (same lifecycle, different verbs)
+
+| Action | beads (`bd`) | Linear (`agentic-plugin` / Linear MCP) | file-todos |
+|--------|--------------|----------------------------------------|------------|
+| List ready | `bd ready` | issues in "Todo", unblocked | TodoWrite list |
+| Read one | `bd show <id>` | get issue | the todo entry |
+| Claim | `bd update <id> --claim` | set "In Progress" + assignee | mark `in_progress` |
+| Close | `bd close <id> --reason="…" --suggest-next` | set "Done" + comment | mark `completed`, check off plan |
+| Block / needs human | `bd update <id> --status=blocked --notes="…"` + `bd label add <id> human` | set "Blocked" + comment, label needs-decision | note blocker in todo + tell user |
+| Add follow-on (gates parent) | `bd create … --deps discovered-from:<id>` then `bd dep add <parent> <new>` | create sub-issue / blocking relation | add todo + dependency note |
+
+Only the **orchestrator** runs these state changes — subagents never touch tracker state.
+
+### Procedure
+
+1. **Scope the target set.** From the input: an epic id → its children; explicit ids → those;
+   none → the tracker's ready set. Read each (`bd show` / get issue) including acceptance criteria
+   and dependencies.
+2. **Plan waves.** A wave = issues that are *ready now* (no open blockers). Within a wave, split
+   **parallel-safe** (file-disjoint — the design notes usually name the files) from
+   **must-serialize** (same files). Announce the plan briefly to the user before dispatching.
+3. **Dispatch.** Claim each issue, then spawn one subagent per issue with the brief below (Task
+   tool / `general-purpose`, or a specialist agent). Send parallel dispatches in one message. For
+   file-conflicting parallel work, give each agent `isolation: "worktree"` and reconcile on return.
+4. **Verify & branch** (orchestrator, per returned subagent):
+   - Review the diff vs acceptance criteria; integrate any worktree.
+   - Re-run quality gates at the top level (catches cross-issue breakage one agent can't see).
+   - **Met + clean** → close. **Met + surfaced required work** → file follow-on(s) gating the
+     parent, add to target set, then close this one. **Gates fail / unmet** → loop (step 5).
+     **Blocked** → escalate (step 5).
+5. **Loop or escalate.**
+   - *Loop:* re-dispatch the same issue with the specific failure appended ("tsc error X at
+     file:line", "criterion N unmet"). Max ~2 retries.
+   - *Escalate:* mark blocked + flag for human, stop touching it, collect all such items and ask
+     the user in ONE batch (AskUserQuestion). On reply: reopen and re-dispatch.
+6. **Next wave.** Re-check the ready set (closing unblocks dependents and follow-ons). Repeat
+   until the full set — initial and follow-ons — is terminal.
+7. **Wrap up.** Summarize closed issues (one-line outcomes), follow-ons created + state, blocked/
+   human items + their questions; run the full gate set once for a clean tree; then proceed to
+   Phase 3/4 (PR) for the integrated change.
+
+### Subagent brief template (copy, fill in)
+
+```
+You are implementing exactly one tracked issue. Do ONLY this issue.
+
+ISSUE: <id> — <title>
+<paste the full issue: description, design notes, acceptance criteria, dependencies>
+
+CONTEXT:
+- Repo + relevant existing files (the design names them); patterns to mirror
+- Conventions: match surrounding code, reuse existing components/helpers, do NOT add scope,
+  backend, or features beyond this issue. Keep the app runnable.
+
+DO:
+1. Implement the acceptance criteria — nothing more.
+2. Run this project's quality gates (tests + lint + type-check + build as applicable). Must be clean.
+3. Do NOT change tracker state (no claim/close/block) — the orchestrator owns that.
+
+REPORT BACK (your final message = structured result, not prose to a human):
+- Files created/modified (absolute paths)
+- How each acceptance criterion is satisfied
+- Exact gate results (tests? lint? type-check? build?)
+- Assumptions made + anything needing a human decision (state blockers explicitly)
+```
+
+### Rules baked in
+- Respect the dependency graph — never dispatch a blocked issue.
+- Parallelize only file-disjoint issues; otherwise serialize or use worktree isolation.
+- One issue = one subagent, tightly scoped; subagents never run tracker state changes.
+- Discovered work becomes a follow-on issue that gates its parent — never a silent extra.
+- Bound retries (~2), then mark blocked and escalate — don't loop forever.
+- Quality gates are mandatory before any issue is closed.
 
 ---
 
