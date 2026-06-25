@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`/workflows:work` — Orchestrated Execution style for the beads tracker.** A third execution style (alongside inline and Swarm) where the agent acts as orchestrator: it owns the bead state machine and delegates implementation to one focused subagent per bead, looping each bead to a terminal state (resolved or a verified blocker) before returning to the user. Works for a single bead or a whole set. Adds terminal-condition definitions, a wave-based dispatch procedure, a subagent brief template, parallelism/worktree rules, and discovered-work-as-follow-on handling — all aligned with the existing parent-vs-child close convention (child beads close in the loop; the parent/standalone bead closes in Phase 4 after the PR). Picked via an execution-style note in the Phase 2 beads block; contrasted with Swarm mode for when to use each.
+
 ### Changed
 
 - **`/workflows:plan`** — tracker-issue creation is now a mandatory gate, not a post-action option. The command runs a new "Step 7. Create Tracker Issue" inline between `## Write Plan File` and `## Post-Generation Options`, and a precondition assertion re-verifies the plan frontmatter before any next-step menu is opened. The `Post-Generation Options` menu surfaces the tracker ID in its preamble and omits `/workflows:work` when the explicit `issue_tracker: none` carve-out is active. Closes context-eww.
@@ -21,6 +25,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The standalone `## Issue Creation` section at the bottom of `commands/workflows/plan.md` (content moved into mandatory Step 7).
 - `Create Issue` option from Question 2 of `Post-Generation Options` (issue creation is now upstream of the menu).
 - `You can also type freely — e.g., 'create issue'` hint from Question 1 (no longer reachable).
+
+### Fixed
+
+- **`/workflows:work` never closed a standalone bead.** Phase 4 closed `$PLAN_BEAD`, but for the standalone-bead flow (the common `bd ready` / explicit-bead-id case) Phase 1 never set `PLAN_BEAD` and there is usually no plan file for the `yq '.bead_id'` fallback — so the bead was never claimed *or* closed (`bd close ""` silently no-op'd), and Phase 2 ("Phase 1 set no `PLAN_BEAD`") contradicted Phase 4 ("the standalone bead claimed in Phase 1"). Phase 1 now establishes and claims `PLAN_BEAD` in both standalone and plan-with-children modes; Phase 4 suppresses the `yq` error when no plan file exists and guards against an empty id (fails loudly instead of closing nothing).
 
 ## [2.38.0] - 2026-05-16
 
