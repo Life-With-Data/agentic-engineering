@@ -137,7 +137,8 @@ This command takes a work document (plan, specification, or todo file) and execu
 
    Then pick an **execution style** for whichever mode you're in:
 
-   - **Inline** (default, below) — you implement each bead directly in this session.
+   - **Inline** (default) — you implement each bead directly in this session (the loop below, or
+     "implement directly" for a standalone bead).
    - **Orchestrated** — you act as orchestrator and delegate each bead to a focused subagent,
      looping it to a terminal state (resolved or *verified blocker*) before moving on. Prefer this
      when the user invokes it, when beads are file-disjoint (parallelizable), or when you want the
@@ -497,7 +498,7 @@ report "done" while a ready bead is unstarted or a follow-on is open.
    **must-serialize** (same files). Announce the plan briefly before dispatching.
 3. **Dispatch.** `bd update <id> --claim`, then spawn one subagent per bead with the brief below
    (Task tool / `general-purpose`, or a specialist agent). Send parallel dispatches in one message.
-   For file-conflicting parallel work, give each agent `isolation: "worktree"` and reconcile on return.
+   For file-conflicting parallel work, isolate each agent in its own git worktree (`skill: git-worktree`) and reconcile on return.
 4. **Verify & branch** (orchestrator, per returned subagent):
    - Review the diff vs acceptance criteria; integrate any worktree.
    - Re-run the project's quality gates at the top level (catches cross-bead breakage one agent
@@ -544,7 +545,7 @@ REPORT BACK (your final message = structured result, not prose to a human):
 
 ### Rules baked in
 - Respect the dependency graph — never dispatch a blocked bead.
-- Parallelize only file-disjoint beads; otherwise serialize or use worktree isolation.
+- Parallelize only file-disjoint beads; otherwise serialize or isolate with the `git-worktree` skill.
 - One bead = one subagent, tightly scoped; subagents never run bead state changes.
 - Discovered work becomes a follow-on bead that gates its parent — never a silent extra.
 - Bound retries (~2), then mark blocked and escalate — don't loop forever.
