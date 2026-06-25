@@ -135,6 +135,17 @@ This command takes a work document (plan, specification, or todo file) and execu
    - **Standalone bead mode** — Phase 1 set no `PLAN_BEAD` (the job is a single bead with no child tasks). **Skip this entire loop.** Implement directly, test, commit, then go to Phase 3 / Phase 4. The bead stays `in_progress` through implementation; Phase 4 closes it after PR creation.
    - **Plan-with-children mode** — Phase 1 set `PLAN_BEAD` from plan frontmatter and created child task beads linked via `bd dep add`. Run the loop below, filtered to those children so `bd ready` cannot return the parent.
 
+   Then pick an **execution style** for whichever mode you're in:
+
+   - **Inline** (default, below) — you implement each bead directly in this session.
+   - **Orchestrated** — you act as orchestrator and delegate each bead to a focused subagent,
+     looping it to a terminal state (resolved or *verified blocker*) before moving on. Prefer this
+     when the user invokes it, when beads are file-disjoint (parallelizable), or when you want the
+     iteration (retry / verify / unblock / discovered-follow-on) handled before returning. It works
+     for a single bead too. See [Orchestrated Execution](#orchestrated-execution-delegate-beads-to-subagents).
+     The bead-close rules are identical to inline: child beads close in the loop; the parent/
+     standalone bead is closed in Phase 4 after the PR.
+
    ```
    # Plan-with-children mode only. PLAN_BEAD must be set.
    while (bd ready --json | jq -e --arg p "$PLAN_BEAD" '[.[] | select(.parent==$p)] | length > 0'):
@@ -444,6 +455,100 @@ This command takes a work document (plan, specification, or todo file) and execu
    - Note that the bead is closed and will reopen only if the PR is rejected
    - Note any follow-up work needed
    - Suggest next steps if applicable
+
+---
+
+## Orchestrated Execution (delegate beads to subagents)
+
+An execution style for the **beads** tracker where, instead of implementing each bead yourself
+inline, you act as the **orchestrator**: you own the bead state machine and delegate the actual
+implementation to **one focused subagent per bead**, looping each bead to a terminal state before
+returning to the user. It works for a **single bead or a whole set**.
+
+Worth it even for one bead: the orchestrator absorbs the iteration (retry on failed gates, verify
+acceptance, discover and file follow-on work) so the user gets back a *finished or verifiably-
+blocked* result, not a half-step.
+
+**Orchestrated vs Swarm.** Orchestrated = you spawn one short-lived, tightly-scoped subagent per
+bead and verify each result yourself — tight control, ideal for one bead or a modest set. Swarm
+(below) = a team of long-lived teammates self-claim from a shared queue — maximum parallelism for
+5+ independent workstreams. Use Orchestrated by default for tracked beads; escalate to Swarm when
+the set is large and highly parallel.
+
+### Terminal conditions (a bead is "done" when ONE holds)
+
+1. **Resolved** — acceptance criteria met, quality gates pass, AND every follow-on bead it spawned
+   is also terminal. Close child beads here; the parent/standalone bead is closed in **Phase 4**
+   after the PR (per the parent-vs-child rule above) — never inside the loop.
+2. **Blocked / needs human** — genuinely stuck on a decision, access, or ambiguity you can't
+   resolve from the repo or the bead. `bd update <id> --status=blocked --notes="…"` and
+   `bd label add <id> human`, surface the question — don't guess. (Terminal for this run; re-enters
+   the loop once the user answers.)
+
+Stop only when every target bead — initial **and** spawned follow-ons — is in state 1 or 2. Never
+report "done" while a ready bead is unstarted or a follow-on is open.
+
+### Procedure
+
+1. **Scope the set.** From the input: an epic/parent id → its children (`bd show <id>`); explicit
+   ids → those; none → `bd ready`. Read each bead's description, design, acceptance, and deps.
+2. **Plan waves.** A wave = beads ready now (no open blockers, via `bd ready`). Within a wave,
+   split **parallel-safe** (file-disjoint — the design notes usually name the files) from
+   **must-serialize** (same files). Announce the plan briefly before dispatching.
+3. **Dispatch.** `bd update <id> --claim`, then spawn one subagent per bead with the brief below
+   (Task tool / `general-purpose`, or a specialist agent). Send parallel dispatches in one message.
+   For file-conflicting parallel work, give each agent `isolation: "worktree"` and reconcile on return.
+4. **Verify & branch** (orchestrator, per returned subagent):
+   - Review the diff vs acceptance criteria; integrate any worktree.
+   - Re-run the project's quality gates at the top level (catches cross-bead breakage one agent
+     can't see).
+   - **Met + clean, is a child bead** → `bd close <id> --reason="…" --suggest-next`.
+   - **Met + surfaced required work** → file follow-on(s): `bd create … --deps discovered-from:<id>`
+     then `bd dep add <parent> <new>` so the parent can't close early; add to the target set;
+     then close this child.
+   - **Met, is the parent/standalone bead** → leave open; Phase 4 closes it after the PR.
+   - **Gates fail / criteria unmet** → loop (step 5). **Blocked** → escalate (step 5).
+5. **Loop or escalate.**
+   - *Loop:* re-dispatch the same bead with the specific failure appended ("tsc error X at
+     file:line", "criterion N unmet"). Max ~2 retries.
+   - *Escalate:* mark blocked + `human` label, stop touching it, collect all such items, ask the
+     user in ONE batch (AskUserQuestion). On reply: reopen (`--status=open`) and re-dispatch.
+6. **Next wave.** Re-check `bd ready` (closing unblocks dependents and follow-ons). Repeat until
+   the full set — initial and follow-ons — is terminal. Then proceed to Phase 3/4 for the PR
+   (which closes the parent/standalone bead).
+
+### Subagent brief template (copy, fill in)
+
+```
+You are implementing exactly one bead. Do ONLY this bead.
+
+BEAD: <id> — <title>
+<paste full `bd show <id>`: description, design notes, acceptance criteria, dependencies>
+
+CONTEXT:
+- Repo + relevant existing files (the design names them); patterns to mirror
+- Conventions: match surrounding code, reuse existing components/helpers, do NOT add scope,
+  backend, or features beyond this bead. Keep the app runnable.
+
+DO:
+1. Implement the acceptance criteria — nothing more.
+2. Run this project's quality gates (tests + lint + type-check + build as applicable). Must be clean.
+3. Do NOT change bead state (no claim/close/block) — the orchestrator owns that.
+
+REPORT BACK (your final message = structured result, not prose to a human):
+- Files created/modified (absolute paths)
+- How each acceptance criterion is satisfied
+- Exact gate results (tests? lint? type-check? build?)
+- Assumptions made + anything needing a human decision (state blockers explicitly)
+```
+
+### Rules baked in
+- Respect the dependency graph — never dispatch a blocked bead.
+- Parallelize only file-disjoint beads; otherwise serialize or use worktree isolation.
+- One bead = one subagent, tightly scoped; subagents never run bead state changes.
+- Discovered work becomes a follow-on bead that gates its parent — never a silent extra.
+- Bound retries (~2), then mark blocked and escalate — don't loop forever.
+- Quality gates are mandatory before any bead is closed; the parent/standalone bead closes in Phase 4.
 
 ---
 

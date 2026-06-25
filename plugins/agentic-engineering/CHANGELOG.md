@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`/workflows:work` — Orchestrated Execution style for the beads tracker.** A third execution style (alongside inline and Swarm) where the agent acts as orchestrator: it owns the bead state machine and delegates implementation to one focused subagent per bead, looping each bead to a terminal state (resolved or a verified blocker) before returning to the user. Works for a single bead or a whole set. Adds terminal-condition definitions, a wave-based dispatch procedure, a subagent brief template, parallelism/worktree rules, and discovered-work-as-follow-on handling — all aligned with the existing parent-vs-child close convention (child beads close in the loop; the parent/standalone bead closes in Phase 4 after the PR). Picked via an execution-style note in the Phase 2 beads block; contrasted with Swarm mode for when to use each.
+
 ### Changed
 
 - **`/workflows:plan`** — tracker-issue creation is now a mandatory gate, not a post-action option. The command runs a new "Step 7. Create Tracker Issue" inline between `## Write Plan File` and `## Post-Generation Options`, and a precondition assertion re-verifies the plan frontmatter before any next-step menu is opened. The `Post-Generation Options` menu surfaces the tracker ID in its preamble and omits `/workflows:work` when the explicit `issue_tracker: none` carve-out is active. Closes context-eww.
