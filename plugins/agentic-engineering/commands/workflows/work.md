@@ -1,7 +1,7 @@
 ---
 name: workflows:work
 description: Execute work plans efficiently while maintaining quality and finishing features
-argument-hint: "[plan file, specification, or todo file path]"
+argument-hint: "[plan file, spec, todo file, or issue/bead id(s) — e.g. cre-1ul]"
 ---
 
 # Work Plan Execution Command
@@ -131,6 +131,16 @@ This command takes a work document (plan, specification, or todo file) and execu
 
 ### Phase 2: Execute
 
+**Choose your execution model first** (applies to any tracker — beads, Linear, or file-todos):
+
+| Model | Use when | How it runs |
+|-------|----------|-------------|
+| **Inline** (default, below) | A plan/spec file you implement yourself; simple, linear work | You implement tasks directly in this session, updating the tracker as you go. |
+| **Orchestrated** ([section](#orchestrated-execution-tracker-driven)) | Work backed by tracked issues/beads — **one or many** | You own the tracker state machine and drive one subagent per issue, looping each to a terminal state before returning. |
+| **Swarm** ([section](#swarm-mode-optional)) | 5+ independent workstreams needing maximum parallelism | Long-lived teammates self-claim from a shared queue. |
+
+Even a **single** tracked issue benefits from Orchestrated Execution — the orchestrator absorbs the retry/verify/unblock loop and returns a finished or verifiably-blocked result, not a half-step. The Inline loop below is the default for plan/spec files.
+
 1. **Task Execution Loop**
 
    The claim/complete steps depend on `integrations.issue_tracker_resolved`.
@@ -152,7 +162,7 @@ This command takes a work document (plan, specification, or todo file) and execu
      looping it to a terminal state (resolved or *verified blocker*) before moving on. Prefer this
      when the user invokes it, when beads are file-disjoint (parallelizable), or when you want the
      iteration (retry / verify / unblock / discovered-follow-on) handled before returning. It works
-     for a single bead too. See [Orchestrated Execution](#orchestrated-execution-delegate-beads-to-subagents).
+     for a single bead too. See [Orchestrated Execution](#orchestrated-execution-tracker-driven).
      The bead-close rules are identical to inline: child beads close in the loop; the parent/
      standalone bead is closed in Phase 4 after the PR.
 
@@ -469,22 +479,44 @@ This command takes a work document (plan, specification, or todo file) and execu
 
 ---
 
-## Orchestrated Execution (delegate beads to subagents)
+## Orchestrated Execution (tracker-driven)
 
-An execution style for the **beads** tracker where, instead of implementing each bead yourself
-inline, you act as the **orchestrator**: you own the bead state machine and delegate the actual
-implementation to **one focused subagent per bead**, looping each bead to a terminal state before
-returning to the user. It works for a **single bead or a whole set**.
+An execution style — available for **any tracker** (beads, Linear, or file-todos) — where instead
+of implementing each issue yourself inline, you act as the **orchestrator**: you own the tracker's
+state machine and delegate the actual implementation to **one focused subagent per issue**, looping
+each issue to a terminal state before returning to the user. It works for a **single issue or a
+whole set**.
 
-Worth it even for one bead: the orchestrator absorbs the iteration (retry on failed gates, verify
+The lifecycle is identical across trackers; only the verbs differ — see **Tracker bindings** below.
+The procedure in this section is written with beads verbs (the most expressive case, with its
+parent-vs-child and Phase-4 close rules); for Linear or file-todos, substitute the equivalent action
+from the bindings table.
+
+Worth it even for one issue: the orchestrator absorbs the iteration (retry on failed gates, verify
 acceptance, discover and file follow-on work) so the user gets back a *finished or verifiably-
 blocked* result, not a half-step.
 
 **Orchestrated vs Swarm.** Orchestrated = you spawn one short-lived, tightly-scoped subagent per
-bead and verify each result yourself — tight control, ideal for one bead or a modest set. Swarm
+issue and verify each result yourself — tight control, ideal for one issue or a modest set. Swarm
 (below) = a team of long-lived teammates self-claim from a shared queue — maximum parallelism for
-5+ independent workstreams. Use Orchestrated by default for tracked beads; escalate to Swarm when
+5+ independent workstreams. Use Orchestrated by default for tracked issues; escalate to Swarm when
 the set is large and highly parallel.
+
+### Tracker bindings (same lifecycle, different verbs)
+
+| Action | beads (`bd`) | Linear | file-todos |
+|--------|--------------|--------|------------|
+| List ready | `bd ready` | issues in "Todo", unblocked | the TodoWrite list |
+| Read one | `bd show <id>` | get issue | the todo entry |
+| Claim | `bd update <id> --claim` | set "In Progress" + assignee | mark `in_progress` |
+| Close | `bd close <id> --reason="…" --suggest-next` | set "Done" + comment | mark `completed`, check off the plan |
+| Block / needs human | `bd update <id> --status=blocked --notes="…"` + `bd label add <id> human` | set "Blocked" + comment, label needs-decision | note the blocker + tell the user |
+| Add follow-on (gates parent) | `bd create … --deps discovered-from:<id>` then `bd dep add <parent> <new>` | create sub-issue / blocking relation | add a todo + dependency note |
+
+Only the **orchestrator** runs these state changes — subagents never touch tracker state. The
+beads parent-vs-child convention (child issues close in the loop; the parent/standalone bead closes
+in **Phase 4** after the PR) is beads-specific: Linear and file-todos have no separate "ship the PR"
+close event, so close each issue as soon as its acceptance criteria are met and gates pass.
 
 ### Terminal conditions (a bead is "done" when ONE holds)
 
@@ -531,10 +563,10 @@ report "done" while a ready bead is unstarted or a follow-on is open.
 ### Subagent brief template (copy, fill in)
 
 ```
-You are implementing exactly one bead. Do ONLY this bead.
+You are implementing exactly one tracked issue. Do ONLY this issue.
 
-BEAD: <id> — <title>
-<paste full `bd show <id>`: description, design notes, acceptance criteria, dependencies>
+ISSUE: <id> — <title>
+<paste the full issue (bead / Linear issue / todo): description, design notes, acceptance criteria, dependencies>
 
 CONTEXT:
 - Repo + relevant existing files (the design names them); patterns to mirror
@@ -544,7 +576,7 @@ CONTEXT:
 DO:
 1. Implement the acceptance criteria — nothing more.
 2. Run this project's quality gates (tests + lint + type-check + build as applicable). Must be clean.
-3. Do NOT change bead state (no claim/close/block) — the orchestrator owns that.
+3. Do NOT change tracker state (no claim/close/block) — the orchestrator owns that.
 
 REPORT BACK (your final message = structured result, not prose to a human):
 - Files created/modified (absolute paths)
