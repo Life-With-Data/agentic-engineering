@@ -17,9 +17,17 @@ TRACKER_FIELDS: Final = ("bead_id", "linear_issue", "github_issue")
 PLAN_PATH_RE: Final = re.compile(r"(?:^|/)docs/plans/[^/]+\.md$")
 EDIT_TOOLS: Final = frozenset({"Write", "Edit", "MultiEdit", "NotebookEdit"})
 FRONTMATTER_FENCE_RE: Final = re.compile(r"^---[ \t]*$", re.MULTILINE)
-# Real tracker IDs look like "bd-42", "ENG-1234", "123", or "org/repo#42".
+# Real tracker IDs look like "bd-42", "ENG-1234", "cre-zpz", "cre-1ul.6", "123",
+# or "org/repo#42". Two prefixed forms:
+#   - <prefix>-<digits>           e.g. bd-42, ENG-1234 (any-case prefix)
+#   - <lower>-<lower base36 + .>  e.g. cre-zpz, cre-1ul.6 (beads base-36 IDs)
+# The lowercase requirement on the second form keeps uppercase placeholders like
+# "bd-NNN" rejected (they have no digit suffix and aren't lowercase base-36).
 REAL_TRACKER_VALUE_RE: Final = re.compile(
-    r"^([A-Za-z][A-Za-z0-9_]*-\d+|\d+|[\w.-]+/[\w.-]+#\d+)$"
+    r"^([A-Za-z][A-Za-z0-9_]*-\d+"
+    r"|[a-z][a-z0-9_]*-[a-z0-9]+(?:\.[a-z0-9]+)*"
+    r"|\d+"
+    r"|[\w.-]+/[\w.-]+#\d+)$"
 )
 # Inline comments only count when '#' is preceded by whitespace — otherwise
 # legitimate values like ``github_issue: org/repo#42`` get truncated.
