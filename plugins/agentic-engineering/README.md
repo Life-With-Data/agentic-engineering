@@ -7,9 +7,11 @@ AI-powered development tools that get smarter with every use. Make each unit of 
 | Component | Count |
 |-----------|-------|
 | Agents | 30 |
-| Commands | 26 |
+| Commands | 27 |
 | Skills | 21 |
 | MCP Servers | 1 |
+
+> 📊 **[FLOWS.md](FLOWS.md)** — mermaid diagrams of every workflow (brainstorm → plan → work → review → compound) and how `/workflows:orchestrate` drives them.
 
 ## Agents
 
@@ -83,6 +85,7 @@ Core workflow commands use `workflows:` prefix to avoid collisions with built-in
 | `/workflows:review` | Run comprehensive code reviews |
 | `/workflows:work` | Execute work items systematically (uses deterministic repo preflight script) |
 | `/workflows:compound` | Document solved problems to compound team knowledge |
+| `/workflows:orchestrate` | Drive the full pipeline (brainstorm → plan → work → review → compound), pausing only at meaningful decision gates |
 
 #### Issue tracker
 
