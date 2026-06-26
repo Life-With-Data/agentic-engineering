@@ -98,17 +98,14 @@ When adding new functionality, bump the version in:
 
 #### 5. Rebuild documentation site
 
-Run the release-docs command to update all documentation pages:
+The reference pages and landing-page stats are generated deterministically from the components:
 
 ```bash
-claude /release-docs
+bun run docs:build      # regenerate docs/pages/*.html + docs/index.html stats
+bun run docs:check      # verify in sync (also enforced in CI via `bun test`)
 ```
 
-This will:
-- Update stats on the landing page
-- Regenerate reference pages (agents, commands, skills, MCP servers)
-- Update the changelog page
-- Validate all counts match actual files
+This regenerates the agent/command/skill/MCP card sections and each page's "On This Page" sidebar from the filesystem truth. Hand-written page chrome (intros, manual-config) is preserved. The `/release-docs` command is a thin wrapper around `bun run docs:build`.
 
 #### 6. Validate JSON files
 
@@ -219,16 +216,16 @@ docs/
 **IMPORTANT:** After ANY change to agents, commands, skills, or MCP servers, run:
 
 ```bash
-claude /release-docs
+bun run docs:build
 ```
 
-This command:
-1. Counts all current components
-2. Reads all agent/command/skill/MCP files
-3. Regenerates all reference pages
-4. Updates stats on the landing page
-5. Updates the changelog from CHANGELOG.md
-6. Validates counts match across all files
+This deterministic generator (`scripts/generate-docs.ts`):
+1. Reads all agent/command/skill/MCP components from the filesystem
+2. Regenerates the card sections of each reference page (between `<!-- GENERATED -->` markers)
+3. Regenerates each page's "On This Page" sidebar
+4. Updates the landing-page stat numbers
+
+`bun run docs:check` (run in CI via `bun test`) fails if the committed pages are out of sync, so drift is impossible. Hand-written chrome (intros, manual-config, changelog.html) is preserved — edit it directly.
 
 ### Manual Updates
 
