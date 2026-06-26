@@ -14,6 +14,8 @@
     "convert": "bun run src/index.ts convert",
     "list": "bun run src/index.ts list",
     "cli:install": "bun run src/index.ts install",
+    "docs:build": "bun run scripts/generate-docs.ts",
+    "docs:check": "bun run scripts/generate-docs.ts --check",
     "test": "bun test"
   },
   "dependencies": {

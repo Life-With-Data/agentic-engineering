@@ -9,10 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Deterministic docs-site generator (`scripts/generate-docs.ts`, `bun run docs:build` / `docs:check`), gated in CI.** Replaces the manual `/release-docs` skill with a script that regenerates the reference pages (`docs/pages/agents|commands|skills|mcp-servers.html`) and the landing-page stat numbers directly from the plugin's components — card sections (between `<!-- GENERATED -->` markers) and each page's "On This Page" sidebar — preserving all hand-written page chrome. A new `tests/docs-generated.test.ts` (run by `bun test`) fails if the committed pages drift from the components, so the docs site can no longer fall out of sync. Regenerated all four reference pages, which had drifted badly (7 agents, 14 commands, 8 skills missing; stale counts; a removed Playwright MCP server still listed). `/release-docs` is now a thin wrapper around `bun run docs:build`.
 - **Plugin consistency test (`tests/plugin-consistency.test.ts`), enforced in CI via `bun test`.** Asserts the filesystem truth (counts of agents/commands/skills, MCP servers) against every place those numbers and lists are declared — `plugin.json`, `marketplace.json`, both READMEs, and the `docs/index.html` landing-page stats — plus version parity between `plugin.json` and `marketplace.json`, README completeness (every command by frontmatter `name`, every agent, every skill must be documented), and frontmatter hygiene (every command/agent declares `name` + `description`; every skill's `name` matches its directory). This closes the "added a component but forgot to update X" gap that previously had to be caught by hand. Failure messages name the exact file/component out of sync.
 
 ### Fixed
 
+- **`deploy-docs.yml` published a non-existent path** (`plugins/agentic-engineering/docs/`), so the GitHub Pages deploy never fired for the real site at root `docs/`. Corrected the trigger filter and upload path to `docs/`.
+- **`docs/pages/mcp-servers.html`** still documented a Playwright MCP server that the plugin no longer bundles (config examples, requirements row, intro copy). Removed.
 - **Plugin README command table was missing 3 commands** (`/deploy-docs`, `/agent-native-audit`) and listed a phantom `/xcode-test` instead of the real `/test-xcode` — the table claimed 27 commands but listed 26 (one wrong). Now complete and correct.
 - **`resolve-pr-parallel` skill** declared `name: resolve_pr_parallel` (underscores), violating the rule that a skill's `name` must match its directory. Corrected to `resolve-pr-parallel`.
 
