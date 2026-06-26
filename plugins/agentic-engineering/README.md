@@ -118,8 +118,10 @@ For `beads`, `bd` replaces TodoWrite in `/workflows:work` and `todos/*.md` in `/
 | `/resolve_todo_parallel` | Resolve todos in parallel |
 | `/triage` | Triage and prioritize issues |
 | `/test-browser` | Run browser tests on PR-affected pages |
-| `/xcode-test` | Build and test iOS apps on simulator |
+| `/test-xcode` | Build and test iOS apps on simulator |
 | `/feature-video` | Record video walkthroughs and add to PR description |
+| `/agent-native-audit` | Run agent-native architecture review with scored principles |
+| `/deploy-docs` | Validate and prepare documentation for GitHub Pages deployment |
 | `/linear:sync` | Bidirectional sync between file todos and Linear |
 | `/linear:status` | Show sync status between file todos and Linear |
 | `/linear:import` | Import a Linear issue as a local todo file |
