@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **`/workflows:work` — Orchestrated Execution is now tracker-driven (beads / Linear / file-todos), not beads-only.** The section is generalized from "delegate beads to subagents" to a tracker-agnostic model with a **Tracker bindings** table mapping the same lifecycle (list-ready → claim → close → block → add-follow-on) onto each tracker's verbs; the beads parent-vs-child and Phase-4 close rules are preserved as the beads-specific instantiation. Phase 2 gains an **execution-model selection table** (Inline / Orchestrated / Swarm) that applies to any tracker, the subagent brief is generalized to "one tracked issue," and `argument-hint` now signals that an issue/bead id can be passed directly. Ports the still-relevant idea from the stale `feat/work-orchestrated-bead-execution` branch onto current `main` (the branch's tracker-*detection* idea was already superseded by the preflight script).
+
 ### Added
 
 - **`FLOWS.md` — visual reference for every workflow.** A plugin-root document with mermaid diagrams for each flow (`orchestrate`, `brainstorm`, `plan`, `deepen-plan`, `work`, `review`, `compound`, and the autonomous `lfg`/`slfg`), a shared shape legend (human checkpoints vs automatic steps), and a "big picture" composition diagram. Linked from `README.md`.
