@@ -56,6 +56,8 @@ When working on this repository, follow the compounding engineering process:
 
 ### Updating the Compounding Engineering Plugin
 
+> **Automated guardrail:** `tests/plugin-consistency.test.ts` (run by `bun test` in CI) enforces this checklist — component counts across `plugin.json` / `marketplace.json` / both READMEs / `docs/index.html`, version parity, README completeness, and frontmatter hygiene. Run `bun test` before committing; a failure names the exact file/component that is out of sync. The manual steps below remain the human-readable guide, but the test is the source of enforcement.
+
 When agents, commands, or skills are added/removed, follow this checklist:
 
 #### 1. Count all components accurately

@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Plugin consistency test (`tests/plugin-consistency.test.ts`), enforced in CI via `bun test`.** Asserts the filesystem truth (counts of agents/commands/skills, MCP servers) against every place those numbers and lists are declared — `plugin.json`, `marketplace.json`, both READMEs, and the `docs/index.html` landing-page stats — plus version parity between `plugin.json` and `marketplace.json`, README completeness (every command by frontmatter `name`, every agent, every skill must be documented), and frontmatter hygiene (every command/agent declares `name` + `description`; every skill's `name` matches its directory). This closes the "added a component but forgot to update X" gap that previously had to be caught by hand. Failure messages name the exact file/component out of sync.
+
+### Fixed
+
+- **Plugin README command table was missing 3 commands** (`/deploy-docs`, `/agent-native-audit`) and listed a phantom `/xcode-test` instead of the real `/test-xcode` — the table claimed 27 commands but listed 26 (one wrong). Now complete and correct.
+- **`resolve-pr-parallel` skill** declared `name: resolve_pr_parallel` (underscores), violating the rule that a skill's `name` must match its directory. Corrected to `resolve-pr-parallel`.
+
 ### Changed
 
 - **`/workflows:work` — Orchestrated Execution is now tracker-driven (beads / Linear / file-todos), not beads-only.** The section is generalized from "delegate beads to subagents" to a tracker-agnostic model with a **Tracker bindings** table mapping the same lifecycle (list-ready → claim → close → block → add-follow-on) onto each tracker's verbs; the beads parent-vs-child and Phase-4 close rules are preserved as the beads-specific instantiation. Phase 2 gains an **execution-model selection table** (Inline / Orchestrated / Swarm) that applies to any tracker, the subagent brief is generalized to "one tracked issue," and `argument-hint` now signals that an issue/bead id can be passed directly. Ports the still-relevant idea from the stale `feat/work-orchestrated-bead-execution` branch onto current `main` (the branch's tracker-*detection* idea was already superseded by the preflight script).
