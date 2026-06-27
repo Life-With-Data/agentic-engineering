@@ -123,6 +123,28 @@ class PlanTrackerGuardTest(unittest.TestCase):
         self.assertEqual(result.returncode, 0)
         self.assertEqual(json.loads(result.stdout)["decision"], "block")
 
+    def test_passes_with_uppercase_base36_bead_id(self) -> None:
+        # Beads can be configured with an uppercase prefix (e.g. "AL-"), giving
+        # IDs like "AL-09v": uppercase prefix, lowercase base-36 suffix.
+        plan = self._make_plan("upper.md", "title: up\nbead_id: AL-09v")
+        transcript = _write_transcript(
+            self.cwd, [{"name": "Write", "input": {"file_path": str(plan)}}]
+        )
+        result = _run({"transcript_path": str(transcript)}, self.cwd)
+        self.assertEqual(result.returncode, 0)
+        self.assertEqual(result.stdout, "")
+
+    def test_blocks_uppercase_prefixed_placeholder(self) -> None:
+        # Allowing an uppercase prefix must NOT admit uppercase-suffix
+        # placeholders like "AL-NNN" — the suffix must stay lowercase base-36.
+        plan = self._make_plan("upper_ph.md", "title: tpl\nbead_id: AL-NNN")
+        transcript = _write_transcript(
+            self.cwd, [{"name": "Write", "input": {"file_path": str(plan)}}]
+        )
+        result = _run({"transcript_path": str(transcript)}, self.cwd)
+        self.assertEqual(result.returncode, 0)
+        self.assertEqual(json.loads(result.stdout)["decision"], "block")
+
     def test_passes_with_github_issue_with_hash_value(self) -> None:
         plan = self._make_plan(
             "gh.md", "title: gh\ngithub_issue: aagnone3/context#8"
