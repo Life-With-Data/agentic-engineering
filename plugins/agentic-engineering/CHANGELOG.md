@@ -5,6 +5,16 @@ All notable changes to the agentic-engineering plugin will be documented in this
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.41.0] - 2026-06-27
+
+### Added
+
+- **`reflect-for-skill-updates` skill** — Closes the loop on the compounding engineering cycle at the skill level. Where `compound-docs` captures solved problems as searchable solution docs, this skill guides updating the operational tools themselves (skills, workflows, hooks) when a debugging session or gotcha reveals a gap. Includes a structured 4-step reflection process, a categorization table (incomplete skill / missing troubleshooting / workflow gap / missing automation), a template for structured post-mortems, and a contrast table distinguishing it from `compound-docs`. Ported and generalized from the agent-leverage repository.
+
+- **`block-no-verify.py` hook (PreToolUse)** — Blocks `git commit --no-verify` to prevent bypassing pre-commit quality gates. Pre-commit hooks are the first line of defense before CI; bypassing them has historically led to CI failures that were expensive to debug. The hook ignores `--no-verify` when it appears inside quoted strings (e.g., commit messages that mention the flag). Ported from agent-leverage.
+
+- **`prevent-main-commit.py` hook (PreToolUse)** — Blocks direct `git commit` while on `main`/`master`, and explicit `git push ... main` regardless of current branch. The entire agentic-engineering workflow is PR-based (brainstorm → plan → work → review → PR); this hook enforces that discipline at the tool level. Handles refspec forms like `git push origin HEAD:main`. Ported from agent-leverage.
+
 ## [Unreleased]
 
 ### Added
