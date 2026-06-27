@@ -136,8 +136,8 @@ describe("ce-brainstorm review contract", () => {
     expect(content).toContain("`references/brainstorm-sections.md`")
     expect(content).toContain("`references/handoff.md`")
 
-    // Phase 4 menu exposes agent review as a first-class option and routes to ce-doc-review
-    expect(handoff).toContain("Agent review of requirements doc with `ce-doc-review`")
+    // Phase 4 menu exposes a requirements-critique option as a first-class option and routes to ce-doc-review
+    expect(handoff).toContain("**Pressure-test the requirements**")
     expect(handoff).toContain("Load the `ce-doc-review` skill")
 
     // Subsequent-round residual findings are surfaced as a prose nudge, not a separate menu option
@@ -191,18 +191,21 @@ describe("ce-plan review contract", () => {
     expect(content).not.toContain("skip document-review and return control")
 
     // The interactive walkthrough is opt-in via the post-generation menu, not automatic
-    expect(content).toContain("Run deeper doc review")
+    expect(content).toContain("Decide on the review's open items")
   })
 
   test("handoff options expose deeper-review opt-in alongside ce-work", async () => {
     const content = await readRepoFile("skills/ce-plan/references/plan-handoff.md")
 
-    // ce-work remains the recommended next-stage action (planning is done; review already ran)
-    expect(content).toContain("**Start `/ce-work`** (recommended) - Begin implementing this plan in the current session")
+    // Both executors are offered; /goal is the recommended default when present,
+    // ce-work otherwise (the (recommended) marker is dynamic, not hardcoded).
+    expect(content).toContain("**Start `/ce-work`** - Best for shorter work")
+    expect(content).toContain("**Run it as a `/goal`**")
+    expect(content).toMatch(/`\/goal` is the recommended default when its host supports it/i)
 
     // Deeper review is a first-class menu fixture so users can engage with surfaced findings
     // without relying on free-form prompting; routed through ce-doc-review without headless mode.
-    expect(content).toContain("**Run deeper doc review**")
+    expect(content).toContain("**Decide on the review's open items**")
     expect(content).toContain("`ce-doc-review`")
     expect(content).toContain("without** `mode:headless`")
 
@@ -210,7 +213,7 @@ describe("ce-plan review contract", () => {
     // collapses back to a 4-option AskUserQuestion-friendly shape on Claude Code. FYI-only
     // state also hides the option since ce-doc-review's walkthrough is gated to actionable
     // findings (anchor 75/100, gated_auto/manual) and FYIs (anchor 50) bypass it.
-    expect(content).toContain("Hide `Run deeper doc review` when no actionable findings remain")
+    expect(content).toContain("Hide `Decide on the review's open items` (option 3) when no actionable findings remain")
     expect(content).toContain("proposed_fixes_count + decisions_count > 0")
 
     // Summary line above the menu surfaces autofix counts and remaining-bucket counts
@@ -371,9 +374,13 @@ describe("ce-doc-review contract", () => {
     expect(synthesis).toContain("fixes_applied_count == 0")
     expect(synthesis).toContain("zero-actionable case")
 
-    // Next-stage substitution rules documented
-    expect(synthesis).toContain("Requirements document")
-    expect(synthesis).toContain("Plan document")
+    // Next-stage substitution rules documented, readiness-aware: a
+    // requirements-only artifact routes to planning, implementation-ready to
+    // execution (unified and legacy classifications both covered).
+    expect(synthesis).toContain("requirements-only unified plan")
+    expect(synthesis).toContain("implementation-ready unified plan")
+    expect(synthesis).toContain("legacy standalone requirements doc")
+    expect(synthesis).toContain("legacy implementation plan")
     expect(synthesis).toContain("ce-plan")
     expect(synthesis).toContain("ce-work")
   })
