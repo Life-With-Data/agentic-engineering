@@ -23,3 +23,6 @@ jobs:
 
       - name: Run tests
         run: bun test
+
+      - name: Run Python hook tests
+        run: python3 -m unittest discover -s plugins/agentic-engineering/tests -p '*_test.py'
