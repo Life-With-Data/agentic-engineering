@@ -87,3 +87,9 @@ Should return an empty array `[]`. If threads remain, repeat from step 1.
 - Changes committed and pushed
 - Threads resolved via GraphQL (marked as resolved on GitHub)
 - Empty result from get-pr-comments on verify
+
+## Related
+
+This skill is the **comment-resolution loop**. To take a PR all the way to merged — waiting on CI,
+resolving threads (via this skill), confirming approval, then merging and cleaning up — use the
+[`land-pr`](../land-pr/SKILL.md) skill, which calls this one as its thread-resolution step.
