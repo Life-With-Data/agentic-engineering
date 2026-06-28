@@ -41,8 +41,9 @@ if [ -n "${2:-}" ]; then
     REPO_ARG=(--repo "$2")
 fi
 
-# Single API call for the PR's gating fields.
-pr_json=$(gh pr view "$PR_NUMBER" "${REPO_ARG[@]}" \
+# Single API call for the PR's gating fields. The `[@]+` guard keeps an empty REPO_ARG safe
+# under `set -u` on bash 3.2 (macOS), where a bare "${REPO_ARG[@]}" would error as unbound.
+pr_json=$(gh pr view "$PR_NUMBER" ${REPO_ARG[@]+"${REPO_ARG[@]}"} \
     --json number,state,reviewDecision,mergeStateStatus,statusCheckRollup)
 
 # Unresolved-thread count: reuse the resolve-pr-parallel query if present, else 0.
