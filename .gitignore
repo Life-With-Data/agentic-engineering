@@ -3,3 +3,5 @@
 node_modules/
 .codex/
 todos/
+__pycache__/
+*.pyc
