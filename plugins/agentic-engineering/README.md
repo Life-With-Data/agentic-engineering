@@ -7,8 +7,8 @@ AI-powered development tools that get smarter with every use. Make each unit of 
 | Component | Count |
 |-----------|-------|
 | Agents | 30 |
-| Commands | 27 |
-| Skills | 21 |
+| Commands | 28 |
+| Skills | 22 |
 | MCP Servers | 1 |
 
 > 📊 **[FLOWS.md](FLOWS.md)** — mermaid diagrams of every workflow (brainstorm → plan → work → review → compound) and how `/workflows:orchestrate` drives them.
@@ -126,6 +126,7 @@ For `beads`, `bd` replaces TodoWrite in `/workflows:work` and `todos/*.md` in `/
 | `/linear:status` | Show sync status between file todos and Linear |
 | `/linear:import` | Import a Linear issue as a local todo file |
 | `/linear:pull` | Pull Linear changes into local todo files |
+| `/ci:resolve-workflow-issues` | Diagnose and fix CI workflow failures by analyzing check logs and applying targeted fixes |
 
 ## Skills
 
@@ -165,6 +166,7 @@ For `beads`, `bd` replaces TodoWrite in `/workflows:work` and `todos/*.md` in `/
 | Skill | Description |
 |-------|-------------|
 | `test-strategy-reviewer` | Analyze test files for coverage gaps, mock depth, and untested integration boundaries |
+| `reflect-for-skill-updates` | Turn debugging sessions and workflow gaps into permanent skill improvements |
 
 ### Multi-Agent Orchestration
 

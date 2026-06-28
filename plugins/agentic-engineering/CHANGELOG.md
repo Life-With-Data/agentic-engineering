@@ -5,6 +5,16 @@ All notable changes to the agentic-engineering plugin will be documented in this
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.41.0] - 2026-06-28
+
+### Added
+
+- **`/ci:resolve-workflow-issues` command** — Stack-agnostic CI failure diagnosis and remediation. Analyzes `gh pr checks` output, fetches `--log-failed` output from GitHub Actions runs, classifies failures by type (lint, type errors, tests, build, dependencies, migrations), maps each type to fix commands appropriate for the project's detected stack (Node.js/TypeScript, Ruby/Rails, Python), and verifies fixes locally before pushing. Slots naturally after `/workflows:review` in the development pipeline: work → review → **fix CI** → merge. Completes the feedback loop that was previously left to the user to manage manually.
+
+- **`reflect-for-skill-updates` skill** — Turns debugging sessions and workflow gaps into permanent skill improvements, closing the loop that `/workflows:compound` opens. Where `compound-docs` captures solved *problems*, this skill captures how to update the *skills themselves* when a debugging session reveals missing documentation, an undocumented dependency, a workflow gap, or a gotcha. Includes a 4-step reflection process, a categorization table mapping failure types to where the fix belongs (skill, command, hook, script), a reflection template, five common anti-patterns to watch for, and a table of skills most likely to need updates.
+
+- **Safety hooks: `block-no-verify.py` and `prevent-main-commit.py`** (registered in `plugin.json → hooks.PreToolUse`) — Two Python PreToolUse hooks that guard against the most common git anti-patterns: (1) `block-no-verify` blocks `git commit --no-verify` and `git push --no-verify`, using segment-aware regex to avoid false positives on commands that merely mention the flag in comments or strings; (2) `prevent-main-commit` blocks direct `git commit` while on `main`/`master` and explicit `git push` to protected branches. Both exit with code 2 (block + explain) on violation and exit 0 otherwise — zero performance cost on unrelated Bash calls. Ported from the agent-leverage repository with minor message updates to match the plugin's context.
+
 ## [Unreleased]
 
 ### Added
