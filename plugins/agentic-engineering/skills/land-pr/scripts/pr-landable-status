@@ -1,0 +1,94 @@
+#!/usr/bin/env bash
+#
+# pr-landable-status — emit the gating signals that decide whether a PR can be landed.
+#
+# Usage: pr-landable-status PR_NUMBER [OWNER/REPO]
+#
+# Prints a JSON object:
+#   {
+#     "number": 123,
+#     "state": "OPEN",
+#     "review_decision": "APPROVED",        # APPROVED | CHANGES_REQUESTED | REVIEW_REQUIRED | ""
+#     "merge_state": "CLEAN",               # CLEAN | BLOCKED | BEHIND | DIRTY | UNSTABLE | UNKNOWN
+#     "ci": "SUCCESS",                       # SUCCESS | FAILURE | PENDING | NONE
+#     "ci_failing": ["check-name", ...],
+#     "ci_pending": ["check-name", ...],
+#     "unresolved_threads": 0,
+#     "blockers": [],                        # human-readable reasons it can't merge yet
+#     "landable": true
+#   }
+#
+# `landable` is true when there are no mechanical merge blockers: state=OPEN, ci=SUCCESS,
+# no failing/pending checks, unresolved_threads=0, review_decision is NOT CHANGES_REQUESTED,
+# and merge_state is not DIRTY/BLOCKED/BEHIND.
+#
+# Deliberately NOT required: review_decision == APPROVED. A *human* GitHub approval is not the
+# review gate for autonomous runs — the orchestrator's own multi-agent `/workflows:review`
+# (P1s resolved) is. A branch-protection-required approval the agent cannot supply shows up as
+# merge_state=BLOCKED, which IS reported as a blocker. `blockers` names each unmet reason so the
+# caller can escalate precisely instead of bouncing a bare "say the word and I'll merge."
+
+set -euo pipefail
+
+if [ $# -lt 1 ]; then
+    echo "Usage: pr-landable-status PR_NUMBER [OWNER/REPO]" >&2
+    exit 1
+fi
+
+PR_NUMBER=$1
+REPO_ARG=()
+if [ -n "${2:-}" ]; then
+    REPO_ARG=(--repo "$2")
+fi
+
+# Single API call for the PR's gating fields.
+pr_json=$(gh pr view "$PR_NUMBER" "${REPO_ARG[@]}" \
+    --json number,state,reviewDecision,mergeStateStatus,statusCheckRollup)
+
+# Unresolved-thread count: reuse the resolve-pr-parallel query if present, else 0.
+SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+threads_script="$SCRIPT_DIR/../../resolve-pr-parallel/scripts/get-pr-comments"
+unresolved=0
+if [ -x "$threads_script" ] || [ -f "$threads_script" ]; then
+    threads=$(bash "$threads_script" "$PR_NUMBER" "${2:-}" 2>/dev/null || echo '[]')
+    unresolved=$(echo "$threads" | jq 'length' 2>/dev/null || echo 0)
+fi
+
+echo "$pr_json" | jq --argjson unresolved "${unresolved:-0}" '
+  # Classify each required/owned check from the status rollup.
+  (.statusCheckRollup // []) as $checks
+  | [ $checks[]
+      | { name: (.name // .context // "check"),
+          ok:   ((.conclusion // .state // "") | ascii_upcase),
+          status: ((.status // "COMPLETED") | ascii_upcase) } ] as $c
+  | ($c | map(select(.status != "COMPLETED" or (.ok == "PENDING") or (.ok == "")) | .name)) as $pending
+  | ($c | map(select(.ok == "FAILURE" or .ok == "ERROR" or .ok == "CANCELLED" or .ok == "TIMED_OUT") | .name)) as $failing
+  | (if ($c | length) == 0 then "NONE"
+     elif ($failing | length) > 0 then "FAILURE"
+     elif ($pending | length) > 0 then "PENDING"
+     else "SUCCESS" end) as $ci
+  | (.mergeStateStatus // "UNKNOWN") as $ms
+  | (.reviewDecision // "") as $rd
+  # Mechanical blockers that prevent a merge. A human GitHub approval is NOT required here:
+  # the orchestrator multi-agent review is the review gate (see the skill). A
+  # branch-protection-required approval surfaces as merge_state == BLOCKED, which IS a
+  # blocker the agent cannot self-satisfy.
+  | ( [ (if .state != "OPEN" then "pr is \(.state), not OPEN" else empty end),
+        (if ($failing | length) > 0 then "ci failing: \($failing | join(", "))" else empty end),
+        (if ($pending | length) > 0 then "ci pending/in-progress: \($pending | join(", "))" else empty end),
+        (if $unresolved > 0 then "\($unresolved) unresolved review thread(s)" else empty end),
+        (if $rd == "CHANGES_REQUESTED" then "changes requested by a reviewer (unresolved)" else empty end),
+        (if $ms == "BLOCKED" then "merge blocked by branch protection (likely a required human approval or status check the agent cannot supply)" else empty end),
+        (if $ms == "BEHIND" then "branch is behind base — needs update/rebase" else empty end),
+        (if $ms == "DIRTY" then "merge conflicts" else empty end) ] ) as $blockers
+  | { number: .number,
+      state: .state,
+      review_decision: $rd,
+      merge_state: $ms,
+      ci: $ci,
+      ci_failing: $failing,
+      ci_pending: $pending,
+      unresolved_threads: $unresolved,
+      blockers: $blockers,
+      landable: (($blockers | length) == 0) }
+'

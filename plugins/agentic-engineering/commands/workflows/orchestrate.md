@@ -19,7 +19,7 @@ The full expansion — including the finalization steps `/lfg` runs — is:
 
 ```
 brainstorm → plan → [deepen-plan?] → work (→ PR) → review → [resolve findings]
-           → [test-browser] → [feature-video] → compound
+           → [test-browser] → [feature-video] → [land-pr: CI green + merge] → compound
 ```
 
 Your job is to **run that flow for them** — handling every menial transition automatically while reaching out **only at meaningful decision points**. Think of yourself like `/goal` or `/loop`: you keep the work moving on your own, and you interrupt the user for steering, not for chores.
@@ -83,13 +83,15 @@ This table is the heart of the orchestrator. Apply it literally.
 | Work: implementation, tests, incremental commits | **AUTO** | Execute per `/workflows:work`. |
 | Work: discovered scope expansion | **🧍 CHECKPOINT if material** | A small follow-on task → file it and proceed. A direction change or significant new scope → pause and ask. |
 | Work: open the PR | **AUTO** | `/workflows:work` Phase 4 creates the PR and closes the tracker item. (Outward-facing, but it's the expected terminal of the work stage in a solo/small-team flow.) |
-| Review: run multi-agent review | **AUTO** | Run `/workflows:review` against the new PR. |
+| Review: run multi-agent review | **AUTO** | Run `/workflows:review` against the new PR. This is the **independent** review that justifies the eventual auto-merge: it fans out to fresh reviewer sub-agents (not the implementer), and `/workflows:review` always runs a baseline set (`agent-native-reviewer`, `learnings-researcher`, `integration-boundary-reviewer`) even with no `review_agents` configured — so the auto review is never empty. In `--auto`, if no `agentic-engineering.local.md` exists, proceed with that baseline rather than blocking on the interactive `setup` skill. |
 | Review: **P1 (critical) findings** | **AUTO-FIX** | P1 blocks merge — fix it without asking (via `/resolve_todo_parallel` or direct edits), then re-verify. |
 | Review: **P2 / P3 findings triage** | **🧍 CHECKPOINT** | Present the categorized findings. The user decides which non-blocking items to fix now vs defer. |
 | Review: resolve approved findings | **AUTO** | Run `/agentic-engineering:resolve_todo_parallel` to fix the items the user approved (and all P1s). |
 | Verify: browser / E2E tests (`/agentic-engineering:test-browser`) | **AUTO when applicable** | After findings are resolved, for web/iOS changes run `/test-browser` on affected pages. Failures become P1 todos → fix and re-run until green. Skip for non-UI changes (note the skip). This is `/lfg` step 7. |
 | Finalize: feature walkthrough video (`/agentic-engineering:feature-video`) | **AUTO when applicable** | For UI / user-facing changes, record the walkthrough and attach it to the PR (`/feature-video`). This is `/lfg` step 8. Skip with a one-line note for internal-only changes, or if the user opted out at the triage gate. |
-| Compound: document the solution | **AUTO** | Run `/workflows:compound` once work has shipped and a non-trivial problem was solved. |
+| Land: drive CI green + resolve threads (`land-pr` skill) | **AUTO** | Run the `land-pr` skill to wait on CI, resolve any remaining review threads, and reach a landable state (CI green, threads resolved, mergeable). The independent review that justifies the merge already ran upstream (the Review stage above) — that, not a human GitHub approval, is the review gate. |
+| Land: **the merge itself** (`gh pr merge`) | **🧍 CHECKPOINT** / **AUTO in `--auto`** | Merging is outward-facing and irreversible. In **steer/`--careful`** mode, stop and ask before merging. In **`--auto`**, the `land-pr` skill auto-merges with no further prompt — **once** CI is green, the upstream multi-agent review ran with P1s resolved, all threads are resolved, and the PR is mergeable. Do **not** wait on a human GitHub `APPROVED` (a solo run never gets one — that's the whole point of the autonomous review). Never merge on an unmet condition or directly to the default branch. The one real stop here is `mergeStateStatus: BLOCKED` (branch protection requires something the agent can't supply) → escalate as a blocker. |
+| Compound: document the solution | **AUTO** | Run `/workflows:compound` once work has shipped (merged) and a non-trivial problem was solved. |
 | Any genuine blocker | **🧍 ESCALATE** | Access, credentials, an ambiguous product decision, conflicting requirements, a failing gate you can't resolve in ~2 tries. Batch open blockers into ONE AskUserQuestion. Never guess on irreversible or product-shaping choices. |
 
 In `--auto` mode, every **🧍 CHECKPOINT** above except **Plan-Approval** and genuine blockers collapses to AUTO with the default action. In `--careful` mode, add a lightweight confirm at each stage boundary.
@@ -99,13 +101,14 @@ In `--auto` mode, every **🧍 CHECKPOINT** above except **Plan-Approval** and g
 Re-running `/workflows:orchestrate` should pick up where things left off. At the start of every run — and after each stage — detect the current stage from artifacts (most-advanced signal wins):
 
 1. **Solution doc** for this feature exists in `docs/solutions/` → pipeline **complete**. Report and stop.
-2. **Open PR**, findings resolved, but **no walkthrough video** in the PR body (and the change is UI/user-facing) → resume at **feature-video**, then **compound**.
-3. **Open PR**, findings resolved, video done (or N/A) → resume at **compound** (or done).
-4. **Open PR** + un-triaged findings (`todos/*-pending-*.md`, or review-tagged beads) → resume at **findings triage** → resolve → **test-browser** → **feature-video**.
-5. **Open PR**, no review yet → resume at **review**.
-6. **Plan** exists (`docs/plans/<recent>-plan.md`) with a tracker ID, checkboxes unstarted/partial, branch may exist → resume at **work** (after the Plan-Approval gate if it hasn't happened this run).
-7. **Brainstorm** exists (`docs/brainstorms/<recent>.md`), no matching plan → resume at **plan**.
-8. **Nothing in flight** → start at **brainstorm**, unless the input description is already crisp and well-scoped (clear acceptance criteria, referenced patterns), in which case skip straight to **plan** and say so.
+2. **PR merged** (`gh pr view` reports `MERGED`), no solution doc yet → resume at **compound** (or done).
+3. **Open PR**, findings resolved, video done (or N/A), **not yet merged** → resume at **land-pr** (drive CI green → merge gate → merge), then **compound**.
+4. **Open PR**, findings resolved, but **no walkthrough video** in the PR body (and the change is UI/user-facing) → resume at **feature-video**, then **land-pr**, then **compound**.
+5. **Open PR** + un-triaged findings (`todos/*-pending-*.md`, or review-tagged beads) → resume at **findings triage** → resolve → **test-browser** → **feature-video** → **land-pr**.
+6. **Open PR**, no review yet → resume at **review**.
+7. **Plan** exists (`docs/plans/<recent>-plan.md`) with a tracker ID, checkboxes unstarted/partial, branch may exist → resume at **work** (after the Plan-Approval gate if it hasn't happened this run).
+8. **Brainstorm** exists (`docs/brainstorms/<recent>.md`), no matching plan → resume at **plan**.
+9. **Nothing in flight** → start at **brainstorm**, unless the input description is already crisp and well-scoped (clear acceptance criteria, referenced patterns), in which case skip straight to **plan** and say so.
 
 "Recent / matching" = filename or frontmatter topic semantically matches the feature, created within ~14 days; if several match, use the most recent (or ask in `--careful`). Reuse the matching logic the sub-commands already apply.
 
@@ -217,20 +220,23 @@ When the pipeline completes, emit:
   Review      ✓  <P1 fixed> / <P2 handled> / <P3 deferred>
   Verify      ✓  test-browser: <pass/fail/N-A>
   Video       ✓  walkthrough attached to PR  (or: N/A — internal change)
+  Land        ✓  PR #<n> merged (squash, branch deleted)
+                 (steer mode: ⏸ paused at merge gate — your call)
+                 (--auto + blocked: 🚧 branch protection needs <reason> you must supply)
   Compound    ✓  docs/solutions/<file>
 
-  Decisions you made:   <count>  (approach, plan-approval, triage, …)
+  Decisions you made:   <count>  (approach, plan-approval, triage, merge, …)
   Decisions I auto-made: <count>
   Deferred for later:    <list of deferred todos/beads, if any>
 
-Next: review PR #<n> and merge when ready.
+Next: <if merged> done — PR #<n> is in <default-branch>.  <if steer-mode paused> the PR is green and reviewed — approve the merge to land it.  <if blocked> branch protection requires <reason>; supply it, then the merge lands.
 ```
 
 ## Guardrails
 
 - **Don't suppress meaningful questions.** When in doubt about whether a juncture is menial or meaningful, treat it as meaningful and ask. The cost of an extra question is small; the cost of silently building the wrong thing is large.
 - **Don't ask about chores.** Branch names, "should I proceed", detail levels, tracker bookkeeping — decide and move.
-- **Irreversible / outward-facing actions** beyond the expected PR (force-push, closing others' PRs, deleting branches, anything touching the default branch) → always a blocker, never auto.
+- **Irreversible / outward-facing actions** beyond the expected pipeline (force-push, closing others' PRs, deleting unrelated branches, anything touching the default branch directly) → always a blocker, never auto. The exceptions are the pipeline's own expected outward steps: opening the PR (`/workflows:work` Phase 4) and, **in `--auto`**, the `land-pr` merge — which squash-merges and deletes *its own just-merged feature branch* only after CI is green, the upstream independent review ran with P1s resolved, threads are resolved, and the PR is mergeable. (This is not a human-approval wait — see the Land rows above.)
 - **Honor every sub-command's own gates** — the tracker-issue gate in `/workflows:plan`, the P1-blocks-merge rule in `/workflows:review`, the parent-vs-child bead close rules in `/workflows:work`. You orchestrate them; you don't override them.
 - **Stay resumable.** Drive state from artifacts, not memory. If interrupted, a fresh `/workflows:orchestrate` must be able to pick up exactly where this left off.
 - **One blocker batch at a time.** Don't drip-feed questions. Collect everything that needs the user, ask once, then run.

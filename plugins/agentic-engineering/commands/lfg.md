@@ -15,6 +15,7 @@ Run these slash commands in order. Do not do anything else. Do not stop between 
 6. `/agentic-engineering:resolve_todo_parallel`
 7. `/agentic-engineering:test-browser`
 8. `/agentic-engineering:feature-video`
-9. Output `<promise>DONE</promise>` when video is in PR
+9. Land the PR: run the `land-pr` skill in autonomous mode — it waits for CI to go green, resolves any remaining review threads, and **auto-merges** once CI is green, the multi-agent review from step 5 left no open P1s, and all threads are resolved, then deletes the branch and confirms the tracker item is closed. The merge gate is the review you already ran in step 5 — do **not** wait for a human GitHub approval. Only stop if a condition genuinely can't be met (CI stuck red after retries, or branch protection requires something you can't supply).
+10. Output `<promise>DONE</promise>` once the PR is merged.
 
 Start with step 2 now (or step 1 if ralph-wiggum is available).

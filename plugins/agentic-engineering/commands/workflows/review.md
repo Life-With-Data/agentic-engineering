@@ -460,6 +460,11 @@ After creating all todo files, present comprehensive summary:
    - Update Work Log as you work
    - Commit todos: `git add todos/ && git commit -m "refactor: add code review findings"`
 
+5. **Land the PR**: once findings are resolved, run the `land-pr` skill to wait on CI, resolve any
+   remaining review threads, confirm approval, and **merge** the PR (then delete the branch and close
+   the tracker item). This review command produces and triages findings; `land-pr` owns the
+   completion-and-merge tail.
+
 ### Severity Breakdown:
 
 **🔴 P1 (Critical - Blocks Merge):**

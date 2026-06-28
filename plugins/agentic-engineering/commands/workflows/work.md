@@ -475,7 +475,10 @@ Even a **single** tracked issue benefits from Orchestrated Execution — the orc
    - Link to PR
    - Note that the bead is closed and will reopen only if the PR is rejected
    - Note any follow-up work needed
-   - Suggest next steps if applicable
+   - Suggest next steps if applicable — typically `/workflows:review` to review the PR, then the
+     `land-pr` skill to drive CI green, resolve review threads, and **merge** once approved. This
+     command ends at PR creation; `land-pr` owns the completion-and-merge tail (its post-merge
+     tracker close is idempotent with the Phase 4 close above, so nothing double-closes).
 
 ---
 

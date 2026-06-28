@@ -8,7 +8,7 @@ AI-powered development tools that get smarter with every use. Make each unit of 
 |-----------|-------|
 | Agents | 30 |
 | Commands | 27 |
-| Skills | 21 |
+| Skills | 22 |
 | MCP Servers | 1 |
 
 > 📊 **[FLOWS.md](FLOWS.md)** — mermaid diagrams of every workflow (brainstorm → plan → work → review → compound) and how `/workflows:orchestrate` drives them.
@@ -156,6 +156,7 @@ For `beads`, `bd` replaces TodoWrite in `/workflows:work` and `todos/*.md` in `/
 | `every-style-editor` | Review copy for Every's style guide compliance |
 | `file-todos` | File-based todo tracking system |
 | `git-worktree` | Manage Git worktrees for parallel development |
+| `land-pr` | Drive an open PR through CI, review threads, and approval to merge |
 | `linear-sync` | Bidirectional sync between file-based todos and Linear |
 | `resolve-pr-parallel` | Resolve PR review comments in parallel |
 | `setup` | Configure which review agents run for your project |
