@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **`plan-tracker-guard` now documents and tests dotted uppercase-prefix bead IDs.** The base-36 branch of `REAL_TRACKER_VALUE_RE` already accepts uppercase prefixes with a lowercase base-36 suffix (e.g. `AL-eh4`), but the dotted child-ID form `AL-xs7.3` — which exercises the `(?:\.[a-z0-9]+)*` segment tail — had no test coverage. Added a dedicated test for the dotted form and extended the accept test to cover `AL-eh4`, locking in that uppercase-prefix beads IDs (parent and child) pass while uppercase-suffix placeholders like `AL-NNN` stay rejected.
+
 ### Added
 
 - **Deterministic docs-site generator (`scripts/generate-docs.ts`, `bun run docs:build` / `docs:check`), gated in CI.** Replaces the manual `/release-docs` skill with a script that regenerates the reference pages (`docs/pages/agents|commands|skills|mcp-servers.html`) and the landing-page stat numbers directly from the plugin's components — card sections (between `<!-- GENERATED -->` markers) and each page's "On This Page" sidebar — preserving all hand-written page chrome. A new `tests/docs-generated.test.ts` (run by `bun test`) fails if the committed pages drift from the components, so the docs site can no longer fall out of sync. Regenerated all four reference pages, which had drifted badly (7 agents, 14 commands, 8 skills missing; stale counts; a removed Playwright MCP server still listed). `/release-docs` is now a thin wrapper around `bun run docs:build`.

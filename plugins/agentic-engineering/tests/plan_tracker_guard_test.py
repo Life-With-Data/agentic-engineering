@@ -125,8 +125,24 @@ class PlanTrackerGuardTest(unittest.TestCase):
 
     def test_passes_with_uppercase_base36_bead_id(self) -> None:
         # Beads can be configured with an uppercase prefix (e.g. "AL-"), giving
-        # IDs like "AL-09v": uppercase prefix, lowercase base-36 suffix.
-        plan = self._make_plan("upper.md", "title: up\nbead_id: AL-09v")
+        # IDs like "AL-09v" / "AL-eh4": uppercase prefix, lowercase base-36 suffix.
+        for bead_id in ("AL-09v", "AL-eh4"):
+            with self.subTest(bead_id=bead_id):
+                plan = self._make_plan(
+                    f"upper_{bead_id}.md", f"title: up\nbead_id: {bead_id}"
+                )
+                transcript = _write_transcript(
+                    self.cwd, [{"name": "Write", "input": {"file_path": str(plan)}}]
+                )
+                result = _run({"transcript_path": str(transcript)}, self.cwd)
+                self.assertEqual(result.returncode, 0)
+                self.assertEqual(result.stdout, "")
+
+    def test_passes_with_uppercase_dotted_base36_bead_id(self) -> None:
+        # Beads child IDs carry a dotted base-36 suffix (e.g. "AL-xs7.3"); the
+        # uppercase prefix must be accepted here too, via the base-36 branch's
+        # (?:\.[a-z0-9]+)* dotted-segment tail.
+        plan = self._make_plan("upper_dotted.md", "title: up\nbead_id: AL-xs7.3")
         transcript = _write_transcript(
             self.cwd, [{"name": "Write", "input": {"file_path": str(plan)}}]
         )
