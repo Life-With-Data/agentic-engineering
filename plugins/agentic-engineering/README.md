@@ -7,7 +7,7 @@ AI-powered development tools that get smarter with every use. Make each unit of 
 | Component | Count |
 |-----------|-------|
 | Agents | 30 |
-| Commands | 28 |
+| Commands | 29 |
 | Skills | 23 |
 | MCP Servers | 1 |
 
@@ -86,6 +86,7 @@ Core workflow commands use `workflows:` prefix to avoid collisions with built-in
 | `/workflows:work` | Execute work items systematically (uses deterministic repo preflight script) |
 | `/workflows:compound` | Document solved problems to compound team knowledge |
 | `/workflows:orchestrate` | Drive the full pipeline (brainstorm → plan → work → review → compound), pausing only at meaningful decision gates |
+| `/workflows:merge` | Land an open PR — thin entry point to the `land-pr` skill (CI wait, thread resolution, merge gate, cleanup, tracker-item close) |
 
 #### Issue tracker
 
