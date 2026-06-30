@@ -8,7 +8,7 @@ AI-powered development tools that get smarter with every use. Make each unit of 
 |-----------|-------|
 | Agents | 30 |
 | Commands | 28 |
-| Skills | 22 |
+| Skills | 23 |
 | MCP Servers | 1 |
 
 > 📊 **[FLOWS.md](FLOWS.md)** — mermaid diagrams of every workflow (brainstorm → plan → work → review → compound) and how `/workflows:orchestrate` drives them.
@@ -146,6 +146,7 @@ For `beads`, `bd` replaces TodoWrite in `/workflows:work` and `todos/*.md` in `/
 | `dhh-rails-style` | Write Ruby/Rails code in DHH's 37signals style |
 | `dspy-ruby` | Build type-safe LLM applications with DSPy.rb |
 | `frontend-design` | Create production-grade frontend interfaces |
+| `reflect-for-skill-updates` | Turn debugging sessions into permanent skill improvements; the meta-improvement loop for compounding engineering |
 | `skill-creator` | Guide for creating effective Claude Code skills |
 
 ### Content & Workflow
