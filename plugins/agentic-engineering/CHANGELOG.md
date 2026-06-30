@@ -5,6 +5,16 @@ All notable changes to the agentic-engineering plugin will be documented in this
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.42.0] — 2026-06-30
+
+### Added
+
+- **`reflect-for-skill-updates` skill — the meta-improvement loop for compounding engineering.** Where `/workflows:compound` captures the *solution* to a technical problem, this skill captures *what was missing from the tooling or documentation that let the problem occur in the first place*. It provides a structured gap-analysis process: identify root cause → categorize (missing automation, incomplete skill, workflow gap, undocumented dependency) → implement the fix in the right place (SKILL.md, CLAUDE.md, hook, script) → verify the fix would have prevented the issue. Directly surfaced from agent-leverage's operational toolchain, where it proved effective at closing the feedback loop between incidents and permanent tooling improvements. Linked as a natural follow-on to `compound-docs` in the Related Skills section of both skills. Increases skill count to 23.
+
+- **`block-no-verify` PreToolUse hook (distributed via `plugin.json`).** Blocks `git commit --no-verify` and `git push --no-verify` at the tool-use layer before the command reaches the shell. Pre-commit and pre-push hooks are quality gates — bypassing them defeats their purpose and typically causes avoidable CI failures. The hook is segment-aware (the `--no-verify` flag must appear in the same command segment as the git verb, not after a `&&`/`;`/`|`) and strips quoted strings before checking, so commit messages or grep commands that mention the flag are not blocked. Adapted from agent-leverage's production hook; error message generalized for cross-project use.
+
+- **`prevent-main-commit` PreToolUse hook (distributed via `plugin.json`).** Blocks `git commit` while on `main`/`master` and explicit `git push ... main` / `git push ... master` refspec targets. Every agentic-engineering workflow command assumes branch-based development (PR-driven, reviewed, merged) — this hook enforces that invariant as a distributed guardrail so agents running autonomous workflows can't accidentally commit directly to the default branch. Adapted from agent-leverage's production hook; error message generalized for cross-project use.
+
 ## [Unreleased]
 
 ### Fixed

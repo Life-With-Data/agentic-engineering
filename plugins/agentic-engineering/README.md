@@ -8,7 +8,7 @@ AI-powered development tools that get smarter with every use. Make each unit of 
 |-----------|-------|
 | Agents | 30 |
 | Commands | 27 |
-| Skills | 22 |
+| Skills | 23 |
 | MCP Servers | 1 |
 
 > 📊 **[FLOWS.md](FLOWS.md)** — mermaid diagrams of every workflow (brainstorm → plan → work → review → compound) and how `/workflows:orchestrate` drives them.
@@ -165,6 +165,7 @@ For `beads`, `bd` replaces TodoWrite in `/workflows:work` and `todos/*.md` in `/
 
 | Skill | Description |
 |-------|-------------|
+| `reflect-for-skill-updates` | Turn debugging sessions into permanent skill improvements; the meta-improvement loop for compounding engineering |
 | `test-strategy-reviewer` | Analyze test files for coverage gaps, mock depth, and untested integration boundaries |
 
 ### Multi-Agent Orchestration
