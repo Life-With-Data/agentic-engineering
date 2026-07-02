@@ -48,6 +48,15 @@
             "command": "python3 ${CLAUDE_PLUGIN_ROOT}/scripts/prevent-main-commit.py"
           }
         ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 ${CLAUDE_PLUGIN_ROOT}/scripts/check-node-version.py"
+          }
+        ]
       }
     ],
     "Stop": [
