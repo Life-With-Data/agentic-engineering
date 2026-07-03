@@ -68,7 +68,7 @@ component confers no trust on v2.
 - visibility: public
 - scan: auto
 - adopted:
-  - skill/verification-loop (upstream: skills/verification-loop/SKILL.md@81af40761939056ab3dc54732fd4f562a27309d0, adapted) — PR #TBD — @aagnone3 2026-07-03
+  - skill/verification-loop (upstream: skills/verification-loop/SKILL.md@81af40761939056ab3dc54732fd4f562a27309d0, adapted) — PR #35 — @aagnone3 2026-07-03
 - deferred:
   - skill/agent-introspection-debugging — shortlisted for adoption: agent self-debug workflow with no local equivalent, self-contained — @aagnone3 2026-07-03
   - skill/continuous-agent-loop — shortlisted for adoption: autonomous-loop-with-quality-gates pattern, adopt if additive over local orchestrating-swarms — @aagnone3 2026-07-03
