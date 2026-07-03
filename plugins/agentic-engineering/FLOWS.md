@@ -71,10 +71,10 @@ flowchart TD
     class g1,gate,g2,g3 gate
 ```
 
-† pauses for you in `--steer`/`--careful`; in delegate/`--auto` the orchestrator self-answers and logs the decision.
-‡ delegate mode's single gate; `--auto` collapses it (auto-merge once landable, packet becomes the final summary).
+† pauses for you in `--steer`/`--careful`; in delegate mode the orchestrator self-answers and logs the decision.
+‡ delegate mode's single gate; the `--auto` modifier collapses it (auto-merge once landable, packet becomes the final summary).
 
-**Autonomy dial:** `--careful` > `--steer` > *delegate (default)* > `--auto`. Blockers and material scope changes escalate in **every** mode. In delegate/`--auto`, the optional `ralph-wiggum` loop keeps the run moving — but surviving gates still pause it, exactly like `/goal`.
+**Autonomy dial:** `--careful` > `--steer` > *delegate (default)*; `--auto` is not a fourth mode but a modifier on delegate that toggles only the Final-Review gate. Blockers and material scope changes escalate in **every** mode. In delegate mode, the optional `ralph-wiggum` loop keeps the run moving — but surviving gates still pause it, exactly like `/goal`.
 
 ---
 
