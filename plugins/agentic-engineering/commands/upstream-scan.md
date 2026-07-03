@@ -26,6 +26,11 @@ every target flows from the registry frontmatter, the source blocks, and `$ARGUM
   resolves to by default. This discipline deviates from other commands' flagless gh
   style on purpose: this repo's guard hooks cover neither `gh issue` nor every
   execution environment, so the safety lives here — do not "simplify" it away.
+- Reads of the fork-parent source (`EveryInc/…`) MUST be issued as their own Bash
+  invocation — never combined on one command line with a `gh issue`/`gh label` write.
+  The repo's fork-trap hook literal-matches the parent slug anywhere in a command that
+  also contains a write subcommand, so a compound line like
+  `gh api repos/EveryInc/… && gh issue edit …` is denied even though both halves are safe.
 - The only permitted writes are `gh issue create`, `gh issue edit`, and `gh label create`
   targeting `$REPORT_REPO`. No PRs, no issue comments, no other repos, no other mutating
   API calls.
