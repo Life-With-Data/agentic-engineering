@@ -41,34 +41,40 @@ flowchart LR
 
 ---
 
-## /workflows:orchestrate — the steering layer
+## /workflows:orchestrate — the orchestrator layer
 
-The orchestrator drives every stage automatically and stops **only at the hexagons** (your meaningful decisions). Everything else is auto. This is the difference from `/lfg`: same operations, but the human stays at the wheel for the few choices that shape the outcome.
+The orchestrator drives every stage automatically. In the default **delegate** mode it delegates implementation to sub-agents, reviews their diffs itself, self-answers the intermediate gates (logging every decision), and stops at exactly one hexagon — the **Final-Review gate** — plus genuine blockers. `--steer` restores the classic cadence where every hexagon below pauses for you.
 
 ```mermaid
 flowchart TD
     start(["/workflows:orchestrate"]) --> detect["detect stage from artifacts<br/>(resumable)"]
     detect --> B["brainstorm"]
-    B --> g1{{"approach selection"}}
+    B --> g1{{"approach selection †"}}
     g1 --> P["plan"]
-    P --> gate{{"PLAN-APPROVAL GATE<br/>proceed / deepen / refine / edit"}}
+    P --> gate{{"PLAN-APPROVAL GATE †<br/>(delegate: plan self-review)"}}
     gate -->|deepen| DP["deepen-plan"]
     DP --> gate
-    gate -->|proceed| W["work → opens PR"]
-    W --> R["review"]
+    gate -->|proceed| W["work → sub-agents implement,<br/>orchestrator reviews diffs → opens PR"]
+    W --> R["review (multi-agent)"]
     R --> p1["auto-fix P1 findings"]
-    p1 --> g2{{"findings triage<br/>(P2 / P3)"}}
+    p1 --> g2{{"findings triage †<br/>(delegate: fix P2, defer P3)"}}
     g2 --> resolve["resolve approved findings"]
     resolve --> TB["test-browser*"]
     TB --> FV["feature-video*"]
-    FV --> C["compound"]
+    FV --> L["land-pr: drive CI green"]
+    L --> g3{{"FINAL-REVIEW GATE ‡<br/>packet + decision log"}}
+    g3 --> M["merge"]
+    M --> C["compound"]
     C --> done([shipped])
 
     classDef gate fill:#ffe8cc,stroke:#e8590c,stroke-width:2px;
-    class g1,gate,g2 gate
+    class g1,gate,g2,g3 gate
 ```
 
-**Autonomy dial:** `--auto` collapses every gate except **Plan-Approval** (and blockers); default *steer* keeps all three gates; `--careful` adds a confirm at every stage boundary. In `--auto`, the optional `ralph-wiggum` loop keeps the run moving — but the gates still pause it, exactly like `/goal`.
+† pauses for you in `--steer`/`--careful`; in delegate/`--auto` the orchestrator self-answers and logs the decision.
+‡ delegate mode's single gate; `--auto` collapses it (auto-merge once landable, packet becomes the final summary).
+
+**Autonomy dial:** `--careful` > `--steer` > *delegate (default)* > `--auto`. Blockers and material scope changes escalate in **every** mode. In delegate/`--auto`, the optional `ralph-wiggum` loop keeps the run moving — but surviving gates still pause it, exactly like `/goal`.
 
 ---
 

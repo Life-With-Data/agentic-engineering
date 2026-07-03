@@ -139,7 +139,7 @@ This command takes a work document (plan, specification, or todo file) and execu
 | **Orchestrated** ([section](#orchestrated-execution-tracker-driven)) | Work backed by tracked issues/beads — **one or many** | You own the tracker state machine and drive one subagent per issue, looping each to a terminal state before returning. |
 | **Swarm** ([section](#swarm-mode-optional)) | 5+ independent workstreams needing maximum parallelism | Long-lived teammates self-claim from a shared queue. |
 
-Even a **single** tracked issue benefits from Orchestrated Execution — the orchestrator absorbs the retry/verify/unblock loop and returns a finished or verifiably-blocked result, not a half-step. The Inline loop below is the default for plan/spec files.
+Even a **single** tracked issue benefits from Orchestrated Execution — the orchestrator absorbs the retry/verify/unblock loop and returns a finished or verifiably-blocked result, not a half-step. The Inline loop below is the default for plan/spec files — **except when this command runs under `/workflows:orchestrate` in delegate or `--auto` mode**, where Orchestrated is the default for all inputs: the orchestrator is a reviewer, not an implementer, and delegates every work item to a sub-agent whose diff it verifies before accepting.
 
 1. **Task Execution Loop**
 
@@ -544,6 +544,10 @@ report "done" while a ready bead is unstarted or a follow-on is open.
 3. **Dispatch.** `bd update <id> --claim`, then spawn one subagent per bead with the brief below
    (Task tool / `general-purpose`, or a specialist agent). Send parallel dispatches in one message.
    For file-conflicting parallel work, isolate each agent in its own git worktree (`skill: git-worktree`) and reconcile on return.
+   **Model tiering:** run implementation subagents on an Opus-tier model (`model: "opus"`), in the
+   background for parallel waves — the orchestrator keeps the session's strongest model for the
+   verify/review step, and purely mechanical chores (docs regeneration, count bumps) can drop to a
+   cheaper tier.
 4. **Verify & branch** (orchestrator, per returned subagent):
    - Review the diff vs acceptance criteria; integrate any worktree.
    - Re-run the project's quality gates at the top level (catches cross-bead breakage one agent
