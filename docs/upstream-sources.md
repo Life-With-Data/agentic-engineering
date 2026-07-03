@@ -68,8 +68,8 @@ component confers no trust on v2.
 - visibility: public
 - scan: auto
 - adopted:
+  - skill/verification-loop (upstream: skills/verification-loop/SKILL.md@81af40761939056ab3dc54732fd4f562a27309d0, adapted) — PR #TBD — @aagnone3 2026-07-03
 - deferred:
-  - skill/verification-loop — shortlisted for adoption: self-contained verify-before-done workflow with no local equivalent and the lowest adaptation cost — @aagnone3 2026-07-03
   - skill/agent-introspection-debugging — shortlisted for adoption: agent self-debug workflow with no local equivalent, self-contained — @aagnone3 2026-07-03
   - skill/continuous-agent-loop — shortlisted for adoption: autonomous-loop-with-quality-gates pattern, adopt if additive over local orchestrating-swarms — @aagnone3 2026-07-03
   - skill/security-scan — shortlisted for adoption: .claude config security scanner filling the gap beside the security-sentinel agent, conditional on removing the hard AgentShield dependency — @aagnone3 2026-07-03
