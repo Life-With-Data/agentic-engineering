@@ -7,7 +7,7 @@ AI-powered development tools that get smarter with every use. Make each unit of 
 | Component | Count |
 |-----------|-------|
 | Agents | 30 |
-| Commands | 29 |
+| Commands | 30 |
 | Skills | 23 |
 | MCP Servers | 1 |
 
@@ -123,6 +123,7 @@ For `beads`, `bd` replaces TodoWrite in `/workflows:work` and `todos/*.md` in `/
 | `/feature-video` | Record video walkthroughs and add to PR description |
 | `/agent-native-audit` | Run agent-native architecture review with scored principles |
 | `/ci-resolve-workflow-issues` | Diagnose and fix failing CI checks on a pull request |
+| `/upstream-scan` | Scan registered upstream repos for adoptable components and report candidates |
 | `/deploy-docs` | Validate and prepare documentation for GitHub Pages deployment |
 | `/linear:sync` | Bidirectional sync between file todos and Linear |
 | `/linear:status` | Show sync status between file todos and Linear |
