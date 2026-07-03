@@ -107,7 +107,7 @@ Syncs personal skills from `~/.claude/skills/` (as symlinks, so edits reflect im
 | Component | Count |
 |-----------|-------|
 | Specialized agents | 30 |
-| Commands | 29 |
+| Commands | 30 |
 | Skills | 23 |
 | MCP servers | 1 |
 
