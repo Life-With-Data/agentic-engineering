@@ -69,6 +69,14 @@ component confers no trust on v2.
 - scan: auto
 - adopted:
 - deferred:
+  - skill/verification-loop — shortlisted for adoption: self-contained verify-before-done workflow with no local equivalent and the lowest adaptation cost — @aagnone3 2026-07-03
+  - skill/agent-introspection-debugging — shortlisted for adoption: agent self-debug workflow with no local equivalent, self-contained — @aagnone3 2026-07-03
+  - skill/continuous-agent-loop — shortlisted for adoption: autonomous-loop-with-quality-gates pattern, adopt if additive over local orchestrating-swarms — @aagnone3 2026-07-03
+  - skill/security-scan — shortlisted for adoption: .claude config security scanner filling the gap beside the security-sentinel agent, conditional on removing the hard AgentShield dependency — @aagnone3 2026-07-03
+  - skill/agent-architecture-audit — shortlisted for adoption: 12-layer agent-stack diagnostic, must pin true upstream oh-my-agent-check and verify its license — @aagnone3 2026-07-03
+  - skill/plan-orchestrate — shortlisted for adoption: plan-to-orchestrate bridge, low priority given high retarget cost versus local swarm orchestration — @aagnone3 2026-07-03
+  - hook/memory-persistence — shortlisted for adoption: session-lifecycle memory spine, adopt the bounded-context pattern rather than the scripts/hooks subsystem with each script supply-chain reviewed — @aagnone3 2026-07-03
+  - all-unlisted @ 81af40761939056ab3dc54732fd4f562a27309d0 — bulk-deferred at type level, see docs/upstream-reports/2026-07-03-ecc-initial-triage.md — @aagnone3 2026-07-03
 
 ## EveryInc/compound-engineering-plugin
 
