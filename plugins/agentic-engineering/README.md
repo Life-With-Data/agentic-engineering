@@ -10,6 +10,7 @@ AI-powered development tools that get smarter with every use. Make each unit of 
 | Commands | 31 |
 | Skills | 23 |
 | MCP Servers | 1 |
+| Safety Hooks | 3 |
 
 > 📊 **[FLOWS.md](FLOWS.md)** — mermaid diagrams of every workflow (brainstorm → plan → work → review → compound) and how `/workflows:orchestrate` drives them.
 
@@ -221,6 +222,21 @@ For `beads`, `bd` replaces TodoWrite in `/workflows:work` and `todos/*.md` in `/
 Supports 100+ frameworks including Rails, React, Next.js, Vue, Django, Laravel, and more.
 
 MCP servers start automatically when the plugin is enabled.
+
+## Safety Hooks
+
+Enabling the plugin activates a few Claude Code hooks that keep the
+plan → work → PR → review → merge workflow from being short-circuited. They fire
+automatically — nothing to configure.
+
+| Hook | Event | Guards against |
+|------|-------|----------------|
+| `block-no-verify` | PreToolUse (Bash) | `git commit`/`git push --no-verify` skipping quality gates |
+| `prevent-main-commit` | PreToolUse (Bash) | Committing or pushing directly to `main`/`master` |
+| `plan-tracker-guard` | Stop | Ending a turn with a plan file that has no tracker ID |
+
+See **[scripts/HOOKS.md](scripts/HOOKS.md)** for what each hook does, its
+false-positive safeguards, how to test it, and how to override it per-project.
 
 ## Browser Automation
 
