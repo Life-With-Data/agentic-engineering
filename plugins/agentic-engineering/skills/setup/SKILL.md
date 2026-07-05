@@ -164,8 +164,6 @@ Examples:
 - "Performance-critical: we serve 10k req/s on this endpoint"
 ```
 
-Write the auto-detected value.
-
 ## Step 5: Confirm
 
 ```

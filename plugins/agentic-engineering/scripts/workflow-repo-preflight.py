@@ -136,29 +136,35 @@ def get_pr_context() -> dict[str, Any]:
 VALID_TRACKERS = {"beads", "github", "none"}
 
 
-def read_local_config_tracker(repo_root: str) -> Optional[str]:
-    """Read issue_tracker: field from agentic-engineering.local.md frontmatter if present."""
+def read_local_config_tracker(repo_root: str) -> tuple[Optional[str], Optional[str]]:
+    """Read issue_tracker: from agentic-engineering.local.md frontmatter.
+
+    Returns (valid_value, invalid_raw_value). An unrecognized value (e.g. a
+    stale ``linear`` override from before 3.0.0) is surfaced as the second
+    element instead of being silently ignored, so callers can tell the user
+    their pinned tracker no longer resolves.
+    """
     config_path = pathlib.Path(repo_root) / "agentic-engineering.local.md"
     if not config_path.is_file():
-        return None
+        return (None, None)
     try:
         text = config_path.read_text(encoding="utf-8")
     except OSError:
-        return None
+        return (None, None)
     if not text.startswith("---"):
-        return None
+        return (None, None)
     # Extract frontmatter block between leading --- and the next ---.
     match = re.match(r"^---\s*\n(.*?)\n---\s*(?:\n|$)", text, re.DOTALL)
     if not match:
-        return None
+        return (None, None)
     for line in match.group(1).splitlines():
         m = re.match(r"^\s*issue_tracker\s*:\s*([A-Za-z]+)\s*$", line)
         if m:
             value = m.group(1).lower()
             if value in VALID_TRACKERS:
-                return value
-            return None
-    return None
+                return (value, None)
+            return (None, value)
+    return (None, None)
 
 
 def resolve_issue_tracker(
@@ -168,12 +174,13 @@ def resolve_issue_tracker(
     gh_authenticated: bool,
 ) -> dict[str, Any]:
     """Apply the resolution chain and return both the decision and provenance."""
-    local_override = read_local_config_tracker(repo_root)
+    local_override, invalid_override = read_local_config_tracker(repo_root)
     if local_override is not None:
         return {
             "resolved": local_override,
             "source": "agentic-engineering.local.md",
             "local_override": local_override,
+            "local_override_invalid": None,
         }
 
     signals = []
@@ -191,6 +198,7 @@ def resolve_issue_tracker(
         "resolved": resolved,
         "source": "auto-detect" if signals else "default",
         "local_override": None,
+        "local_override_invalid": invalid_override,
     }
 
 
@@ -298,9 +306,17 @@ def main() -> int:
         "beads_remember_available": beads_installed,
         "github_cli_authed": gh_authenticated,
         "issue_tracker_local_config": tracker_info["local_override"],
+        "issue_tracker_local_config_invalid": tracker_info["local_override_invalid"],
         "issue_tracker_resolved": tracker_info["resolved"],
         "issue_tracker_source": tracker_info["source"],
     }
+    if tracker_info["local_override_invalid"]:
+        print(
+            "warning: agentic-engineering.local.md pins issue_tracker: "
+            f"'{tracker_info['local_override_invalid']}', which is not a valid tracker "
+            f"({' | '.join(sorted(VALID_TRACKERS))}); falling back to auto-detect",
+            file=sys.stderr,
+        )
 
     data["recommendation"] = build_recommendation(
         current_branch=current_branch,

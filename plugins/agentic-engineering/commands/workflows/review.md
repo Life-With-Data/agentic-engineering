@@ -259,7 +259,7 @@ done
 
 After all beads are created, jump to **Step 3: Summary Report** below.
 
-**When `TRACKER` is `github` or `none`** — use the file-todos skill path documented below. (This is the original behavior.)
+**When `TRACKER` is `github` or `none`** — use the file-todos skill path documented below.
 
 <critical_instruction> Use the file-todos skill to create todo files for ALL findings immediately. Do NOT present findings one-by-one asking for user approval. Create all todo files in parallel using the skill, then summarize results to user. </critical_instruction>
 
