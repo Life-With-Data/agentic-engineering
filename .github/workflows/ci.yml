@@ -24,5 +24,26 @@ jobs:
       - name: Run tests
         run: bun test
 
+      # The lifecycle design requires gh >= 2.94.0 (--parent, --blocked-by,
+      # native dependency JSON fields). ubuntu-latest ships some gh, but the
+      # version floats — pin an explicit release so gh_contract_test.py's
+      # flag-surface leg tests a KNOWN gh, not whatever the runner happens to
+      # have. Direct download of a pinned .deb from the GitHub CLI releases
+      # (no apt repo add, no extensions).
+      - name: Install pinned gh CLI
+        run: |
+          GH_VERSION=2.96.0
+          curl -fsSL -o gh.deb \
+            "https://github.com/cli/cli/releases/download/v${GH_VERSION}/gh_${GH_VERSION}_linux_amd64.deb"
+          sudo dpkg -i gh.deb
+          rm gh.deb
+          gh --version
+
+      # gh_contract_test.py has two legs:
+      #   (a) flag-surface pinning — runs here against the pinned gh, no auth;
+      #   (b) read-only JSON-shape probes — auto-SKIP when `gh auth status`
+      #       fails. CI's default GITHUB_TOKEN cannot satisfy `gh auth status`
+      #       without extra setup, so leg (b) skips here by design. We do NOT
+      #       wire a token — the flag-surface leg is the contract CI must hold.
       - name: Run Python hook tests
         run: python3 -m unittest discover -s plugins/agentic-engineering/tests -p '*_test.py'

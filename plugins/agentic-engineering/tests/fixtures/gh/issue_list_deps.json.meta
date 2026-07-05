@@ -1,0 +1,1 @@
+recorded_at=2026-07-05T19:05:48Z | gh version 2.96.0 (2026-07-02) | cmd: gh issue list --repo aagnone3/agentic-engineering --json number,title,assignees,blockedBy,parent --limit 5

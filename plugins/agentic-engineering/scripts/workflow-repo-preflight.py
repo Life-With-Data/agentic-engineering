@@ -8,13 +8,19 @@ explicit state instead of re-deriving it from prose instructions.
 
 Issue-tracker resolution order (first match wins):
   1. issue_tracker: field in agentic-engineering.local.md frontmatter (explicit override)
-  2. .beads/ directory present in repo AND `bd` on PATH         -> "beads"
+  2. committed board config (agentic-engineering.md with
+     github_project_owner + github_project_number)              -> "github-project"
   3. `gh auth status` returns 0                                 -> "github"
   4. otherwise                                                  -> "none"
+
+Lifecycle predicates and board verbs live in lifecycle_board.py (imported
+below); this script stays a READ-ONLY reporter — repairs run only when a
+command explicitly invokes `lifecycle_board.py --reconcile`.
 """
 
 from __future__ import annotations
 
+import importlib.util
 import json
 import os
 import pathlib
@@ -23,6 +29,14 @@ import shutil
 import subprocess
 import sys
 from typing import Any, Optional
+
+_LB_SPEC = importlib.util.spec_from_file_location(
+    "lifecycle_board", pathlib.Path(__file__).resolve().with_name("lifecycle_board.py")
+)
+assert _LB_SPEC is not None and _LB_SPEC.loader is not None
+lifecycle_board = importlib.util.module_from_spec(_LB_SPEC)
+sys.modules["lifecycle_board"] = lifecycle_board
+_LB_SPEC.loader.exec_module(lifecycle_board)
 
 
 def run(cmd: list[str]) -> subprocess.CompletedProcess[str]:
@@ -133,7 +147,7 @@ def get_pr_context() -> dict[str, Any]:
     }
 
 
-VALID_TRACKERS = {"beads", "github", "none"}
+VALID_TRACKERS = {"github-project", "github", "none"}
 
 
 def read_local_config_tracker(repo_root: str) -> tuple[Optional[str], Optional[str]]:
@@ -158,7 +172,7 @@ def read_local_config_tracker(repo_root: str) -> tuple[Optional[str], Optional[s
     if not match:
         return (None, None)
     for line in match.group(1).splitlines():
-        m = re.match(r"^\s*issue_tracker\s*:\s*([A-Za-z]+)\s*$", line)
+        m = re.match(r"^\s*issue_tracker\s*:\s*([A-Za-z][A-Za-z-]*)\s*$", line)
         if m:
             value = m.group(1).lower()
             if value in VALID_TRACKERS:
@@ -169,8 +183,7 @@ def read_local_config_tracker(repo_root: str) -> tuple[Optional[str], Optional[s
 
 def resolve_issue_tracker(
     repo_root: str,
-    beads_initialized: bool,
-    beads_installed: bool,
+    board_configured: bool,
     gh_authenticated: bool,
 ) -> dict[str, Any]:
     """Apply the resolution chain and return both the decision and provenance."""
@@ -184,8 +197,8 @@ def resolve_issue_tracker(
         }
 
     signals = []
-    if beads_initialized and beads_installed:
-        signals.append("beads")
+    if board_configured:
+        signals.append("github-project")
     if gh_authenticated:
         signals.append("github")
 
@@ -292,10 +305,24 @@ def main() -> int:
     beads_initialized = os.path.isdir(os.path.join(repo_root, ".beads"))
     gh_authenticated = bool(data["github"].get("gh_authenticated"))
 
+    # Board identity is committed config; owner-mismatch and malformed config
+    # are hard errors with a named fix (never a silent mode fallback).
+    board = None
+    try:
+        board_ctx = lifecycle_board.repo_context()
+        board = lifecycle_board.read_board_config(board_ctx)
+    except lifecycle_board.BoardError as exc:
+        print(
+            json.dumps(
+                {"ok": False, "error_code": exc.code, "error": str(exc), "fix": exc.fix},
+                indent=2,
+            )
+        )
+        return 1
+
     tracker_info = resolve_issue_tracker(
         repo_root=repo_root,
-        beads_initialized=beads_initialized,
-        beads_installed=beads_installed,
+        board_configured=board is not None,
         gh_authenticated=gh_authenticated,
     )
 
@@ -305,6 +332,8 @@ def main() -> int:
         "beads_initialized": beads_initialized,
         "beads_remember_available": beads_installed,
         "github_cli_authed": gh_authenticated,
+        "board_owner": board.owner if board else None,
+        "board_number": board.number if board else None,
         "issue_tracker_local_config": tracker_info["local_override"],
         "issue_tracker_local_config_invalid": tracker_info["local_override_invalid"],
         "issue_tracker_resolved": tracker_info["resolved"],
