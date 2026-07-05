@@ -130,12 +130,12 @@ Shipping shape: **two PRs** — Phase 1 (pure deletion, independently green), th
 
 ### Phase 1: Linear removal (pure deletion, own PR)
 
-- [ ] Delete `commands/linear-{import,pull,status,sync}.md`; delete `skills/linear-sync/`
-- [ ] Delete `src/commands/linear.ts`, `src/sync/linear.ts`, `src/sync/linear-api.ts`, `src/types/linear.ts`; unwire `src/index.ts:7,20` (leave `tests/pi-writer.test.ts` — unrelated MCP fixture)
-- [ ] Strip Linear branches from kept files: `workflows/work.md:94-99,460-464`, `workflows/plan.md:179-180,641-649`, `workflows/review.md:262,381-394`, `triage.md:9-13,153-157,162-166`, `resolve_todo_parallel.md:22-25,49-51`, `skills/land-pr/SKILL.md:175`, `skills/setup/SKILL.md:124,151,167,175-182`, `skills/file-todos/SKILL.md:67-68,196-204` + template `linear_id`, `scripts/workflow-repo-preflight.py`, `scripts/plan-tracker-guard.py`
-- [ ] Docs: plugin README (93–101, 129–132, 165), root README (37), `docs/index.html:877`, `docs/pages/getting-started.html:210-213` (manual); `bun run docs:build`; fix dangling `../linear-sync/SKILL.md` link in file-todos
-- [ ] Counts **31→27 commands, 23→22 skills** in plugin.json + marketplace.json descriptions + all four README/index stat locations; version → 3.0.0 both files; CHANGELOG `[Unreleased]` breaking-change entry
-- [ ] `bun test` + `python3 -m unittest discover -s plugins/agentic-engineering/tests` green
+- [x] Delete `commands/linear-{import,pull,status,sync}.md`; delete `skills/linear-sync/`
+- [x] Delete `src/commands/linear.ts`, `src/sync/linear.ts`, `src/sync/linear-api.ts`, `src/types/linear.ts`; unwire `src/index.ts:7,20` (leave `tests/pi-writer.test.ts` — unrelated MCP fixture)
+- [x] Strip Linear branches from kept files: `workflows/work.md:94-99,460-464`, `workflows/plan.md:179-180,641-649`, `workflows/review.md:262,381-394`, `triage.md:9-13,153-157,162-166`, `resolve_todo_parallel.md:22-25,49-51`, `skills/land-pr/SKILL.md:175`, `skills/setup/SKILL.md:124,151,167,175-182`, `skills/file-todos/SKILL.md:67-68,196-204` + template `linear_id`, `scripts/workflow-repo-preflight.py`, `scripts/plan-tracker-guard.py` (also removed the now-moot `issue_tracker_ambiguous`/`linear_api_key_present` preflight fields and their consumers)
+- [x] Docs: plugin README (93–101, 129–132, 165), root README (37), `docs/index.html:877`, `docs/pages/getting-started.html:210-213` (manual); `bun run docs:build`; fix dangling `../linear-sync/SKILL.md` link in file-todos (removed with its section)
+- [x] Counts **31→27 commands, 23→22 skills** in plugin.json + marketplace.json descriptions + all four README/index stat locations; version → 3.0.0 both files; CHANGELOG `[Unreleased] — 3.0.0` breaking-change entry
+- [x] `bun test` (378 pass) + `python3 -m unittest discover -s plugins/agentic-engineering/tests -p '*_test.py'` (14 pass) green
 
 ### Phase 2: lifecycle_board module, preflight, guard, hooks (Python — tiered tests)
 
