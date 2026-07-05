@@ -5,7 +5,11 @@ All notable changes to the agentic-engineering plugin will be documented in this
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [Unreleased] — 3.0.0
+
+### Removed
+
+- **BREAKING: Linear support removed entirely** (part 1 of the unified-lifecycle work, issue #39). Deleted the four `/linear:*` commands (`sync`, `status`, `import`, `pull`), the `linear-sync` skill, and the `agentic-plugin linear` CLI (~1,650 lines of TypeScript: `src/commands/linear.ts`, `src/sync/linear.ts`, `src/sync/linear-api.ts`, `src/types/linear.ts`). The issue-tracker resolution chain is now `beads | github | none` — `LINEAR_API_KEY` is no longer consulted, the `issue_tracker_ambiguous` / `linear_api_key_present` preflight fields are gone, and `linear_issue:` is no longer accepted by the plan-tracker-guard Stop hook (use `bead_id:` or `github_issue:`). Todo-file frontmatter drops `linear_id` / `linear_synced_at`. Every workflow command's Linear dispatch branch (work, plan, review, triage, resolve_todo_parallel, land-pr, setup, file-todos, merge) was removed rather than deprecated: unused dispatch branches are untested surface where faithfulness dies silently. Migration: existing plans with `linear_issue:` frontmatter should add a `github_issue:` (or `bead_id:`) on next touch; git history is the archive if Linear support is ever needed as a companion plugin. Counts: 31→27 commands, 23→22 skills.
 
 ### Changed
 

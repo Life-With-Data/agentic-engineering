@@ -4,7 +4,6 @@ priority: p2
 issue_id: "XXX"
 tags: []
 dependencies: []
-linear_id: ""
 ---
 
 # Brief Task Title

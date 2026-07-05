@@ -165,7 +165,7 @@ In `--steer`/`--careful`: let `/workflows:brainstorm` run its own approach explo
 After the plan file is written and its tracker issue is created, **stop**. Show:
 
 ```
-✅ Plan ready — <plan_path>  (tracked as <bead_id|linear_issue|github_issue>)
+✅ Plan ready — <plan_path>  (tracked as <bead_id|github_issue>)
 
 What it builds:  <2–3 line summary>
 Approach:        <1 line>

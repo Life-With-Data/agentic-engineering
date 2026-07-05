@@ -9,9 +9,8 @@ explicit state instead of re-deriving it from prose instructions.
 Issue-tracker resolution order (first match wins):
   1. issue_tracker: field in agentic-engineering.local.md frontmatter (explicit override)
   2. .beads/ directory present in repo AND `bd` on PATH         -> "beads"
-  3. LINEAR_API_KEY environment variable set                    -> "linear"
-  4. `gh auth status` returns 0                                 -> "github"
-  5. otherwise                                                  -> "none"
+  3. `gh auth status` returns 0                                 -> "github"
+  4. otherwise                                                  -> "none"
 """
 
 from __future__ import annotations
@@ -134,56 +133,59 @@ def get_pr_context() -> dict[str, Any]:
     }
 
 
-VALID_TRACKERS = {"beads", "linear", "github", "none"}
+VALID_TRACKERS = {"beads", "github", "none"}
 
 
-def read_local_config_tracker(repo_root: str) -> Optional[str]:
-    """Read issue_tracker: field from agentic-engineering.local.md frontmatter if present."""
+def read_local_config_tracker(repo_root: str) -> tuple[Optional[str], Optional[str]]:
+    """Read issue_tracker: from agentic-engineering.local.md frontmatter.
+
+    Returns (valid_value, invalid_raw_value). An unrecognized value (e.g. a
+    stale ``linear`` override from before 3.0.0) is surfaced as the second
+    element instead of being silently ignored, so callers can tell the user
+    their pinned tracker no longer resolves.
+    """
     config_path = pathlib.Path(repo_root) / "agentic-engineering.local.md"
     if not config_path.is_file():
-        return None
+        return (None, None)
     try:
         text = config_path.read_text(encoding="utf-8")
     except OSError:
-        return None
+        return (None, None)
     if not text.startswith("---"):
-        return None
+        return (None, None)
     # Extract frontmatter block between leading --- and the next ---.
     match = re.match(r"^---\s*\n(.*?)\n---\s*(?:\n|$)", text, re.DOTALL)
     if not match:
-        return None
+        return (None, None)
     for line in match.group(1).splitlines():
         m = re.match(r"^\s*issue_tracker\s*:\s*([A-Za-z]+)\s*$", line)
         if m:
             value = m.group(1).lower()
             if value in VALID_TRACKERS:
-                return value
-            return None
-    return None
+                return (value, None)
+            return (None, value)
+    return (None, None)
 
 
 def resolve_issue_tracker(
     repo_root: str,
     beads_initialized: bool,
     beads_installed: bool,
-    linear_api_key_present: bool,
     gh_authenticated: bool,
 ) -> dict[str, Any]:
     """Apply the resolution chain and return both the decision and provenance."""
-    local_override = read_local_config_tracker(repo_root)
+    local_override, invalid_override = read_local_config_tracker(repo_root)
     if local_override is not None:
         return {
             "resolved": local_override,
             "source": "agentic-engineering.local.md",
             "local_override": local_override,
-            "ambiguous": False,
+            "local_override_invalid": None,
         }
 
     signals = []
     if beads_initialized and beads_installed:
         signals.append("beads")
-    if linear_api_key_present:
-        signals.append("linear")
     if gh_authenticated:
         signals.append("github")
 
@@ -196,9 +198,7 @@ def resolve_issue_tracker(
         "resolved": resolved,
         "source": "auto-detect" if signals else "default",
         "local_override": None,
-        # Ambiguous when beads wins but Linear also has a credential, since this is
-        # the most common surprise case for an existing Linear user.
-        "ambiguous": resolved == "beads" and linear_api_key_present,
+        "local_override_invalid": invalid_override,
     }
 
 
@@ -290,29 +290,33 @@ def main() -> int:
 
     beads_installed = shutil.which("bd") is not None
     beads_initialized = os.path.isdir(os.path.join(repo_root, ".beads"))
-    linear_api_key_present = bool(os.environ.get("LINEAR_API_KEY"))
     gh_authenticated = bool(data["github"].get("gh_authenticated"))
 
     tracker_info = resolve_issue_tracker(
         repo_root=repo_root,
         beads_initialized=beads_initialized,
         beads_installed=beads_installed,
-        linear_api_key_present=linear_api_key_present,
         gh_authenticated=gh_authenticated,
     )
 
     data["integrations"] = {
-        "linear_api_key_present": linear_api_key_present,
         "todos_dir_exists": os.path.isdir(os.path.join(repo_root, "todos")),
         "beads_installed": beads_installed,
         "beads_initialized": beads_initialized,
         "beads_remember_available": beads_installed,
         "github_cli_authed": gh_authenticated,
         "issue_tracker_local_config": tracker_info["local_override"],
+        "issue_tracker_local_config_invalid": tracker_info["local_override_invalid"],
         "issue_tracker_resolved": tracker_info["resolved"],
         "issue_tracker_source": tracker_info["source"],
-        "issue_tracker_ambiguous": tracker_info["ambiguous"],
     }
+    if tracker_info["local_override_invalid"]:
+        print(
+            "warning: agentic-engineering.local.md pins issue_tracker: "
+            f"'{tracker_info['local_override_invalid']}', which is not a valid tracker "
+            f"({' | '.join(sorted(VALID_TRACKERS))}); falling back to auto-detect",
+            file=sys.stderr,
+        )
 
     data["recommendation"] = build_recommendation(
         current_branch=current_branch,
