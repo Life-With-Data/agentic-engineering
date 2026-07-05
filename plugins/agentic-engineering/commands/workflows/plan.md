@@ -176,7 +176,6 @@ Every plan exiting `/workflows:plan` must record exactly one of:
 
 ```
 bead_id: bd-NNN          # when issue_tracker == "beads"
-linear_issue: ENG-NNN    # when issue_tracker == "linear"
 github_issue: 123        # when issue_tracker == "github"
 ```
 
@@ -606,7 +605,7 @@ Examples:
 
 ## Step 7. Create Tracker Issue (MANDATORY)
 
-**This step is a gate, not an option.** Every plan that exits `/workflows:plan` must have a tracker issue recorded in its frontmatter (`bead_id`, `linear_issue`, or `github_issue`). This step runs unconditionally — including in LFG/SLFG/`disable-model-invocation` pipeline mode. Only `AskUserQuestion` calls are skipped in pipeline mode; tracker creation itself still executes.
+**This step is a gate, not an option.** Every plan that exits `/workflows:plan` must have a tracker issue recorded in its frontmatter (`bead_id` or `github_issue`). This step runs unconditionally — including in LFG/SLFG/`disable-model-invocation` pipeline mode. Only `AskUserQuestion` calls are skipped in pipeline mode; tracker creation itself still executes.
 
 **Resolve the issue tracker first** — run the preflight script and read `integrations.issue_tracker_resolved`:
 
@@ -618,7 +617,6 @@ Print a one-line banner before acting:
 ```
 Tracker: <resolved> (<source>)
 ```
-If `integrations.issue_tracker_ambiguous` is `true`, append: `— set issue_tracker: in agentic-engineering.local.md to override`.
 
 Then dispatch on `issue_tracker_resolved`:
 
@@ -638,16 +636,6 @@ Capture the returned bead ID (e.g. `bd-123`) and write it back into the plan fil
 
 If `bd` is not on PATH (which should not happen if preflight resolved to `beads`), STOP and surface the error — do not proceed to Post-Generation Options without a tracker ID.
 
-### `linear`
-
-```bash
-agentic-plugin linear create <plan_path>
-```
-
-Reads plan frontmatter, creates a Linear issue, writes `linear_issue:` back to the plan file.
-
-If `LINEAR_API_KEY` is not set (which should not happen if preflight resolved to `linear`), STOP and surface the error.
-
 ### `github`
 
 ```bash
@@ -660,7 +648,7 @@ Capture the returned issue number and write `github_issue: <N>` back into the pl
 
 Print:
 ```
-No issue tracker detected. Install `bd` (https://github.com/gastownhall/beads), set LINEAR_API_KEY, or run `gh auth login` to enable issue creation. Plan file is saved at <plan_path>.
+No issue tracker detected. Install `bd` (https://github.com/gastownhall/beads) or run `gh auth login` to enable issue creation. Plan file is saved at <plan_path>.
 ```
 
 This is the only path that may exit Step 7 without writing a tracker ID. When this happens, Post-Generation Options MUST surface the lack of tracking in its preamble and MUST NOT offer `/workflows:work` as a next step.
@@ -673,7 +661,7 @@ Verification of the recorded tracker ID happens once, at the top of Post-Generat
 
 **Precondition assertion (re-verify before opening any question):**
 
-Before presenting Question 1, re-read the plan file's YAML frontmatter and verify that exactly one of `bead_id`, `linear_issue`, or `github_issue` is populated — OR that Step 7 ran and resolved `issue_tracker == none` (the documented un-tracked carve-out).
+Before presenting Question 1, re-read the plan file's YAML frontmatter and verify that exactly one of `bead_id` or `github_issue` is populated — OR that Step 7 ran and resolved `issue_tracker == none` (the documented un-tracked carve-out).
 
 If none of those fields exist and Step 7 did not record an explicit `none` resolution, **STOP** and re-run Step 7 (Create Tracker Issue). Do not advance to the questions below until either a tracker ID is in the frontmatter or the `none` carve-out is confirmed. This guards against agents that skip Step 7 or fail it silently.
 
@@ -687,7 +675,7 @@ Then use the **AskUserQuestion tool** to present these options:
 
 **Question 1 preamble — pick the right phrasing based on the recorded tracker:**
 
-- If a tracker ID is present: `"Plan ready at docs/plans/YYYY-MM-DD-<type>-<name>-plan.md (tracked as <bead_id|linear_issue|github_issue>, opened in editor). What would you like to do next?"`
+- If a tracker ID is present: `"Plan ready at docs/plans/YYYY-MM-DD-<type>-<name>-plan.md (tracked as <bead_id|github_issue>, opened in editor). What would you like to do next?"`
 - If `issue_tracker == none` carve-out: `"Plan ready at docs/plans/YYYY-MM-DD-<type>-<name>-plan.md (UNTRACKED — no issue tracker detected). What would you like to do next?"`
 
 **Options (4 max):**

@@ -90,15 +90,14 @@ Core workflow commands use `workflows:` prefix to avoid collisions with built-in
 
 #### Issue tracker
 
-The workflow commands auto-detect an issue tracker (`beads | linear | github | none`) at startup and dispatch accordingly. Resolution order (first match wins):
+The workflow commands auto-detect an issue tracker (`beads | github | none`) at startup and dispatch accordingly. Resolution order (first match wins):
 
 1. Explicit `issue_tracker:` in `agentic-engineering.local.md` frontmatter
 2. `.beads/` directory in repo + `bd` on PATH → `beads`
-3. `LINEAR_API_KEY` env var → `linear`
-4. `gh auth status` succeeds → `github`
-5. else → `none`
+3. `gh auth status` succeeds → `github`
+4. else → `none`
 
-For `beads`, `bd` replaces TodoWrite in `/workflows:work` and `todos/*.md` in `/workflows:review`. For `linear`/`github`/`none`, TodoWrite and the `file-todos` skill are used unchanged. To pin a tracker, run the `setup` skill or add `issue_tracker: linear` (or `beads`, etc.) to your project's `agentic-engineering.local.md`.
+For `beads`, `bd` replaces TodoWrite in `/workflows:work` and `todos/*.md` in `/workflows:review`. For `github`/`none`, TodoWrite and the `file-todos` skill are used unchanged. To pin a tracker, run the `setup` skill or add `issue_tracker: beads` (or `github`, `none`) to your project's `agentic-engineering.local.md`.
 
 ### Utility Commands
 
@@ -126,10 +125,6 @@ For `beads`, `bd` replaces TodoWrite in `/workflows:work` and `todos/*.md` in `/
 | `/upstream-scan` | Scan registered upstream repos for adoptable components and report candidates |
 | `/analyze-source` | Evaluate any external resource (X post, blog, repo, tool) and return one verdict — author locally, track upstream, new plugin, install-alongside, or skip |
 | `/deploy-docs` | Validate and prepare documentation for GitHub Pages deployment |
-| `/linear:sync` | Bidirectional sync between file todos and Linear |
-| `/linear:status` | Show sync status between file todos and Linear |
-| `/linear:import` | Import a Linear issue as a local todo file |
-| `/linear:pull` | Pull Linear changes into local todo files |
 
 ## Skills
 
@@ -162,7 +157,6 @@ For `beads`, `bd` replaces TodoWrite in `/workflows:work` and `todos/*.md` in `/
 | `file-todos` | File-based todo tracking system |
 | `git-worktree` | Manage Git worktrees for parallel development |
 | `land-pr` | Drive an open PR through CI, review threads, and approval to merge |
-| `linear-sync` | Bidirectional sync between file-based todos and Linear |
 | `resolve-pr-parallel` | Resolve PR review comments in parallel |
 | `setup` | Configure which review agents run for your project |
 

@@ -121,7 +121,7 @@ Run the preflight script to discover the auto-detected tracker:
 TRACKER=$(python3 "${CLAUDE_PLUGIN_ROOT}/scripts/workflow-repo-preflight.py" 2>/dev/null | jq -r '.integrations.issue_tracker_resolved // "none"')
 ```
 
-If `TRACKER` is `beads`, `linear`, `github`, or `none`, record it in the generated config (next step). The auto-detect chain — `.beads/ + bd` → beads, `LINEAR_API_KEY` → linear, `gh auth` → github, else none — runs every time the workflows are invoked, but recording the explicit value makes resolution deterministic and survives env-var drift.
+If `TRACKER` is `beads`, `github`, or `none`, record it in the generated config (next step). The auto-detect chain — `.beads/ + bd` → beads, `gh auth` → github, else none — runs every time the workflows are invoked, but recording the explicit value makes resolution deterministic.
 
 ## Step 4: Build Agent List and Write File
 
@@ -148,7 +148,7 @@ Write `agentic-engineering.local.md`:
 
 ```markdown
 ---
-issue_tracker: {detected tracker}    # beads | linear | github | none
+issue_tracker: {detected tracker}    # beads | github | none
 review_agents: [{computed agent list}]
 plan_review_agents: [{computed plan agent list}]
 ---
@@ -164,7 +164,7 @@ Examples:
 - "Performance-critical: we serve 10k req/s on this endpoint"
 ```
 
-If the auto-detect resolved an unambiguous tracker, write that value. If the detection was ambiguous (both `.beads/` and `LINEAR_API_KEY` present — preflight reports `integrations.issue_tracker_ambiguous`), surface that to the user via AskUserQuestion and let them pick.
+Write the auto-detected value.
 
 ## Step 5: Confirm
 
@@ -172,12 +172,12 @@ If the auto-detect resolved an unambiguous tracker, write that value. If the det
 Saved to agentic-engineering.local.md
 
 Stack:         {type}
-Issue tracker: {tracker}    # beads, linear, github, or none
+Issue tracker: {tracker}    # beads, github, or none
 Review depth:  {depth}
 Agents:        {count} configured
                {agent list, one per line}
 
 Tip: Edit the "Review Context" section to add project-specific instructions.
-     Change issue_tracker: in the frontmatter to switch trackers (beads, linear, github, none).
+     Change issue_tracker: in the frontmatter to switch trackers (beads, github, none).
      Re-run this setup anytime to reconfigure.
 ```

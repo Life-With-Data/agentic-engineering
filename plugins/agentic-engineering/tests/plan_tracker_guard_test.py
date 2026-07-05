@@ -114,7 +114,7 @@ class PlanTrackerGuardTest(unittest.TestCase):
 
     def test_blocks_on_template_placeholders(self) -> None:
         plan = self._make_plan(
-            "placeholder.md", "title: tpl\nbead_id: bd-NNN\nlinear_issue: ENG-NNN"
+            "placeholder.md", "title: tpl\nbead_id: bd-NNN"
         )
         transcript = _write_transcript(
             self.cwd, [{"name": "Write", "input": {"file_path": str(plan)}}]

@@ -34,7 +34,7 @@ Two ways to run the loop without babysitting it:
 
 📊 **[See FLOWS.md](plugins/agentic-engineering/FLOWS.md)** for mermaid diagrams of every flow and where the orchestrator pauses for you.
 
-The workflows auto-detect your issue tracker — [beads](https://github.com/gastownhall/beads), Linear, GitHub Issues, or none — and adapt their bookkeeping accordingly.
+The workflows auto-detect your issue tracker — [beads](https://github.com/gastownhall/beads), GitHub Issues, or none — and adapt their bookkeeping accordingly.
 
 ## Install
 

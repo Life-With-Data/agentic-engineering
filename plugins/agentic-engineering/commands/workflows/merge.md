@@ -15,7 +15,7 @@ logic — it delegates entirely to the [`land-pr`](../../skills/land-pr/SKILL.md
 - confirms the PR was independently reviewed and is mergeable,
 - merges and cleans up (deletes the branch, fast-forwards the local default branch), and
 - idempotently closes the corresponding tracker item — dispatching on the resolved issue tracker
-  (`beads` / `linear` / `github` / `none`).
+  (`beads` / `github` / `none`).
 
 ## Run
 

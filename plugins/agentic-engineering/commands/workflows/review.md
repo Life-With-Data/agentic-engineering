@@ -257,9 +257,9 @@ for finding in <findings>:
 done
 ```
 
-After all beads are created, jump to **Step 3: Summary Report** below — Step 2b (Linear push) is not needed for beads since state already lives in git via `refs/dolt/data`.
+After all beads are created, jump to **Step 3: Summary Report** below.
 
-**When `TRACKER` is `linear`, `github`, or `none`** — use the file-todos skill path documented below. (This is the original behavior; Linear users get identical output to today.)
+**When `TRACKER` is `github` or `none`** — use the file-todos skill path documented below. (This is the original behavior.)
 
 <critical_instruction> Use the file-todos skill to create todo files for ALL findings immediately. Do NOT present findings one-by-one asking for user approval. Create all todo files in parallel using the skill, then summarize results to user. </critical_instruction>
 
@@ -377,21 +377,6 @@ Examples:
 - `p3` - Nice-to-have (enhancements, cleanup)
 
 **Tagging:** Always add `code-review` tag, plus: `security`, `performance`, `architecture`, `rails`, `quality`, etc.
-
-#### Step 2b: Push Todos to Linear
-
-**Only run this step when `TRACKER == "linear"`.** For `beads`, findings are already tracked via `bd` (state lives in git). For `github` and `none`, skip.
-
-After creating all todo files, push them to Linear for tracking:
-
-```bash
-# For each newly created todo file with no linear_id:
-agentic-plugin linear create <file-path> [--parent <plan-linear-issue>]
-```
-
-If the plan that triggered this review has a `linear_issue` field in its frontmatter, use it as the `--parent` for all created todos so they appear as sub-issues in Linear.
-
-This step silently skips if `LINEAR_API_KEY` is not set.
 
 #### Step 3: Summary Report
 

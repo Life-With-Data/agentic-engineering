@@ -103,7 +103,7 @@ flowchart TD
 
 ## /workflows:plan — decide HOW to build it
 
-Tracker-issue creation (Step 7) is a hard gate enforced by the `plan-tracker-guard` Stop hook: the plan cannot exit without a `bead_id` / `linear_issue` / `github_issue` (or an explicit `issue_tracker: none`).
+Tracker-issue creation (Step 7) is a hard gate enforced by the `plan-tracker-guard` Stop hook: the plan cannot exit without a `bead_id` / `github_issue` (or an explicit `issue_tracker: none`).
 
 ```mermaid
 flowchart TD
@@ -157,7 +157,7 @@ flowchart TD
 
 ## /workflows:work — execute the plan and ship a PR
 
-Tracker-aware (beads / Linear / GitHub / none) and supports three execution styles: **inline** (default), **orchestrated** (one sub-agent per bead), and **swarm** (parallel teammates).
+Tracker-aware (beads / GitHub / none) and supports three execution styles: **inline** (default), **orchestrated** (one sub-agent per bead), and **swarm** (parallel teammates).
 
 ```mermaid
 flowchart TD

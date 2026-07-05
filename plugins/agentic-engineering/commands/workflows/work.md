@@ -41,18 +41,15 @@ This command takes a work document (plan, specification, or todo file) and execu
    - `repo.default_branch`
    - `repo.working_tree_dirty`
    - `github.current_branch_pr` (if `gh` is installed/authenticated)
-   - `integrations.linear_api_key_present`
    - `integrations.beads_installed`, `integrations.beads_initialized`
-   - `integrations.issue_tracker_resolved` — one of `beads | linear | github | none`
+   - `integrations.issue_tracker_resolved` — one of `beads | github | none`
    - `integrations.issue_tracker_source` — `agentic-engineering.local.md`, `auto-detect`, or `default`
-   - `integrations.issue_tracker_ambiguous` — `true` when both `.beads/` and `LINEAR_API_KEY` are present
    - `recommendation.action` and `recommendation.prompt`
 
    Print a one-line tracker banner before continuing:
    ```
    Tracker: <issue_tracker_resolved> (<issue_tracker_source>)
    ```
-   If `issue_tracker_ambiguous` is `true`, append: `— set issue_tracker: in agentic-engineering.local.md to override`.
 
    Follow `recommendation.action` rather than re-deriving state manually.
 
@@ -91,12 +88,6 @@ This command takes a work document (plan, specification, or todo file) and execu
    Dispatch on `integrations.issue_tracker_resolved`:
 
    - **`beads`**: `bd dolt pull` (no-op if no Dolt remote is configured).
-   - **`linear`**:
-     ```bash
-     agentic-plugin linear pull --todos-dir ./todos
-     agentic-plugin linear push --file <plan-or-todo-path>
-     ```
-     Silently skips if `LINEAR_API_KEY` is not set.
    - **`github`**: no sync step.
    - **`none`**: skip.
 
@@ -122,7 +113,7 @@ This command takes a work document (plan, specification, or todo file) and execu
      ```
      Do **not** use TodoWrite when tracker is `beads` — `bd ready` supersedes it.
 
-   - **`linear` / `github` / `none`** — use TodoWrite (existing behavior):
+   - **`github` / `none`** — use TodoWrite (existing behavior):
      - Break the plan into actionable tasks
      - Include dependencies between tasks
      - Prioritize based on what needs to be done first
@@ -131,7 +122,7 @@ This command takes a work document (plan, specification, or todo file) and execu
 
 ### Phase 2: Execute
 
-**Choose your execution model first** (applies to any tracker — beads, Linear, or file-todos):
+**Choose your execution model first** (applies to any tracker — beads or file-todos):
 
 | Model | Use when | How it runs |
 |-------|----------|-------------|
@@ -184,7 +175,7 @@ Even a **single** tracked issue benefits from Orchestrated Execution — the orc
 
    Do not close `$PLAN_BEAD` here under any condition. Phase 4 owns its close, after the PR is created.
 
-   **When tracker is `linear`, `github`, or `none`** — use the existing TodoWrite-driven loop:
+   **When tracker is `github` or `none`** — use the existing TodoWrite-driven loop:
    ```
    while (tasks remain):
      - Mark task as in_progress in TodoWrite
@@ -457,11 +448,6 @@ Even a **single** tracked issue benefits from Orchestrated Execution — the orc
      bd close "$PLAN_BEAD" --reason="PR #${PR_NUM}: ${PR_URL}"
      bd dolt push   # no-op if Dolt remote unconfigured
      ```
-   - **`linear`**:
-     ```bash
-     agentic-plugin linear push --file <plan-or-todo-path>
-     ```
-     Silently skips if `LINEAR_API_KEY` is not set.
    - **`github`**:
      ```bash
      gh issue close <issue-number> --comment "PR #${PR_NUM}: ${PR_URL}"
@@ -484,7 +470,7 @@ Even a **single** tracked issue benefits from Orchestrated Execution — the orc
 
 ## Orchestrated Execution (tracker-driven)
 
-An execution style — available for **any tracker** (beads, Linear, or file-todos) — where instead
+An execution style — available for **any tracker** (beads or file-todos) — where instead
 of implementing each issue yourself inline, you act as the **orchestrator**: you own the tracker's
 state machine and delegate the actual implementation to **one focused subagent per issue**, looping
 each issue to a terminal state before returning to the user. It works for a **single issue or a
@@ -492,7 +478,7 @@ whole set**.
 
 The lifecycle is identical across trackers; only the verbs differ — see **Tracker bindings** below.
 The procedure in this section is written with beads verbs (the most expressive case, with its
-parent-vs-child and Phase-4 close rules); for Linear or file-todos, substitute the equivalent action
+parent-vs-child and Phase-4 close rules); for file-todos, substitute the equivalent action
 from the bindings table.
 
 Worth it even for one issue: the orchestrator absorbs the iteration (retry on failed gates, verify
@@ -507,18 +493,18 @@ the set is large and highly parallel.
 
 ### Tracker bindings (same lifecycle, different verbs)
 
-| Action | beads (`bd`) | Linear | file-todos |
-|--------|--------------|--------|------------|
-| List ready | `bd ready` | issues in "Todo", unblocked | the TodoWrite list |
-| Read one | `bd show <id>` | get issue | the todo entry |
-| Claim | `bd update <id> --claim` | set "In Progress" + assignee | mark `in_progress` |
-| Close | `bd close <id> --reason="…" --suggest-next` | set "Done" + comment | mark `completed`, check off the plan |
-| Block / needs human | `bd update <id> --status=blocked --notes="…"` + `bd label add <id> human` | set "Blocked" + comment, label needs-decision | note the blocker + tell the user |
-| Add follow-on (gates parent) | `bd create … --deps discovered-from:<id>` then `bd dep add <parent> <new>` | create sub-issue / blocking relation | add a todo + dependency note |
+| Action | beads (`bd`) | file-todos |
+|--------|--------------|------------|
+| List ready | `bd ready` | the TodoWrite list |
+| Read one | `bd show <id>` | the todo entry |
+| Claim | `bd update <id> --claim` | mark `in_progress` |
+| Close | `bd close <id> --reason="…" --suggest-next` | mark `completed`, check off the plan |
+| Block / needs human | `bd update <id> --status=blocked --notes="…"` + `bd label add <id> human` | note the blocker + tell the user |
+| Add follow-on (gates parent) | `bd create … --deps discovered-from:<id>` then `bd dep add <parent> <new>` | add a todo + dependency note |
 
 Only the **orchestrator** runs these state changes — subagents never touch tracker state. The
 beads parent-vs-child convention (child issues close in the loop; the parent/standalone bead closes
-in **Phase 4** after the PR) is beads-specific: Linear and file-todos have no separate "ship the PR"
+in **Phase 4** after the PR) is beads-specific: file-todos has no separate "ship the PR"
 close event, so close each issue as soon as its acceptance criteria are met and gates pass.
 
 ### Terminal conditions (a bead is "done" when ONE holds)
@@ -573,7 +559,7 @@ report "done" while a ready bead is unstarted or a follow-on is open.
 You are implementing exactly one tracked issue. Do ONLY this issue.
 
 ISSUE: <id> — <title>
-<paste the full issue (bead / Linear issue / todo): description, design notes, acceptance criteria, dependencies>
+<paste the full issue (bead / todo): description, design notes, acceptance criteria, dependencies>
 
 CONTEXT:
 - Repo + relevant existing files (the design names them); patterns to mirror

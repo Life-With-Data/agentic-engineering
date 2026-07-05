@@ -9,9 +9,8 @@ explicit state instead of re-deriving it from prose instructions.
 Issue-tracker resolution order (first match wins):
   1. issue_tracker: field in agentic-engineering.local.md frontmatter (explicit override)
   2. .beads/ directory present in repo AND `bd` on PATH         -> "beads"
-  3. LINEAR_API_KEY environment variable set                    -> "linear"
-  4. `gh auth status` returns 0                                 -> "github"
-  5. otherwise                                                  -> "none"
+  3. `gh auth status` returns 0                                 -> "github"
+  4. otherwise                                                  -> "none"
 """
 
 from __future__ import annotations
@@ -134,7 +133,7 @@ def get_pr_context() -> dict[str, Any]:
     }
 
 
-VALID_TRACKERS = {"beads", "linear", "github", "none"}
+VALID_TRACKERS = {"beads", "github", "none"}
 
 
 def read_local_config_tracker(repo_root: str) -> Optional[str]:
@@ -166,7 +165,6 @@ def resolve_issue_tracker(
     repo_root: str,
     beads_initialized: bool,
     beads_installed: bool,
-    linear_api_key_present: bool,
     gh_authenticated: bool,
 ) -> dict[str, Any]:
     """Apply the resolution chain and return both the decision and provenance."""
@@ -176,14 +174,11 @@ def resolve_issue_tracker(
             "resolved": local_override,
             "source": "agentic-engineering.local.md",
             "local_override": local_override,
-            "ambiguous": False,
         }
 
     signals = []
     if beads_initialized and beads_installed:
         signals.append("beads")
-    if linear_api_key_present:
-        signals.append("linear")
     if gh_authenticated:
         signals.append("github")
 
@@ -196,9 +191,6 @@ def resolve_issue_tracker(
         "resolved": resolved,
         "source": "auto-detect" if signals else "default",
         "local_override": None,
-        # Ambiguous when beads wins but Linear also has a credential, since this is
-        # the most common surprise case for an existing Linear user.
-        "ambiguous": resolved == "beads" and linear_api_key_present,
     }
 
 
@@ -290,19 +282,16 @@ def main() -> int:
 
     beads_installed = shutil.which("bd") is not None
     beads_initialized = os.path.isdir(os.path.join(repo_root, ".beads"))
-    linear_api_key_present = bool(os.environ.get("LINEAR_API_KEY"))
     gh_authenticated = bool(data["github"].get("gh_authenticated"))
 
     tracker_info = resolve_issue_tracker(
         repo_root=repo_root,
         beads_initialized=beads_initialized,
         beads_installed=beads_installed,
-        linear_api_key_present=linear_api_key_present,
         gh_authenticated=gh_authenticated,
     )
 
     data["integrations"] = {
-        "linear_api_key_present": linear_api_key_present,
         "todos_dir_exists": os.path.isdir(os.path.join(repo_root, "todos")),
         "beads_installed": beads_installed,
         "beads_initialized": beads_initialized,
@@ -311,7 +300,6 @@ def main() -> int:
         "issue_tracker_local_config": tracker_info["local_override"],
         "issue_tracker_resolved": tracker_info["resolved"],
         "issue_tracker_source": tracker_info["source"],
-        "issue_tracker_ambiguous": tracker_info["ambiguous"],
     }
 
     data["recommendation"] = build_recommendation(

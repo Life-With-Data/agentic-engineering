@@ -172,7 +172,6 @@ git branch -d <feature-branch>   # safe-delete; already merged
 if it is still open:
 
 - **beads** — `bd show "$PLAN_BEAD"`; if still open, `bd close "$PLAN_BEAD" --reason="merged PR #${PR_NUM}"` then `bd dolt push`.
-- **Linear** — `agentic-plugin linear push --file <plan-or-todo-path>` (silently skips without `LINEAR_API_KEY`).
 - **GitHub issues** — `gh issue close <n> --comment "merged PR #${PR_NUM}"` if still open.
 - **file-todos** — ensure the plan's checkboxes are checked and its frontmatter `status:` is `completed`.
 
