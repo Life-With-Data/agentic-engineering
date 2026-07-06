@@ -160,6 +160,11 @@ class GhFlagSurfaceTest(unittest.TestCase):
         proc = _run_gh(
             ["issue", "list", "--repo", REPO, "--json", "bogusfield"]
         )
+        if "GH_TOKEN" in proc.stderr and "set the GH_TOKEN" in proc.stderr:
+            # In Actions, gh aborts before flag validation when no token is
+            # wired at all — CI sets GH_TOKEN, but keep local unauthed runs
+            # honest with a loud skip instead of a false failure.
+            self.skipTest("gh requires GH_TOKEN in this environment before evaluating flags")
         self.assertNotEqual(
             proc.returncode,
             0,

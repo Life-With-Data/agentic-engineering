@@ -40,10 +40,14 @@ jobs:
           gh --version
 
       # gh_contract_test.py has two legs:
-      #   (a) flag-surface pinning — runs here against the pinned gh, no auth;
-      #   (b) read-only JSON-shape probes — auto-SKIP when `gh auth status`
-      #       fails. CI's default GITHUB_TOKEN cannot satisfy `gh auth status`
-      #       without extra setup, so leg (b) skips here by design. We do NOT
-      #       wire a token — the flag-surface leg is the contract CI must hold.
+      #   (a) flag-surface pinning — help-text assertions against the pinned gh;
+      #   (b) read-only JSON-shape probes against this repo's own history.
+      # GH_TOKEN is required for BOTH in Actions: gh refuses to run at all
+      # without a token there (verified in CI: even `gh issue list --json
+      # bogusfield` aborts with "set the GH_TOKEN environment variable" before
+      # evaluating flags). GITHUB_TOKEN can read issues/PRs — only Projects v2
+      # writes are beyond it, and nothing here writes.
       - name: Run Python hook tests
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: python3 -m unittest discover -s plugins/agentic-engineering/tests -p '*_test.py'
