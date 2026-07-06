@@ -1041,6 +1041,43 @@ def verb_reconcile(ctx: RepoContext, runner: GhRunner, issue: Optional[int] = No
 
 
 # --------------------------------------------------------------------------
+# Board <-> repo link. Projects v2 boards are owned by a user/org and *linked*
+# to repos — the link is what surfaces the board on the repo's Projects tab and
+# enables repo-scoped features (auto-add-from-repo). Board *resolution* only
+# needs owner+number, so a missing link is a discoverability gap (WARN), never
+# a hard error. Shared by the bootstrap link step and the doctor check.
+# --------------------------------------------------------------------------
+
+PROJECT_REPOS_QUERY = (
+    "query($owner: String!, $number: Int!) {\n"
+    "  repositoryOwner(login: $owner) {\n"
+    "    ... on User { projectV2(number: $number) { repositories(first: 100) { nodes { nameWithOwner } } } }\n"
+    "    ... on Organization { projectV2(number: $number) { repositories(first: 100) { nodes { nameWithOwner } } } }\n"
+    "  }\n"
+    "}"
+)
+
+
+def project_linked_repos(owner: str, number: int, runner: GhRunner) -> "Optional[list[str]]":
+    """Return the `owner/repo` slugs linked to the board, or None if the query
+    could not be read (callers treat None as 'unknown' — the doctor SKIPs, the
+    bootstrap still attempts the link). Owner may be a User or an Organization;
+    one repositoryOwner lookup covers both (organization(login:) on a user
+    account is a hard GraphQL error, mirroring the workflows query)."""
+    result = runner(["api", "graphql", "-f", f"query={PROJECT_REPOS_QUERY}",
+                     "-F", f"owner={owner}", "-F", f"number={number}"])
+    if result.returncode != 0:
+        return None
+    try:
+        payload = json.loads(result.stdout or "{}")
+    except json.JSONDecodeError:
+        return None
+    node = ((payload.get("data") or {}).get("repositoryOwner") or {}).get("projectV2") or {}
+    nodes = (node.get("repositories") or {}).get("nodes") or []
+    return [n.get("nameWithOwner", "") for n in nodes if n.get("nameWithOwner")]
+
+
+# --------------------------------------------------------------------------
 # Doctor (report-everything mode over the same checks the hard-error paths use)
 # --------------------------------------------------------------------------
 
@@ -1118,6 +1155,17 @@ def verb_doctor(ctx: RepoContext, runner: GhRunner) -> dict:
                   "" if schema.priority_field_id else "Re-run bootstrap to add it")
         except BoardError as exc:
             check("status_options", "FAIL", str(exc), exc.fix)
+        # Board <-> repo link (discoverability; a missing link never blocks work).
+        if authed and ctx.origin_owner:
+            linked = project_linked_repos(board.owner, board.number, runner)
+            if linked is None:
+                check("board_repo_link", "SKIP", "could not read the board's linked repositories")
+            elif ctx.slug in linked:
+                check("board_repo_link", "PASS", f"linked to {ctx.slug}")
+            else:
+                check("board_repo_link", "WARN",
+                      f"board is not linked to {ctx.slug} — it won't appear on the repo's Projects tab",
+                      f"gh project link {board.number} --owner {board.owner} --repo {ctx.slug}")
 
     # Delivery topology (detection, not enforcement)
     if authed and ctx.origin_owner:

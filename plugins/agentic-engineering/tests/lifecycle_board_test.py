@@ -279,6 +279,35 @@ def _ok(stdout: str) -> "subprocess.CompletedProcess[str]":
     return subprocess.CompletedProcess(args=[], returncode=0, stdout=stdout, stderr="")
 
 
+class ProjectLinkedReposTest(unittest.TestCase):
+    """The shared board<->repo link reader used by both the doctor check and
+    the bootstrap link step."""
+
+    @staticmethod
+    def _payload(slugs):
+        nodes = [{"nameWithOwner": s} for s in slugs]
+        return json.dumps({"data": {"repositoryOwner": {"projectV2": {
+            "repositories": {"nodes": nodes}}}}})
+
+    def test_parses_linked_slugs(self) -> None:
+        runner = FakeRunner([(["api", "graphql"], _ok(self._payload(["o/r", "o/other"])))])
+        self.assertEqual(lb.project_linked_repos("o", 5, runner), ["o/r", "o/other"])
+        # Uses the owner-type-agnostic repositoryOwner query, not organization(login:).
+        query = runner.calls[0][runner.calls[0].index("-f") + 1]
+        self.assertIn("repositoryOwner(login: $owner)", query)
+        self.assertIn("... on User", query)
+        self.assertIn("... on Organization", query)
+
+    def test_empty_when_no_repos_linked(self) -> None:
+        runner = FakeRunner([(["api", "graphql"], _ok(self._payload([])))])
+        self.assertEqual(lb.project_linked_repos("o", 5, runner), [])
+
+    def test_none_on_query_failure(self) -> None:
+        fail = subprocess.CompletedProcess(args=[], returncode=1, stdout="", stderr="boom")
+        runner = FakeRunner([(["api", "graphql"], fail)])
+        self.assertIsNone(lb.project_linked_repos("o", 5, runner))
+
+
 class CallBudgetTest(unittest.TestCase):
     """Ready-work is 2 gh calls at ANY board size (the bd-ready replacement)."""
 

@@ -27,6 +27,9 @@ The whole flow, in order (see the plan's Phase 4 bootstrap bullet):
   7. Disable the "Item reopened" workflow (`deleteProjectV2Workflow`) — it
      would stamp `stub` on reopen, erasing lifecycle position. Verify
      "Item closed" is enabled (WARN if not).
+  7b. Link the board to the origin repo (idempotent; non-fatal) so it appears
+     on the repo's Projects tab and can auto-add issues. Projects v2 boards are
+     owned by a user/org — linking is the only repo-level association there is.
   8. Write/refresh the COMMITTED `agentic-engineering.md` — create with the
      two board keys if missing, else update only those two keys in-place,
      preserving all other content byte-for-byte.
@@ -478,6 +481,35 @@ def configure_workflows(project: Project, ctx: "lb.RepoContext", runner: GhRunne
 
 
 # --------------------------------------------------------------------------
+# 7.5 Link the board to the origin repo. Projects v2 boards are owned by a
+# user/org and *linked* to repos; the link surfaces the board on the repo's
+# Projects tab and enables auto-add-from-repo. Board resolution never needs it
+# (owner+number is enough), so a link failure is a non-fatal warning, not an
+# abort. Idempotent: query the current links and skip the mutation if present.
+# --------------------------------------------------------------------------
+
+def link_repo(project: Project, ctx: "lb.RepoContext", runner: GhRunner) -> dict:
+    """Link the board to the origin repo unless it already is. Returns
+    {linked, already_linked, warning}. Never raises — the board is fully usable
+    unlinked, so failures degrade to a warning surfaced in the summary."""
+    linked = lb.project_linked_repos(ctx.origin_owner, project.number, runner)
+    if linked is not None and ctx.slug in linked:
+        return {"linked": False, "already_linked": True, "warning": None}
+    result = runner(["project", "link", str(project.number), "--owner", ctx.origin_owner,
+                     "--repo", ctx.slug])
+    if result.returncode != 0:
+        return {
+            "linked": False, "already_linked": False,
+            "warning": (
+                f"could not link the board to {ctx.slug}: {result.stderr.strip()[:200]} — the board "
+                f"still works unlinked; link it manually with "
+                f"`gh project link {project.number} --owner {ctx.origin_owner} --repo {ctx.slug}`"
+            ),
+        }
+    return {"linked": True, "already_linked": False, "warning": None}
+
+
+# --------------------------------------------------------------------------
 # 8. Committed config write (byte-for-byte preservation of unrelated content)
 # --------------------------------------------------------------------------
 
@@ -614,6 +646,7 @@ def bootstrap(ctx: "lb.RepoContext", runner: GhRunner, *, probe: bool = True,
     resulting_options = apply_status_options(status, options, runner)
     priority = ensure_priority_field(project, ctx, runner)
     workflows = configure_workflows(project, ctx, runner)
+    repo_link = link_repo(project, ctx, runner)
     config_path = write_committed_config(ctx.main_root, ctx.origin_owner, project.number)
 
     option_mapping = _summarize_mapping(status, options, kind)
@@ -628,10 +661,14 @@ def bootstrap(ctx: "lb.RepoContext", runner: GhRunner, *, probe: bool = True,
         "resulting_options": [o.get("name") for o in resulting_options],
         "priority_field": priority,
         "workflows": workflows,
+        "repo_link": repo_link,
         "config_path": config_path,
     }
-    if workflows.get("warnings"):
-        summary["warnings"] = list(workflows["warnings"])
+    warnings = list(workflows.get("warnings") or [])
+    if repo_link.get("warning"):
+        warnings.append(repo_link["warning"])
+    if warnings:
+        summary["warnings"] = warnings
     if probe:
         summary["probe"] = run_probe(project, ctx, runner)
     else:
