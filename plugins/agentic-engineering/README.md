@@ -7,8 +7,8 @@ AI-powered development tools that get smarter with every use. Make each unit of 
 | Component | Count |
 |-----------|-------|
 | Agents | 30 |
-| Commands | 27 |
-| Skills | 22 |
+| Commands | 28 |
+| Skills | 23 |
 | MCP Servers | 1 |
 
 > 📊 **[FLOWS.md](FLOWS.md)** — mermaid diagrams of every workflow (brainstorm → plan → work → review → compound) and how `/workflows:orchestrate` drives them.
@@ -90,14 +90,25 @@ Core workflow commands use `workflows:` prefix to avoid collisions with built-in
 
 #### Issue tracker
 
-The workflow commands auto-detect an issue tracker (`beads | github | none`) at startup and dispatch accordingly. Resolution order (first match wins):
+The workflow commands resolve one of three modes (`github-project | github | none`) at startup and dispatch accordingly:
 
-1. Explicit `issue_tracker:` in `agentic-engineering.local.md` frontmatter
-2. `.beads/` directory in repo + `bd` on PATH → `beads`
-3. `gh auth status` succeeds → `github`
-4. else → `none`
+- **`github-project`** — a committed board config (`github_project_owner:` + `github_project_number:` in `agentic-engineering.md` at the repo root) is present. This unlocks the full unified lifecycle: a GitHub Projects v2 board is the source of truth, every command gates on entry, and stage moves route through `scripts/lifecycle_board.py`. See the **Lifecycle** section below.
+- **`github`** — plain GitHub Issues + file-todos, today's semantics, no stage machinery and no board writes. Used when `gh` is authenticated but no board config is committed.
+- **`none`** — no `gh` authentication; TodoWrite and the `file-todos` skill are used unchanged.
 
-For `beads`, `bd` replaces TodoWrite in `/workflows:work` and `todos/*.md` in `/workflows:review`. For `github`/`none`, TodoWrite and the `file-todos` skill are used unchanged. To pin a tracker, run the `setup` skill or add `issue_tracker: beads` (or `github`, `none`) to your project's `agentic-engineering.local.md`.
+Beads is **not** a tracker mode. It remains an opt-in, non-authoritative implementer scratchpad — `bd remember` still works for disposable working state, but no gate ever reads a bead and nothing syncs. To configure the board, run the `setup` skill (which writes the committed config) or run the bootstrap script; to pin plain mode, add `issue_tracker: github` (or `none`) to your project's `agentic-engineering.local.md`.
+
+#### Lifecycle
+
+In `github-project` mode, every work item flows through nine stages on the board's built-in Status field:
+
+```
+stub → brainstormed → planned → in_progress → in_review → shipped
+                                                    ↓
+                              deployed / compounded (terminal refinements) · abandoned (off-ramp)
+```
+
+`deployed` and `compounded` are **order-independent** refinements of `shipped`; `abandoned` is reachable from any pre-terminal stage. Each transition has exactly one writer, and a shared reconciler applies a closed set of five repairs. The full vocabulary — stages, writer contracts, entry-gate verdicts, claim semantics, and security invariants — lives in the [`lifecycle` skill](skills/lifecycle/SKILL.md), which every workflow command loads. Humans and agents have parity: assign yourself and drag a card to `in_progress` (the drag is the claim), or run `--claim`; manual card order in views is decorative (the API cannot read it).
 
 ### Utility Commands
 
@@ -124,6 +135,7 @@ For `beads`, `bd` replaces TodoWrite in `/workflows:work` and `todos/*.md` in `/
 | `/ci-resolve-workflow-issues` | Diagnose and fix failing CI checks on a pull request |
 | `/upstream-scan` | Scan registered upstream repos for adoptable components and report candidates |
 | `/analyze-source` | Evaluate any external resource (X post, blog, repo, tool) and return one verdict — author locally, track upstream, new plugin, install-alongside, or skip |
+| `/lifecycle-doctor` | Verify the lifecycle board setup — toolchain, repo shape, board schema, delivery topology — and answer "ready for first work item: yes/no" (`--live` for the end-to-end probe) |
 | `/deploy-docs` | Validate and prepare documentation for GitHub Pages deployment |
 
 ## Skills
@@ -157,6 +169,7 @@ For `beads`, `bd` replaces TodoWrite in `/workflows:work` and `todos/*.md` in `/
 | `file-todos` | File-based todo tracking system |
 | `git-worktree` | Manage Git worktrees for parallel development |
 | `land-pr` | Drive an open PR through CI, review threads, and approval to merge |
+| `lifecycle` | The shared work-item lifecycle vocabulary — 9 stages, writer contracts, entry gates, claim semantics, and security invariants for the GitHub Projects v2 board |
 | `resolve-pr-parallel` | Resolve PR review comments in parallel |
 | `setup` | Configure which review agents run for your project |
 
@@ -215,6 +228,37 @@ For `beads`, `bd` replaces TodoWrite in `/workflows:work` and `todos/*.md` in `/
 Supports 100+ frameworks including Rails, React, Next.js, Vue, Django, Laravel, and more.
 
 MCP servers start automatically when the plugin is enabled.
+
+## What this plugin assumes about your repo
+
+The `github-project` lifecycle is opinionated about your repo's shape. Read these eyes-open before bootstrapping a board:
+
+- **One board per repo.** Board reads are repo-scoped, so a shared or portfolio board is read-tolerated but never written for foreign items — but the v1 design assumes one board holds one repo's issues.
+- **Default-branch merges drive `shipped`.** A merged PR that closes an issue via `Closes #N` stamps `shipped` through GitHub's built-in "Item closed" automation. Git-flow repos that merge into an integration branch get the ~10-line issue-closer workflow from the [`lifecycle` skill's gh-recipes](skills/lifecycle/references/gh-recipes.md), or cards stall at `in_review` with a `merged_to_non_default_branch` reconciler comment naming the fix.
+- **Issues are enabled** on the repo (preflight hard-errors otherwise).
+- **Issue text is untrusted data.** Titles, bodies, and comments are quoted, never obeyed; only structured, permission-gated fields (Status, assignee, labels, PR merge state, `stateReason`) drive control flow.
+- **The board is agent-managed after bootstrap.** Bootstrap's fresh-project guard refuses to adopt a customized project; once set up, **do not rename the Status options** — per-entry name re-resolution turns a rename into an `option missing` hard error.
+- **github.com only** — not GitHub Enterprise Server (the GraphQL surface lags). Requires **`gh` ≥ 2.94.0** with the **`project`** OAuth scope everywhere commands run.
+- **GitHub Free suffices** for the single-repo topology (its one auto-add workflow is all the plugin uses).
+- **POSIX environment** — macOS, Linux, or WSL. Native Windows is untested.
+- **Fork-based contributors** (origin = a personal fork, board under the canonical owner) need the documented owner-allowlist entry so the owner-equals-origin check passes.
+
+## Delivery-topology assumptions
+
+`shipped` means "merged to the default branch," and `deployed` is an optional, high-water refinement on top of it. What that means depends on how you deploy:
+
+- **Trunk-based CD:** `deployed` is nearly redundant with `shipped` — fine to ignore entirely.
+- **Multi-environment:** `deployed` = production only. Staging and dev jobs never stamp the board.
+- **Git-flow:** integration-branch merges stall items until the issue-closer workflow (or a manual close) fires — see the assumptions above.
+- **Release trains / libraries:** `shipped` = "merged to the default branch," **NOT** "in users' hands." Read it eyes-open; a release cut is a separate event.
+- **External CD:** use the `deployment_status` adapter where GitHub Deployment records exist (Vercel, Cloudflare Pages); use `vercel.deployment.promoted` via `vercel/repository-dispatch` for promotion flows (Vercel fires build-time `deployment_status`, not promotion). Netlify/Railway/Fly have no Deployment records — those repos ignore the `deployed` stage.
+- **No-deploy repos:** `shipped → compounded` is the intended path; there is nothing to deploy.
+
+`deployed` is a **high-water mark** — it means "has reached production at least once." Rollbacks and revert PRs never move the board backward.
+
+## Verify your setup
+
+Run **`/lifecycle-doctor`** after install or bootstrap and **before your first work item**. It renders a PASS/WARN/FAIL/SKIP checklist across the local toolchain, repo shape, board schema, and delivery topology — with a named fix per finding — and ends with an explicit **"Ready for first work item: yes/no."** Re-run it after changing board config, tokens, or CD wiring. Add **`--live`** for the end-to-end probe (create → board-add → close → assert `shipped` → cleanup), which is the only path that creates anything and cleans up after itself.
 
 ## Browser Automation
 

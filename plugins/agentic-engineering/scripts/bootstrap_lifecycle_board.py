@@ -291,9 +291,14 @@ def _option_diff(names: "list[str]") -> str:
 # 5. The ID-preserving updateProjectV2Field mutation
 # --------------------------------------------------------------------------
 
+# NOTE: the options list is inlined into the mutation document as a GraphQL
+# literal rather than passed as a variable — `gh api graphql -f` can only carry
+# string variables, and there is no flag for a nested list-of-objects (verified
+# live: the string form is rejected as an invalid ProjectV2SingleSelectFieldOptionInput).
+# json.dumps escaping is valid GraphQL string escaping; enum colors are unquoted.
 UPDATE_FIELD_MUTATION = (
-    "mutation($fieldId: ID!, $options: [ProjectV2SingleSelectFieldOptionInput!]!) {\n"
-    "  updateProjectV2Field(input: {fieldId: $fieldId, singleSelectOptions: $options}) {\n"
+    "mutation($fieldId: ID!) {\n"
+    "  updateProjectV2Field(input: {fieldId: $fieldId, singleSelectOptions: __OPTIONS__}) {\n"
     "    projectV2Field {\n"
     "      ... on ProjectV2SingleSelectField {\n"
     "        id\n"
@@ -336,14 +341,31 @@ def build_option_mapping(status: StatusField, kind: str) -> "list[dict]":
     return mapping
 
 
+def _options_graphql_literal(options: "list[dict]") -> str:
+    """Serialize the options as a GraphQL input literal. `id` is included only
+    where preserved (the destructive id-less list is the one foot-gun); colors
+    are enum literals (unquoted); strings use json.dumps escaping (a valid
+    GraphQL string escape)."""
+    parts = []
+    for o in options:
+        fields = []
+        if o.get("id"):
+            fields.append(f'id: {json.dumps(o["id"])}')
+        fields.append(f'name: {json.dumps(o["name"])}')
+        fields.append(f'color: {o["color"]}')
+        fields.append(f'description: {json.dumps(o.get("description", ""))}')
+        parts.append("{" + ", ".join(fields) + "}")
+    return "[" + ", ".join(parts) + "]"
+
+
 def apply_status_options(status: StatusField, options: "list[dict]", runner: GhRunner) -> "list[dict]":
-    """ONE updateProjectV2Field call. Options are passed as a JSON-encoded
-    GraphQL variable so nested list-of-objects survives gh's -F handling."""
+    """ONE updateProjectV2Field call, with the options inlined as a GraphQL
+    literal (gh api graphql has no transport for list-of-object variables)."""
+    document = UPDATE_FIELD_MUTATION.replace("__OPTIONS__", _options_graphql_literal(options))
     result = runner([
         "api", "graphql",
-        "-f", f"query={UPDATE_FIELD_MUTATION}",
+        "-f", f"query={document}",
         "-f", f"fieldId={status.field_id}",
-        "-f", f"options={json.dumps(options)}",
     ])
     payload = _check(result, "board_write_failed", "updateProjectV2Field (Status options)",
                      "Verify the `project` scope and board write permission (viewerCanUpdate); "
@@ -380,16 +402,22 @@ def ensure_priority_field(project: Project, ctx: "lb.RepoContext", runner: GhRun
 # 7. Workflows: disable "Item reopened", verify "Item closed"
 # --------------------------------------------------------------------------
 
+# repositoryOwner resolves BOTH User and Organization logins — querying
+# organization(login:) for a user account is a hard GraphQL error (verified
+# live: "Could not resolve to an Organization"), so a two-holder query fails
+# for every user-owned project.
 WORKFLOWS_QUERY = (
     "query($owner: String!, $number: Int!) {\n"
-    "  user(login: $owner) {\n"
-    "    projectV2(number: $number) {\n"
-    "      workflows(first: 20) { nodes { id name enabled } }\n"
+    "  repositoryOwner(login: $owner) {\n"
+    "    ... on User {\n"
+    "      projectV2(number: $number) {\n"
+    "        workflows(first: 20) { nodes { id name enabled } }\n"
+    "      }\n"
     "    }\n"
-    "  }\n"
-    "  organization(login: $owner) {\n"
-    "    projectV2(number: $number) {\n"
-    "      workflows(first: 20) { nodes { id name enabled } }\n"
+    "    ... on Organization {\n"
+    "      projectV2(number: $number) {\n"
+    "        workflows(first: 20) { nodes { id name enabled } }\n"
+    "      }\n"
     "    }\n"
     "  }\n"
     "}"
@@ -413,12 +441,11 @@ def query_workflows(project: Project, ctx: "lb.RepoContext", runner: GhRunner) -
     payload = _check(result, "board_read_failed", "querying project workflows",
                      "Verify the `project` scope; " + _project_scope_hint())
     data = payload.get("data") or {}
-    for holder in ("user", "organization"):
-        node = ((data.get(holder) or {}).get("projectV2") or {})
-        nodes = (node.get("workflows") or {}).get("nodes")
-        if nodes:
-            return [{"id": w.get("id", ""), "name": w.get("name", ""),
-                     "enabled": bool(w.get("enabled"))} for w in nodes]
+    node = ((data.get("repositoryOwner") or {}).get("projectV2") or {})
+    nodes = (node.get("workflows") or {}).get("nodes")
+    if nodes:
+        return [{"id": w.get("id", ""), "name": w.get("name", ""),
+                 "enabled": bool(w.get("enabled"))} for w in nodes]
     return []
 
 
@@ -634,9 +661,21 @@ def main(argv: "list[str]") -> int:
                         help="run the scratch-issue verification probe (default ON)")
     parser.add_argument("--no-probe", dest="probe", action="store_false",
                         help="skip the verification probe")
+    parser.add_argument("--probe-only", action="store_true",
+                        help="run ONLY the verification probe against the already-configured "
+                             "board (no project mutations) — used by /lifecycle-doctor --live")
     args = parser.parse_args(argv)
     try:
         ctx = lb.repo_context()
+        if args.probe_only:
+            board = lb.read_board_config(ctx)
+            if board is None:
+                raise BoardError("board_not_configured",
+                                 "No committed board config — run the full bootstrap first",
+                                 "python3 .../bootstrap_lifecycle_board.py")
+            project = Project(number=board.number, id="", created=False)
+            print(json.dumps({"ok": True, "probe": run_probe(project, ctx, run_gh)}, indent=2))
+            return 0
         summary = bootstrap(ctx, run_gh, probe=args.probe)
         print(json.dumps(summary, indent=2))
         return 0

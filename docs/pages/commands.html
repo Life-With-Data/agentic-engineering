@@ -49,7 +49,7 @@
           <h3>On This Page</h3>
           <ul>
             <li><a href="#workflow-commands">Workflow (7)</a></li>
-            <li><a href="#utility-commands">Utility (20)</a></li>
+            <li><a href="#utility-commands">Utility (21)</a></li>
           </ul>
         </div>
       </nav>
@@ -118,7 +118,7 @@
             <div class="command-detail-header">
               <code class="command-detail-name">/workflows:plan</code>
             </div>
-            <p class="command-detail-description">Transform feature descriptions into well-structured project plans following conventions</p>
+            <p class="command-detail-description">Transform feature descriptions into well-structured project plans following conventions. Idempotent entry gate — re-running on an already-planned item routes to work instead of re-planning; orchestrate invokes this directly.</p>
             <div class="card-code-block">
               <pre><code>/workflows:plan</code></pre>
             </div>
@@ -144,7 +144,7 @@
         </section>
 
         <section id="utility-commands">
-          <h2><i class="fa-solid fa-screwdriver-wrench"></i> Utility Commands (20)</h2>
+          <h2><i class="fa-solid fa-screwdriver-wrench"></i> Utility Commands (21)</h2>
           <div class="command-detail" id="agent-native-audit">
             <div class="command-detail-header">
               <code class="command-detail-name">/agent-native-audit</code>
@@ -242,6 +242,15 @@
             <p class="command-detail-description">Full autonomous engineering workflow</p>
             <div class="card-code-block">
               <pre><code>/lfg</code></pre>
+            </div>
+          </div>
+          <div class="command-detail" id="lifecycle-doctor">
+            <div class="command-detail-header">
+              <code class="command-detail-name">/lifecycle-doctor</code>
+            </div>
+            <p class="command-detail-description">Verify lifecycle-board setup and repo compatibility before the first work item — checks toolchain, repo shape, board schema, and delivery topology</p>
+            <div class="card-code-block">
+              <pre><code>/lifecycle-doctor</code></pre>
             </div>
           </div>
           <div class="command-detail" id="report-bug">

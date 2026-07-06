@@ -38,9 +38,15 @@ sys.modules["bootstrap_lifecycle_board"] = bs
 _bs_spec.loader.exec_module(bs)
 
 
+_HERMETIC_DIR = tempfile.mkdtemp(prefix="bootstrap-test-ctx-")
+
+
 def _ctx(owner="acme", repo="widget"):
-    return lb.RepoContext(root=".", main_root=".", origin_owner=owner,
-                          origin_repo=repo, default_branch="main")
+    # main_root MUST be an empty tempdir, never "." — the real repo may carry a
+    # committed agentic-engineering.md (it does, post-bootstrap), and a "."
+    # context would leak it into every test via read_board_config.
+    return lb.RepoContext(root=_HERMETIC_DIR, main_root=_HERMETIC_DIR,
+                          origin_owner=owner, origin_repo=repo, default_branch="main")
 
 
 def _ok(stdout: str) -> "subprocess.CompletedProcess[str]":
@@ -153,16 +159,24 @@ class MutationDocumentTest(unittest.TestCase):
         graphql = runner.graphql_calls()
         self.assertEqual(len(graphql), 1)
         flags = graphql[0]
-        # Exact mutation document — pins the mutation name + input shape.
-        self.assertEqual(flags["query"], bs.UPDATE_FIELD_MUTATION)
+        # The options are INLINED into the document as a GraphQL literal — gh
+        # api graphql has no list-of-objects variable transport (verified
+        # live: an options=<json> -f flag arrives as a string and is rejected).
+        query = flags["query"]
         self.assertIn("updateProjectV2Field(input: {fieldId: $fieldId, "
-                      "singleSelectOptions: $options})", flags["query"])
+                      "singleSelectOptions: [", query)
+        self.assertNotIn("__OPTIONS__", query)  # template placeholder replaced
         self.assertEqual(flags["fieldId"], "FIELD_STATUS")
-        sent = json.loads(flags["options"])
-        self.assertEqual([o["name"] for o in sent], list(bs.STAGES))
-        self.assertEqual({o["name"]: o["id"] for o in sent if "id" in o},
-                         {"stub": "opt_todo", "in_progress": "opt_inprogress", "shipped": "opt_done"})
-        self.assertEqual(sum("id" in o for o in sent), 3)  # 3 preserved, 6 new
+        # 3 preserved ids (Todo→stub, In Progress→in_progress, Done→shipped), 6 id-less.
+        self.assertEqual(query.count("id: "), 3)
+        for old_id, new_name in (("opt_todo", "stub"), ("opt_inprogress", "in_progress"),
+                                 ("opt_done", "shipped")):
+            self.assertIn(f'id: "{old_id}", name: "{new_name}"', query)
+        for stage in bs.STAGES:
+            self.assertIn(f'name: "{stage}"', query)
+        # Colors are enum literals — unquoted.
+        self.assertIn("color: GRAY", query)
+        self.assertNotIn('color: "', query)
 
     def test_canonical_rerun_sends_nine_ids(self) -> None:
         runner = FakeRunner([
@@ -173,16 +187,17 @@ class MutationDocumentTest(unittest.TestCase):
         options = bs.build_option_mapping(_CANONICAL_FIELD, "canonical")
         bs.apply_status_options(_CANONICAL_FIELD, options, runner)
 
-        sent = json.loads(runner.graphql_calls()[0]["options"])
-        self.assertEqual(len(sent), 9)
+        query = runner.graphql_calls()[0]["query"]
         # Idempotency guard: NOT a partial or id-less list — all nine ids sent.
-        self.assertTrue(all("id" in o for o in sent))
-        self.assertEqual({o["name"]: o["id"] for o in sent},
-                         {s: f"opt_{s}" for s in bs.STAGES})
+        self.assertEqual(query.count("id: "), 9)
+        for s in bs.STAGES:
+            self.assertIn(f'id: "opt_{s}", name: "{s}"', query)
 
-    def test_options_serialized_as_single_json_variable(self) -> None:
-        # gh -F cannot express a nested list-of-objects; the options MUST ride
-        # as one JSON-encoded -f variable, not many scalar flags.
+    def test_options_never_ride_as_a_variable_flag(self) -> None:
+        # gh api graphql has NO transport for list-of-objects variables — an
+        # `options=<json>` -f flag arrives as a string and the API rejects it
+        # (verified live). The options must be inlined into the document; the
+        # only variable flag besides the query is fieldId.
         runner = FakeRunner([
             (["api", "graphql"], _ok(json.dumps(
                 {"data": {"updateProjectV2Field": {"projectV2Field": {"options": []}}}}))),
@@ -190,10 +205,19 @@ class MutationDocumentTest(unittest.TestCase):
         options = bs.build_option_mapping(_DEFAULT_FIELD, "default")
         bs.apply_status_options(_DEFAULT_FIELD, options, runner)
         call = runner.calls[0]
-        # exactly one flag literally named options=... and it parses as JSON.
-        option_flags = [a for a in call if a.startswith("options=")]
-        self.assertEqual(len(option_flags), 1)
-        json.loads(option_flags[0].split("=", 1)[1])  # must not raise
+        self.assertEqual([a for a in call if a.startswith("options=")], [])
+        self.assertEqual(len([a for a in call if a.startswith("fieldId=")]), 1)
+
+    def test_graphql_literal_escapes_strings_and_keeps_enums_bare(self) -> None:
+        literal = bs._options_graphql_literal([
+            {"id": "x1", "name": 'quo"te', "color": "RED", "description": "d\\esc"},
+            {"name": "plain", "color": "BLUE", "description": ""},
+        ])
+        self.assertEqual(
+            literal,
+            '[{id: "x1", name: "quo\\"te", color: RED, description: "d\\\\esc"}, '
+            '{name: "plain", color: BLUE, description: ""}]',
+        )
 
 
 class FreshProjectGuardTest(unittest.TestCase):
@@ -315,13 +339,16 @@ class OwnerFromOriginTest(unittest.TestCase):
 
 
 class WorkflowConfigTest(unittest.TestCase):
-    def _workflows_payload(self, *, reopened_enabled, closed_enabled, holder="user"):
+    def _workflows_payload(self, *, reopened_enabled, closed_enabled):
+        # The query resolves the owner via repositoryOwner (works for BOTH
+        # User and Organization — querying organization(login:) for a user is
+        # a hard GraphQL error, verified live), so there is one holder shape.
         nodes = [
             {"id": "wf_reopened", "name": "Item reopened", "enabled": reopened_enabled},
             {"id": "wf_closed", "name": "Item closed", "enabled": closed_enabled},
             {"id": "wf_added", "name": "Item added", "enabled": True},
         ]
-        return json.dumps({"data": {holder: {"projectV2": {"workflows": {"nodes": nodes}}}}})
+        return json.dumps({"data": {"repositoryOwner": {"projectV2": {"workflows": {"nodes": nodes}}}}})
 
     def test_disables_reopened_and_confirms_closed(self) -> None:
         project = bs.Project(number=3, id="P", created=True)
@@ -352,14 +379,21 @@ class WorkflowConfigTest(unittest.TestCase):
         self.assertTrue(any("Item closed" in w for w in result["warnings"]))
         self.assertEqual(len(runner.graphql_calls()), 1)  # only the query, no mutation
 
-    def test_org_owned_project_workflows_resolve(self) -> None:
+    def test_workflows_query_uses_repository_owner(self) -> None:
+        # Pin the owner-type-agnostic query shape: one repositoryOwner lookup
+        # with inline fragments, never separate user/organization queries.
         project = bs.Project(number=3, id="P", created=True)
         runner = FakeRunner([
             (["api", "graphql"], _ok(self._workflows_payload(
-                reopened_enabled=False, closed_enabled=True, holder="organization"))),
+                reopened_enabled=False, closed_enabled=True))),
         ])
         result = bs.configure_workflows(project, _ctx(), runner)
         self.assertTrue(result["closed_enabled"])
+        query = runner.graphql_calls()[0]["query"]
+        self.assertIn("repositoryOwner(login: $owner)", query)
+        self.assertIn("... on User", query)
+        self.assertIn("... on Organization", query)
+        self.assertNotIn("organization(login:", query)
 
 
 class ConfigWriteTest(unittest.TestCase):

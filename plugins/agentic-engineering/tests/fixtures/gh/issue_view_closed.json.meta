@@ -1,1 +1,1 @@
-recorded_at=2026-07-05T19:05:48Z | gh version 2.96.0 (2026-07-02) | cmd: gh issue view 31 --repo aagnone3/agentic-engineering --json state,stateReason,closedByPullRequestsReferences,number,title
+recorded_at=2026-07-06T02:31:41Z | gh version 2.96.0 (2026-07-02) | cmd: gh issue view 31 --repo aagnone3/agentic-engineering --json state,stateReason,closedByPullRequestsReferences,number,title

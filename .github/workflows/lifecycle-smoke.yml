@@ -1,0 +1,61 @@
+# Tier-3 lifecycle smoke (see the unified-lifecycle plan's Test Strategy).
+#
+# Weekly + on-demand: exercises the REAL gh surface against this repo.
+# Two legs:
+#   1. Contract leg (always): the tier-2 gh contract tests at a pinned gh
+#      version — flag-surface pinning + read-only JSON-shape probes against
+#      this repo's own history (GITHUB_TOKEN can read issues/PRs; only
+#      Projects v2 writes are off-limits to it).
+#   2. Board-probe leg (only when the LIFECYCLE_BOARD_PAT secret exists):
+#      GITHUB_TOKEN cannot access Projects v2, so the live board probe
+#      (scratch issue → board add → close → assert the "Item closed"
+#      automation stamped `shipped` → cleanup) needs a classic PAT with
+#      `project` + `repo` scopes from a dedicated machine account, or a
+#      GitHub App installation token. Without the secret the leg is
+#      SKIPPED loudly — never silently green.
+#
+# The equivalent probe also runs locally via the bootstrap (and
+# /lifecycle-doctor --live); this workflow keeps it honest on a schedule.
+name: lifecycle-smoke
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 9 * * 1" # Mondays 09:00 UTC
+
+permissions:
+  contents: read
+  issues: read
+  pull-requests: read
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Same pinned gh as ci.yml — the contract tests assert this exact surface.
+      - name: Install pinned gh CLI (2.96.0)
+        run: |
+          curl -fsSL -o /tmp/gh.deb https://github.com/cli/cli/releases/download/v2.96.0/gh_2.96.0_linux_amd64.deb
+          sudo dpkg -i /tmp/gh.deb
+          gh --version
+
+      - name: Contract leg — gh flag surface + JSON shapes
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          python3 -m unittest discover -s plugins/agentic-engineering/tests -p 'gh_contract_test.py' -v
+
+      - name: Board-probe leg — live automation flip (needs LIFECYCLE_BOARD_PAT)
+        env:
+          LIFECYCLE_BOARD_PAT: ${{ secrets.LIFECYCLE_BOARD_PAT }}
+        run: |
+          if [ -z "$LIFECYCLE_BOARD_PAT" ]; then
+            echo "::warning::LIFECYCLE_BOARD_PAT secret not configured — board-probe leg SKIPPED."
+            echo "GITHUB_TOKEN cannot write Projects v2; add a machine-account PAT (project+repo)"
+            echo "or an App installation token to run the live probe here."
+            exit 0
+          fi
+          export GH_TOKEN="$LIFECYCLE_BOARD_PAT"
+          python3 plugins/agentic-engineering/scripts/bootstrap_lifecycle_board.py --probe-only
