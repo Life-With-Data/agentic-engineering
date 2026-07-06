@@ -5,10 +5,13 @@ All notable changes to the agentic-engineering plugin will be documented in this
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [3.1.0] - 2026-07-06
 
 ### Added
 
+- **`verification-loop` skill — a systematic verify-before-done pass.** Runs build → types → lint → tests → security → diff review as sequential gates and ends with a single ready / not-ready verdict. Adopted from `affaan-m/ECC` as the **first upstream adoption** executed through the `/upstream-scan` triage pipeline (landed via PR #35, issue #60). Counts: 24→25 skills.
+- **Two operational guard hooks ported from `agent-leverage`** (PreToolUse/Bash, wired in `plugin.json`), each shipping a unit test: `check-node-version` blocks package-manager commands when the active `node` major differs from the project's declared requirement (`.nvmrc` / `engines.node`), no-op for non-Node projects (PR #27, issue #56); `block-beads-jsonl-stage` blocks staging the passive `.beads/*.jsonl` Beads export so the local scratchpad never lands in git (PR #38, issue #57).
+- **Test coverage + a hook catalog for the existing safety hooks.** Added unit tests for `block-no-verify` and `prevent-main-commit` (ported in a prior release without tests) and a `scripts/HOOKS.md` index documenting every plugin hook (PR #37, issue #59).
 - **Bootstrap now links the lifecycle board to its origin repo.** Projects v2 boards are owned by a user/org and can only be _linked_ to a repo — there is no repo-owned board — and linking is what surfaces the board on the repo's **Projects** tab and enables auto-add-from-repo. `bootstrap_lifecycle_board.py` gained a `link_repo` step (after workflow config, before the committed-config write) that is **idempotent** (queries current links via a shared `lifecycle_board.project_linked_repos` helper and skips the mutation when already linked) and **non-fatal** (a link failure degrades to a summary warning, never an abort — board resolution only needs `owner`+`number`). `/lifecycle-doctor` gained a matching `board_repo_link` check under Board schema: PASS when linked, WARN with the exact `gh project link …` fix when not, SKIP when unreadable. This closes the gap where a freshly bootstrapped board was invisible on the repo's Projects tab, which read as "no board" in the multi-repo/multi-customer model. Related footgun this surfaces: the committed `agentic-engineering.md` records one board's `owner`/`number`, so a fork/clone under a different owner must re-run bootstrap to point at _its own_ board.
 
 ### Removed
