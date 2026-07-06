@@ -1,7 +1,7 @@
 ---
 name: file-todos
 description: This skill should be used when managing the file-based todo tracking system in the todos/ directory. It provides workflows for creating todos, managing status and dependencies, conducting triage, and integrating with slash commands and code review processes.
-disable-model-invocation: true
+user-invocable: false
 ---
 
 # File-Based Todo Tracking Skill
@@ -64,6 +64,7 @@ priority: p1              # p1 | p2 | p3
 issue_id: "002"
 tags: [rails, performance, database]
 dependencies: ["001"]     # Issue IDs this is blocked by
+github_issue: ""          # optional: GitHub issue number/join key; written by /triage when it creates a tracking issue
 ---
 ```
 

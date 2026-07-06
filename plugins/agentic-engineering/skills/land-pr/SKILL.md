@@ -167,13 +167,24 @@ git pull --ff-only
 git branch -d <feature-branch>   # safe-delete; already merged
 ```
 
-**Close the tracker item — idempotently.** `/workflows:work` Phase 4 closes the plan/work item at
-**PR creation**, so in the normal pipeline the item is already closed and this is a no-op. Only act
-if it is still open:
+**Verify the lifecycle stamp.** The merge closes the issue via `Closes #N` in the PR body;
+GitHub's built-in "Item closed" board automation then stamps the tracked item `shipped` —
+this step confirms that stamp landed, it does not perform the close itself. `<N>` is the
+issue number the PR closes (from the PR body's `Closes #N`, or the plan doc's `github_issue:`):
 
-- **beads** — `bd show "$PLAN_BEAD"`; if still open, `bd close "$PLAN_BEAD" --reason="merged PR #${PR_NUM}"` then `bd dolt push`.
-- **GitHub issues** — `gh issue close <n> --comment "merged PR #${PR_NUM}"` if still open.
-- **file-todos** — ensure the plan's checkboxes are checked and its frontmatter `status:` is `completed`.
+```bash
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/lifecycle_board.py" --reconcile --issue <N>
+```
+
+This invokes the **shared reconciler** — the only writer besides the transition owners — which
+repairs a missed stamp (e.g. the automation was disabled or lagged) by setting Status to `shipped`
+and posting a one-line audit comment. Never hand-roll a second reconcile check here; this is the
+one implementation every command uses.
+
+- **`github-project` / `github-project`-adjacent repos** — the command above is sufficient.
+- **plain `github` mode (legacy, no board)** — `gh issue close <n> --repo <origin> --comment "merged PR #${PR_NUM}"` if still open.
+- **`none` / file-todos** — ensure the plan's checkboxes are all checked; there is no frontmatter
+  status field to update (the `status:` key no longer exists on plan docs).
 
 ### 7. Report
 
@@ -188,7 +199,7 @@ default branch synced, and the tracker state. Note any follow-on work discovered
 
 - PR shows `MERGED`.
 - Feature branch deleted (remote and local); local default branch fast-forwarded.
-- Tracker item closed (or confirmed already closed by Phase 4).
+- Lifecycle stamp verified (reconciler) / legacy close done.
 - In autonomous mode, the merge happened only because CI was green, an independent `/workflows:review`
   pass had run with P1s resolved, threads were resolved, and the PR was mergeable — never on an unmet
   condition, and never blocked waiting on a human GitHub approval the run was never going to receive.

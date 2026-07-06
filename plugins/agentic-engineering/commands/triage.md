@@ -19,6 +19,22 @@ This command is for:
 - Reviewing performance analysis
 - Handling any other categorized findings that need tracking
 
+## Lifecycle mode (preflight — run once, before Step 1)
+
+**Writer contract:** for each approved finding, this command performs exactly one transition: `→ stub`. File-todos remains the findings surface this iteration; the tracking issue is created *in addition to* the todo file, never instead of it.
+
+Detect the mode with a single preflight call and cache the result for the whole session:
+
+```bash
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/workflow-repo-preflight.py" | jq -r '.integrations.issue_tracker_resolved'
+```
+
+- **`github-project`** → on each approval, create a tracking issue, add it to the board, and set Status to `stub`.
+- **`github`** → on each approval, create a tracking issue (no board placement).
+- **`none`** → skip issue creation entirely; today's behavior (todo file only).
+
+`<origin>` in every `gh issue create` below is the `origin` remote's `owner/repo` slug (`git remote get-url origin`). Every `gh` write carries an explicit `--repo`.
+
 ## Workflow
 
 ### Step 1: Present Each Finding
@@ -145,7 +161,23 @@ Do you want to add this to the todo list?
    Source: Triage session on {date}
    ```
 
-4. **Confirm approval:** "✅ Approved: `{new_filename}` (Issue #{issue_id}) - Status: **ready** → Ready to work on"
+4. **Create the tracking issue (stub writer)** — only when the preflight mode is `github-project` or `github`; skip entirely when the mode is `none`.
+
+   Create → board-add → set-status is one sequence (`--set-status` board-adds automatically). Do not stamp the status before the issue exists.
+
+   ```bash
+   # github-project OR github: create the tracking issue.
+   # The create prints the new issue URL on stdout; the trailing path segment is the number.
+   URL=$(gh issue create --repo <origin> --title "<finding title>" --body-file <todo file>)
+   N=${URL##*/}
+
+   # github-project only: add to the board + set Status=stub (one sequence)
+   python3 "${CLAUDE_PLUGIN_ROOT}/scripts/lifecycle_board.py" --set-status "$N" stub
+   ```
+
+   Then write the issue number back into the todo file's YAML frontmatter as `github_issue: <N>` (the join key other lifecycle commands resolve against).
+
+5. **Confirm approval:** "✅ Approved: `{new_filename}` (Issue #{issue_id}) - Status: **ready** → Ready to work on" (append " — tracked as #{github_issue}" when an issue was created).
 
 **When user says "next":**
 
@@ -269,7 +301,8 @@ Do you want to add this to the todo list?
 1. Rename file: `{id}-pending-{priority}-{desc}.md` → `{id}-ready-{priority}-{desc}.md`
 2. Update YAML frontmatter: `status: pending` → `status: ready`
 3. Update Work Log with triage approval entry
-4. Confirm: "✅ Approved: `{filename}` (Issue #{issue_id}) - Status: **ready**"
+4. Stub writer (skip when mode is `none`): `gh issue create --repo <origin> …` → in `github-project` mode follow with `lifecycle_board.py --set-status <N> stub` → write `github_issue: <N>` into the todo frontmatter
+5. Confirm: "✅ Approved: `{filename}` (Issue #{issue_id}) - Status: **ready**" (+ " — tracked as #{github_issue}" when created)
 
 **When "next" is selected:**
 1. Delete the todo file from todos/ directory
@@ -295,6 +328,7 @@ Progress: 3/10 completed | Estimated time: ~2 minutes remaining
 - ✅ Present findings
 - ✅ Make yes/next/custom decisions
 - ✅ Update todo files (rename, frontmatter, work log)
+- ✅ Create the tracking issue + board stub for approved findings (the stub writer — not code)
 - ❌ Do NOT implement fixes or write code
 - ❌ Do NOT add detailed implementation details
 - ❌ That's for /resolve_todo_parallel phase

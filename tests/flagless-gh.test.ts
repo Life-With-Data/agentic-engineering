@@ -30,16 +30,10 @@ const PLUGIN = path.join(ROOT, "plugins/agentic-engineering")
 // current — every entry is a debt the lifecycle rewrite (Phase 3) is expected to
 // pay down (these two are the pre-rewrite `github` plain-mode issue writers).
 const ALLOWLIST: Record<string, string> = {
-  // Legacy `github` plain-mode plan-issue writer. Runs against gh's default repo
-  // (pinned to origin by the SessionStart hook); rewritten to route through
-  // lifecycle_board.py --set-status in Phase 3.
-  "commands/workflows/plan.md:642":
-    "legacy `github` mode: gh issue create against pinned default repo",
-  // Legacy `github` plain-mode issue-close snippet with a <issue-number>
-  // placeholder. Same pinned-default-repo rationale; rewritten in Phase 3 to
-  // invoke the shared reconciler.
-  "commands/workflows/work.md:453":
-    "legacy `github` mode: gh issue close placeholder against pinned default repo",
+  // Empty since the Phase 3 lifecycle rewrite: every gh write in commands/skills
+  // now carries an explicit --repo/--owner or routes through lifecycle_board.py
+  // (which self-enforces targeting). Add entries only for genuinely legitimate
+  // exceptions, with a one-line justification.
 }
 
 // ---- fence-aware scanner ----------------------------------------------------

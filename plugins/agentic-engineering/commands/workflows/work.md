@@ -1,7 +1,8 @@
 ---
 name: workflows:work
 description: Execute work plans efficiently while maintaining quality and finishing features
-argument-hint: "[plan file, spec, todo file, or issue/bead id(s) — e.g. cre-1ul]"
+argument-hint: "[plan file, spec, todo file, or issue number — e.g. 39]"
+allowed-tools: Read, Edit, Write, Bash(gh issue *), Bash(gh pr *), Bash(gh project *), Bash(python3 *), Bash(git *), Bash(jq *)
 ---
 
 # Work Plan Execution Command
@@ -16,34 +17,34 @@ This command takes a work document (plan, specification, or todo file) and execu
 
 <input_document> #$ARGUMENTS </input_document>
 
-## Execution Workflow
+## Entry Gate
 
-### Phase 1: Quick Start
+**Writer contract.** This command performs **exactly two lifecycle transitions** and no others:
 
-1. **Read Plan and Clarify**
+- `planned → in_progress` — the claim (Phase 1, via `--claim`).
+- `in_progress → in_review` — PR open (Phase 4, via `--set-status <N> in_review`).
 
-   - Read the work document completely
-   - Review any references or links provided in the plan
-   - If anything is unclear or ambiguous, ask clarifying questions now
-   - Get user approval to proceed
-   - **Do not skip this** - better to ask questions now than build the wrong thing
+It never writes any other stage, never closes the issue, and never hand-assembles board GraphQL. The built-in "Item closed" automation owns `→ shipped` when the merge closes the issue; the shared reconciler owns every repair. Sub-issues are the task tracker; TodoWrite is a disposable in-session scratchpad.
 
-2. **Setup Environment**
+**Stage semantics.** Load the `lifecycle` skill for the 9-stage enum, the writer table, and the entry-gate/verdict vocabulary — this command references those definitions rather than restating them.
 
-   First, run the repo preflight script and use its JSON output as the source of truth for branch state, dirty state, PR context, and issue-tracker availability:
+**Resolve the issue number `<N>`.** Take `<N>` from an explicit issue-number argument if one was given; otherwise read the `github_issue:` frontmatter key from the input plan document. If neither yields a number, there is no board item to gate on — proceed as the `no_board` branch (legacy flow) below.
+
+### Preflight, banner, reconcile — then the gate
+
+Run these in order, once, at entry:
+
+1. **Preflight (read-only).** Use its JSON output as the source of truth for branch/dirty/PR state and tracker resolution. It never mutates.
 
    ```bash
    python3 "${CLAUDE_PLUGIN_ROOT}/scripts/workflow-repo-preflight.py"
    ```
 
-   The script returns:
-   - `repo.current_branch`
-   - `repo.default_branch`
-   - `repo.working_tree_dirty`
+   Relevant fields:
+   - `repo.current_branch`, `repo.default_branch`, `repo.working_tree_dirty`
    - `github.current_branch_pr` (if `gh` is installed/authenticated)
-   - `integrations.beads_installed`, `integrations.beads_initialized`
-   - `integrations.issue_tracker_resolved` — one of `beads | github | none`
-   - `integrations.issue_tracker_source` — `agentic-engineering.local.md`, `auto-detect`, or `default`
+   - `integrations.issue_tracker_resolved` — one of `github-project | github | none`
+   - `integrations.issue_tracker_source`
    - `recommendation.action` and `recommendation.prompt`
 
    Print a one-line tracker banner before continuing:
@@ -51,143 +52,147 @@ This command takes a work document (plan, specification, or todo file) and execu
    Tracker: <issue_tracker_resolved> (<issue_tracker_source>)
    ```
 
-   Follow `recommendation.action` rather than re-deriving state manually.
+   Follow `recommendation.action` rather than re-deriving branch state by hand.
+
+2. **Reconcile once (TTL-cached).** Repair any drift on the board's active items before gating, so the gate reads settled state. This is a no-op within the session TTL and degrades to reported JSON on partial failure — never fail the command on it.
+
+   ```bash
+   python3 "${CLAUDE_PLUGIN_ROOT}/scripts/lifecycle_board.py" --reconcile
+   ```
+
+3. **Gate.** Invoke the gate for this command with the resolved issue number:
+
+   ```bash
+   python3 "${CLAUDE_PLUGIN_ROOT}/scripts/lifecycle_board.py" --gate work --issue <N>
+   ```
+
+   The gate returns `{mode, verdict, route, reason, stage, issue, plan_doc, flags, ...}`. Branch on the **closed** `verdict` enum — never re-derive stage from prose or filenames:
+
+   | `verdict` | What it means | Action |
+   |-----------|---------------|--------|
+   | `proceed` | `stage ≥ planned` **and** a join-keyed plan doc exists | Continue to **Phase 1**. |
+   | `route_to_plan` | Not yet groomed to `planned`, **or** Status says planned but no plan doc | Tell the user to run **`/workflows:plan`** first. Hotfixes bypass the board entirely (plain PR flow, no gate, no board exception). **STOP.** |
+   | `already_done` | Stage is terminal (`shipped`/`deployed`/`compounded`) or `abandoned` | Report the stage to the user and that the work is already at/past this command's scope. **STOP.** |
+   | `claim_conflict` | Someone else holds the claim | Report the current assignee(s)/holder from the gate `reason`. **STOP.** |
+   | `no_board` | No board configured (mode is `github`/`none`) | Fall through to the **Legacy flow (no board)** below and continue **degraded** — no stage machinery, no board writes. |
+   | *(anything with `flags`)* | e.g. `stale_join_key` | If a `stale_join_key` flag is present, the join key resolves to nothing in this repo — report it and **STOP**; fix the doc frontmatter before retrying. |
+
+   Only `proceed` (with a board) and `no_board` (degraded) continue past this gate.
+
+### Legacy flow (no board)
+
+When `verdict == no_board`, the repo has no configured Projects board. Behave as the plugin did before the lifecycle: drive the work with **TodoWrite** as the task list, use plain `gh issue`/`gh pr` in `github` mode (or nothing in `none` mode), and skip every `--claim`/`--set-status`/`--ready-work`/sub-issue step below. The Phases still apply structurally; substitute TodoWrite for the board wherever a stage transition or sub-issue action is named, and open the PR normally in Phase 4 without a board write.
+
+## Execution Workflow
+
+### Phase 1: Claim & Setup
+
+1. **Read Plan and Clarify**
+
+   - Read the work document completely.
+   - Review any references or links provided in the plan.
+   - If anything is unclear or ambiguous, ask clarifying questions now and get user approval to proceed.
+   - **Do not skip this** — better to ask now than build the wrong thing.
+
+2. **Claim the work item** (board mode)
+
+   The claim is a single verb. Do **not** hand-roll assignment, sole-assignee confirmation, blocked-by checks, or the `in_progress` write — `--claim` does all of it atomically-in-order (assign → re-read → confirm sole assignee → verify `blocked-by` empty → Status = `in_progress`):
+
+   ```bash
+   python3 "${CLAUDE_PLUGIN_ROOT}/scripts/lifecycle_board.py" --claim <N>
+   ```
+
+   Branch on the returned `verdict`:
+   - `proceed` — you now hold the claim (Status is `in_progress`). Continue.
+   - `claim_conflict` — another assignee holds it (or a race left multiple assignees and you yielded). Report the holder from `reason` and **STOP**.
+   - `blocked` — the issue has open blocking issues. Report them and **STOP**; dependencies are advisory but a blocked item is not ready to work.
+
+   In the **legacy flow**, skip this step — TodoWrite is your tracker and there is no assignment to claim.
+
+3. **Setup Environment**
+
+   Use the preflight JSON (from the Entry Gate) for branch state.
 
    **If already on a feature branch** (not the default branch):
    - Ask: "Continue working on `[current_branch]`, or create a new branch?"
-   - If continuing, proceed to step 3
-   - If creating new, follow Option A or B below
+   - If continuing, proceed to Phase 2.
 
    **If on the default branch**, choose how to proceed:
 
-   **Option A: Create a new branch**
+   **Option A: Create a new branch** — name it `feat/<N>-<slug>` (the issue number is a **secondary claim signal**: it lets humans and the duplicate-PR check tie a branch back to the claimed issue). Slugify the title to `[a-z0-9-]` first.
    ```bash
    git pull origin [default_branch]
-   git checkout -b feature-branch-name
+   git checkout -b feat/<N>-<slug>
    ```
-   Use a meaningful name based on the work (e.g., `feat/user-authentication`, `fix/email-validation`).
 
    **Option B: Use a worktree (recommended for parallel development)**
    ```bash
    skill: git-worktree
-   # The skill will create a new branch from the default branch in an isolated worktree
+   # Creates a new branch from the default branch in an isolated worktree.
+   ```
+   Name the branch `feat/<N>-<slug>` here too.
+
+   **Option C: Continue on the default branch** — requires explicit user confirmation. Never commit directly to the default branch without an explicit "yes, commit to [default_branch]".
+
+   **Recommendation:** use a worktree when working on multiple features simultaneously, keeping the default branch clean, or switching branches frequently.
+
+4. **Decompose into tasks (sub-issues)**
+
+   `/workflows:plan` already created the sub-issues that decompose this work item — you do **not** create them here. List them:
+
+   ```bash
+   # Sub-issues of the claimed parent <N>:
+   gh issue view <N> --repo <origin> --json subIssues
+   # Or across the repo, resolving parents:
+   gh issue list --repo <origin> --json number,title,parent
    ```
 
-   **Option C: Continue on the default branch**
-   - Requires explicit user confirmation
-   - Only proceed after user explicitly says "yes, commit to [default_branch]"
-   - Never commit directly to the default branch without explicit permission
+   (`<origin>` is `owner/repo` from the origin remote — every `gh` write in this command carries an explicit `--repo`/`--owner`.)
 
-   **Recommendation**: Use worktree if:
-   - You want to work on multiple features simultaneously
-   - You want to keep the default branch clean while experimenting
-   - You plan to switch between branches frequently
-
-3. **Sync with tracker**
-
-   Dispatch on `integrations.issue_tracker_resolved`:
-
-   - **`beads`**: `bd dolt pull` (no-op if no Dolt remote is configured).
-   - **`github`**: no sync step.
-   - **`none`**: skip.
-
-4. **Create Task List**
-
-   Dispatch on `integrations.issue_tracker_resolved`:
-
-   - **`beads`** — first establish `PLAN_BEAD` (the bead representing this whole unit of work — it
-     ships with the PR and is closed in Phase 4) and claim it. This happens in **both** modes:
-     ```bash
-     # Standalone bead (the common `bd ready` flow, or an explicit bead-id argument):
-     #   PLAN_BEAD=<that bead id>
-     # Plan-with-children (a plan file whose frontmatter carries the parent bead id):
-     #   PLAN_BEAD=$(yq '.bead_id' <plan-path>)
-     bd update "$PLAN_BEAD" --claim          # mark the work bead in_progress
-     ```
-     Then, **only in plan-with-children mode**, create one child bead per actionable task and link
-     each to the parent so `bd ready` surfaces them under `$PLAN_BEAD`:
-     ```bash
-     for task in <tasks from plan>:
-       TASK_ID=$(bd q --title="<task>" --description="..." --type=task --priority=<map>)
-       bd dep add "$TASK_ID" "$PLAN_BEAD"
-     ```
-     Do **not** use TodoWrite when tracker is `beads` — `bd ready` supersedes it.
-
-   - **`github` / `none`** — use TodoWrite (existing behavior):
-     - Break the plan into actionable tasks
-     - Include dependencies between tasks
-     - Prioritize based on what needs to be done first
-     - Include testing and quality check tasks
-     - Keep tasks specific and completable
+   The open sub-issues are the authoritative task list. **TodoWrite** remains the implementer's in-session scratchpad for finer-grained steps — non-authoritative and disposable. (Beads is opt-in for long-running personal notes only: never a gate input, never synced, never a lifecycle writer.)
 
 ### Phase 2: Execute
 
-**Choose your execution model first** (applies to any tracker — beads or file-todos):
+**Choose your execution model first:**
 
 | Model | Use when | How it runs |
 |-------|----------|-------------|
-| **Inline** (default, below) | A plan/spec file you implement yourself; simple, linear work | You implement tasks directly in this session, updating the tracker as you go. |
-| **Orchestrated** ([section](#orchestrated-execution-tracker-driven)) | Work backed by tracked issues/beads — **one or many** | You own the tracker state machine and drive one subagent per issue, looping each to a terminal state before returning. |
+| **Inline** (default, below) | A plan/spec you implement yourself; simple, linear work | You implement each sub-issue directly in this session, closing each as its criteria pass. |
+| **Orchestrated** ([section](#orchestrated-execution-board-driven)) | Work backed by tracked sub-issues — one or many | You own the board/sub-issue state and drive one subagent per sub-issue, looping each to a terminal state before returning. |
 | **Swarm** ([section](#swarm-mode-optional)) | 5+ independent workstreams needing maximum parallelism | Long-lived teammates self-claim from a shared queue. |
 
-Even a **single** tracked issue benefits from Orchestrated Execution — the orchestrator absorbs the retry/verify/unblock loop and returns a finished or verifiably-blocked result, not a half-step. The Inline loop below is the default for plan/spec files — **except when this command runs under `/workflows:orchestrate` in delegate mode (the default; the `--auto` modifier changes only the merge gate)**, where Orchestrated is the default for all inputs: the orchestrator is a reviewer, not an implementer, and delegates every work item to a sub-agent whose diff it verifies before accepting.
+Even a **single** tracked item benefits from Orchestrated Execution — the orchestrator absorbs the retry/verify/unblock loop and returns a finished or verifiably-blocked result, not a half-step. The Inline loop below is the default for plan/spec files — **except when this command runs under `/workflows:orchestrate` in delegate mode (the default; the `--auto` modifier changes only the merge gate)**, where Orchestrated is the default for all inputs: the orchestrator is a reviewer, not an implementer, and delegates every work item to a sub-agent whose diff it verifies before accepting.
 
-1. **Task Execution Loop**
+1. **Task Execution Loop** (board mode — iterate open sub-issues)
 
-   The claim/complete steps depend on `integrations.issue_tracker_resolved`.
-
-   > **Parent bead vs child task beads.** If the job is a single standalone bead (the common `bd ready` flow — one bead = the whole feature), it is the **parent** and gets closed in Phase 4 once the PR is open. Only **child task beads** of a parent plan get closed inside the loop below, because they represent local units of work that don't ship their own PR. When in doubt, leave the bead open and let Phase 4 handle the close.
-
-   **When tracker is `beads`:**
-
-   First, decide which mode you're in:
-
-   - **Standalone bead mode** — the job is a single bead with no child tasks; `PLAN_BEAD` is that bead, claimed in Phase 1. **Skip this entire loop.** Implement directly, test, commit, then go to Phase 3 / Phase 4. The bead stays `in_progress` through implementation; Phase 4 closes `$PLAN_BEAD` after PR creation.
-   - **Plan-with-children mode** — Phase 1 set `PLAN_BEAD` from plan frontmatter and created child task beads linked via `bd dep add`. Run the loop below, filtered to those children so `bd ready` cannot return the parent.
-
-   Then pick an **execution style** for whichever mode you're in:
-
-   - **Inline** (default) — you implement each bead directly in this session (the loop below, or
-     "implement directly" for a standalone bead).
-   - **Orchestrated** — you act as orchestrator and delegate each bead to a focused subagent,
-     looping it to a terminal state (resolved or *verified blocker*) before moving on. Prefer this
-     when the user invokes it, when beads are file-disjoint (parallelizable), or when you want the
-     iteration (retry / verify / unblock / discovered-follow-on) handled before returning. It works
-     for a single bead too. See [Orchestrated Execution](#orchestrated-execution-tracker-driven).
-     The bead-close rules are identical to inline: child beads close in the loop; the parent/
-     standalone bead is closed in Phase 4 after the PR.
+   Work the claimed parent's **open sub-issues**. For multi-agent runs, each sub-issue is the claim unit — assign yourself (`gh issue edit <sub> --repo <origin> --add-assignee @me`) before starting it. Close each sub-issue when — and only when — its acceptance criteria pass.
 
    ```
-   # Plan-with-children mode only. PLAN_BEAD must be set.
-   while (bd ready --json | jq -e --arg p "$PLAN_BEAD" '[.[] | select(.parent==$p)] | length > 0'):
-     - id=$(bd ready --json | jq -r --arg p "$PLAN_BEAD" '[.[] | select(.parent==$p)][0].id')
-     - bd update $id --claim
+   while (open sub-issues of <N> remain):
+     - sub = next open, unblocked sub-issue (from `gh issue view <N> --repo <origin> --json subIssues`)
+     - (multi-agent) claim it: gh issue edit <sub> --repo <origin> --add-assignee @me
      - Read any referenced files from the plan
-     - Look for similar patterns in codebase
+     - Look for similar patterns in the codebase
      - Implement following existing conventions
      - Write tests for new functionality
      - Run System-Wide Test Check (see below)
      - Run tests after changes
-     - bd close $id      # child task beads only — never the parent bead $PLAN_BEAD
-     - Mark off the corresponding checkbox in the plan file ([ ] → [x])
+     - gh issue close <sub> --repo <origin>   # only when this sub-issue's acceptance criteria pass
+     - Check off the corresponding checkbox in the plan doc ([ ] → [x])  # readability only, non-authoritative
      - Evaluate for incremental commit (see below)
    ```
 
-   Do not close `$PLAN_BEAD` here under any condition. Phase 4 owns its close, after the PR is created.
+   Never close the **parent** `<N>` here — the merge's "Item closed" automation stamps `shipped` for the parent downstream. Plan-doc checkboxes are non-authoritative doc content; still check them off so the plan reads as a living progress record, but the sub-issues (not the checkboxes) are the tracker.
 
-   **When tracker is `github` or `none`** — use the existing TodoWrite-driven loop:
+   **Legacy flow** — no sub-issues exist; drive the existing **TodoWrite** loop instead:
    ```
    while (tasks remain):
-     - Mark task as in_progress in TodoWrite
-     - Read any referenced files from the plan
-     - Look for similar patterns in codebase
-     - Implement following existing conventions
-     - Write tests for new functionality
-     - Run System-Wide Test Check (see below)
-     - Run tests after changes
-     - Mark task as completed in TodoWrite
-     - Mark off the corresponding checkbox in the plan file ([ ] → [x])
-     - Evaluate for incremental commit (see below)
+     - Mark task in_progress in TodoWrite
+     - Read referenced files; mirror existing patterns; implement; write tests
+     - Run System-Wide Test Check; run tests
+     - Mark task completed in TodoWrite
+     - Check off the plan-doc checkbox ([ ] → [x])
+     - Evaluate for incremental commit
    ```
 
    **System-Wide Test Check** — Before marking a task done, pause and ask:
@@ -205,7 +210,7 @@ Even a **single** tracked issue benefits from Orchestrated Execution — the orc
 
    **When this matters most:** Any change that touches models with callbacks, error handling with fallback/retry, or functionality exposed through multiple interfaces.
 
-   **IMPORTANT**: Always update the original plan document by checking off completed items. Use the Edit tool to change `- [ ]` to `- [x]` for each task you finish. This keeps the plan as a living document showing progress and ensures no checkboxes are left unchecked.
+   **IMPORTANT**: Always update the original plan document by checking off completed items. Use the Edit tool to change `- [ ]` to `- [x]` for each task you finish. This keeps the plan as a living document showing progress and ensures no checkboxes are left unchecked. (The sub-issues, not the checkboxes, are the authoritative tracker.)
 
 2. **Incremental Commits**
 
@@ -238,18 +243,18 @@ Even a **single** tracked issue benefits from Orchestrated Execution — the orc
 
 3. **Follow Existing Patterns**
 
-   - The plan should reference similar code - read those files first
-   - Match naming conventions exactly
-   - Reuse existing components where possible
-   - Follow project coding standards (see CLAUDE.md)
-   - When in doubt, grep for similar implementations
+   - The plan should reference similar code — read those files first.
+   - Match naming conventions exactly.
+   - Reuse existing components where possible.
+   - Follow project coding standards (see CLAUDE.md).
+   - When in doubt, grep for similar implementations.
 
 4. **Test Continuously**
 
-   - Run relevant tests after each significant change
-   - Don't wait until the end to test
-   - Fix failures immediately
-   - Add new tests for new functionality
+   - Run relevant tests after each significant change.
+   - Don't wait until the end to test.
+   - Fix failures immediately.
+   - Add new tests for new functionality.
    - **Unit tests with mocks prove logic in isolation. Integration tests with real objects prove the layers work together.** If your change touches callbacks, middleware, or error handling — you need both.
    - **External library smoke tests**: If you introduced a new library import or constructor call, write at least one test that constructs the real object with representative arguments. This catches API mismatches (wrong kwargs, missing parameters) that unit tests with mocks will never find.
 
@@ -257,16 +262,16 @@ Even a **single** tracked issue benefits from Orchestrated Execution — the orc
 
    For UI work with Figma designs:
 
-   - Implement components following design specs
-   - Use figma-design-sync agent iteratively to compare
-   - Fix visual differences identified
-   - Repeat until implementation matches design
+   - Implement components following design specs.
+   - Use figma-design-sync agent iteratively to compare.
+   - Fix visual differences identified.
+   - Repeat until implementation matches design.
 
 6. **Track Progress**
-   - Keep your tracker updated as you complete tasks (`bd update`/`bd close` when `issue_tracker: beads`, TodoWrite otherwise).
+   - Keep your tracker updated as you complete tasks — close each sub-issue (`gh issue close <sub> --repo <origin>`) when its criteria pass in board mode; TodoWrite otherwise.
    - Note any blockers or unexpected discoveries.
-   - Create new tasks if scope expands.
-   - Keep user informed of major milestones.
+   - Create new sub-issues if scope expands (see the Orchestrated Execution binding for the follow-on recipe).
+   - Keep the user informed of major milestones.
 
 ### Phase 3: Quality Check
 
@@ -282,7 +287,17 @@ Even a **single** tracked issue benefits from Orchestrated Execution — the orc
    # Use linting-agent before pushing to origin
    ```
 
-2. **Integration Boundary Verification**
+2. **No open sub-issues** (board mode — REQUIRED before opening a PR)
+
+   The parent work item **cannot enter `in_review` with open sub-issues**. Verify none remain:
+
+   ```bash
+   gh issue view <N> --repo <origin> --json subIssues
+   ```
+
+   If any sub-issue is still open, either finish and close it, or (if it is genuinely out of scope for this PR) re-parent/close it deliberately — do not open the PR while the parent has open sub-issues. In the legacy flow this reduces to "all TodoWrite items checked."
+
+3. **Integration Boundary Verification**
 
    Before submitting, for each external library call introduced or modified:
 
@@ -297,21 +312,21 @@ Even a **single** tracked issue benefits from Orchestrated Execution — the orc
 
    d. **Smoke test before committing**: If the feature has a UI or API endpoint, hit it once manually or via curl to verify it works end-to-end, not just in unit tests.
 
-3. **Consider Reviewer Agents** (Optional)
+4. **Consider Reviewer Agents** (Optional)
 
    Use for complex, risky, or large changes. Read agents from `agentic-engineering.local.md` frontmatter (`review_agents`). If no settings file, invoke the `setup` skill to create one.
 
    Run configured agents in parallel with Task tool. Present findings and address critical issues.
 
-4. **Final Validation**
-   - All tracker tasks marked completed (`bd list --status=open --parent=<plan-bead>` returns empty, or all TodoWrite items checked)
+5. **Final Validation**
+   - No open sub-issues on the parent (board mode), or all TodoWrite items checked (legacy)
    - All tests pass
    - Linting passes
    - Code follows existing patterns
    - Figma designs match (if applicable)
    - No console errors or warnings
 
-5. **Prepare Operational Validation Plan** (REQUIRED)
+6. **Prepare Operational Validation Plan** (REQUIRED)
    - Add a `## Post-Deploy Monitoring & Validation` section to the PR description for every change.
    - Include concrete:
      - Log queries/search terms
@@ -322,6 +337,8 @@ Even a **single** tracked issue benefits from Orchestrated Execution — the orc
    - If there is truly no production/runtime impact, still include the section with: `No additional operational monitoring required` and a one-line reason.
 
 ### Phase 4: Ship It
+
+The philosophy here: **opening the PR is the `in_review` transition, not a completion event.** The issue stays open. The merge — via `Closes #N` — is what closes the issue, and the built-in "Item closed" automation stamps `shipped`. This command's last board write is `in_review`; it never closes the issue and never writes a terminal stage.
 
 1. **Create Commit**
 
@@ -377,10 +394,14 @@ Even a **single** tracked issue benefits from Orchestrated Execution — the orc
 
 3. **Create Pull Request**
 
-   ```bash
-   git push -u origin feature-branch-name
+   Open the PR against the **default branch** with a `Closes #<N>` line in the body, so the merge closes the issue and the automation stamps `shipped`:
 
-   gh pr create --title "Feature: [Description]" --body "$(cat <<'EOF'
+   ```bash
+   git push -u origin feat/<N>-<slug>
+
+   gh pr create --repo <origin> --base [default_branch] --title "Feature: [Description]" --body "$(cat <<'EOF'
+   Closes #<N>
+
    ## Summary
    - What was built
    - Why it was needed
@@ -421,113 +442,90 @@ Even a **single** tracked issue benefits from Orchestrated Execution — the orc
    )"
    ```
 
-   Capture the PR identifiers — Phase 4 needs them:
+   Capture the PR identifiers:
 
    ```bash
-   PR_URL=$(gh pr view --json url --jq '.url')
-   PR_NUM=$(gh pr view --json number --jq '.number')
+   PR_URL=$(gh pr view --repo <origin> --json url --jq '.url')
+   PR_NUM=$(gh pr view --repo <origin> --json number --jq '.number')
    ```
 
-4. **Close Tracker Item**
+4. **Advance the board to `in_review`** (board mode)
 
-   PR creation is the bead's completion event. The work is in the PR; the merge is downstream ratification. Closing here avoids the friction of a manual post-merge cleanup step that humans and agents reliably forget — leaving beads perpetually open after the code has long since shipped.
+   The PR is open; move the work item to `in_review`. This is the command's second and final board write — **the issue is NOT closed here**:
 
-   If the input document has YAML frontmatter with a `status` field, update it to `completed`:
+   ```bash
+   python3 "${CLAUDE_PLUGIN_ROOT}/scripts/lifecycle_board.py" --set-status <N> in_review
    ```
-   status: active  →  status: completed
-   ```
 
-   Dispatch on `integrations.issue_tracker_resolved`:
+   From here the lifecycle proceeds without any manual close protocol:
+   - **On merge:** `Closes #<N>` closes the issue; the pre-enabled "Item closed" automation stamps `shipped`. No manual close, no frontmatter write.
+   - **PR closed without merging:** the shared reconciler's closed repair set handles it — an assignee's PR closed unmerged regresses the item `in_review → in_progress` with an audit comment. There is no manual reopen protocol; the next `--reconcile` (Entry Gate step 2 on the next run, or a direct invocation) repairs it.
 
-   - **`beads`**:
-     ```bash
-     # PLAN_BEAD was established and claimed in Phase 1: the parent plan bead, or the
-     # standalone work bead. Fall back to plan frontmatter only when a plan file exists.
-     PLAN_BEAD=${PLAN_BEAD:-$(yq '.bead_id' <plan-path> 2>/dev/null)}
-     : "${PLAN_BEAD:?no work bead to close — PLAN_BEAD must be set in Phase 1}"
-     bd close "$PLAN_BEAD" --reason="PR #${PR_NUM}: ${PR_URL}"
-     bd dolt push   # no-op if Dolt remote unconfigured
-     ```
-   - **`github`**:
-     ```bash
-     gh issue close <issue-number> --comment "PR #${PR_NUM}: ${PR_URL}"
-     ```
-   - **`none`**: skip.
-
-   **Exception — PR rejected or substantially revised after open.** If a PR is later closed without merging, or sent back for a rewrite that takes weeks, reopen the bead with `bd update "$PLAN_BEAD" --status=in_progress --append-notes "PR #N closed without merge: <reason>"`. This is rare in solo and small-team workflows; treat it as a manual exception rather than designing the default around it.
+   In the **legacy flow**, skip this step — there is no board to advance; the PR is simply open.
 
 5. **Notify User**
-   - Summarize what was completed
-   - Link to PR
-   - Note that the bead is closed and will reopen only if the PR is rejected
-   - Note any follow-up work needed
-   - Suggest next steps if applicable — typically `/workflows:review` to review the PR, then the
-     `land-pr` skill to drive CI green, resolve review threads, and **merge** once approved. This
-     command ends at PR creation; `land-pr` owns the completion-and-merge tail (its post-merge
-     tracker close is idempotent with the Phase 4 close above, so nothing double-closes).
+   - Summarize what was completed.
+   - Link to the PR.
+   - Note that the work item is now `in_review`; it becomes `shipped` automatically when the PR merges (and regresses to `in_progress` automatically if the PR is closed unmerged) — no manual tracking needed.
+   - Note any follow-up work needed.
+   - Suggest next steps: typically **`/workflows:review`** to review the PR, then the **`land-pr`** skill to drive CI green, resolve review threads, and **merge** once approved. This command ends at PR creation; `land-pr` owns the completion-and-merge tail (it invokes the shared reconciler to verify/repair `shipped` post-merge — idempotent with the automation, so nothing double-writes).
 
 ---
 
-## Orchestrated Execution (tracker-driven)
+## Orchestrated Execution (board-driven)
 
-An execution style — available for **any tracker** (beads or file-todos) — where instead
-of implementing each issue yourself inline, you act as the **orchestrator**: you own the tracker's
-state machine and delegate the actual implementation to **one focused subagent per issue**, looping
-each issue to a terminal state before returning to the user. It works for a **single issue or a
+An execution style — available whenever the work item has tracked **sub-issues** — where instead
+of implementing each sub-issue yourself inline, you act as the **orchestrator**: you own the board
+and sub-issue state and delegate the actual implementation to **one focused subagent per sub-issue**,
+looping each to a terminal state before returning to the user. It works for a **single sub-issue or a
 whole set**.
 
-The lifecycle is identical across trackers; only the verbs differ — see **Tracker bindings** below.
-The procedure in this section is written with beads verbs (the most expressive case, with its
-parent-vs-child and Phase-4 close rules); for file-todos, substitute the equivalent action
-from the bindings table.
-
-Worth it even for one issue: the orchestrator absorbs the iteration (retry on failed gates, verify
+Worth it even for one sub-issue: the orchestrator absorbs the iteration (retry on failed gates, verify
 acceptance, discover and file follow-on work) so the user gets back a *finished or verifiably-
 blocked* result, not a half-step.
 
 **Orchestrated vs Swarm.** Orchestrated = you spawn one short-lived, tightly-scoped subagent per
-issue and verify each result yourself — tight control, ideal for one issue or a modest set. Swarm
+sub-issue and verify each result yourself — tight control, ideal for one sub-issue or a modest set. Swarm
 (below) = a team of long-lived teammates self-claim from a shared queue — maximum parallelism for
-5+ independent workstreams. Use Orchestrated by default for tracked issues; escalate to Swarm when
+5+ independent workstreams. Use Orchestrated by default for tracked sub-issues; escalate to Swarm when
 the set is large and highly parallel.
 
-### Tracker bindings (same lifecycle, different verbs)
+### GitHub binding (the single tracker)
 
-| Action | beads (`bd`) | file-todos |
-|--------|--------------|------------|
-| List ready | `bd ready` | the TodoWrite list |
-| Read one | `bd show <id>` | the todo entry |
-| Claim | `bd update <id> --claim` | mark `in_progress` |
-| Close | `bd close <id> --reason="…" --suggest-next` | mark `completed`, check off the plan |
-| Block / needs human | `bd update <id> --status=blocked --notes="…"` + `bd label add <id> human` | note the blocker + tell the user |
-| Add follow-on (gates parent) | `bd create … --deps discovered-from:<id>` then `bd dep add <parent> <new>` | add a todo + dependency note |
+All state lives on the board and its sub-issues. **Only the orchestrator** touches board/tracker state — subagents never do. Every `gh` write carries an explicit `--repo`/`--owner`.
 
-Only the **orchestrator** runs these state changes — subagents never touch tracker state. The
-beads parent-vs-child convention (child issues close in the loop; the parent/standalone bead closes
-in **Phase 4** after the PR) is beads-specific: file-todos has no separate "ship the PR"
-close event, so close each issue as soon as its acceptance criteria are met and gates pass.
+| Action | GitHub |
+|--------|--------|
+| List ready | `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/lifecycle_board.py" --ready-work` (planned ∧ unassigned ∧ unblocked, Priority-sorted), or the open unblocked sub-issues of the claimed parent `<N>` via `gh issue view <N> --repo <origin> --json subIssues` |
+| Read one | `gh issue view <sub> --repo <origin>` |
+| Claim | assign yourself, then confirm: `gh issue edit <sub> --repo <origin> --add-assignee @me` — for the **parent**, use `--claim <N>` (it owns the full claim protocol) |
+| Close | `gh issue close <sub> --repo <origin>` (when acceptance criteria pass) |
+| Block / needs human | `gh issue edit <sub> --repo <origin> --add-blocked-by <blocker>` + `gh issue comment <sub> --repo <origin> --body "…"`, then surface the question |
+| Add follow-on (gates parent) | `gh issue create --repo <origin> --parent <N> --blocked-by <sub> --title "…" --body-file …` so the new sub-issue gates the parent until it is closed |
 
-### Terminal conditions (a bead is "done" when ONE holds)
+The **parent** `<N>` is never closed inside the loop — its `shipped` stamp comes from the merge's "Item closed" automation (Phase 4). Close **sub-issues** as soon as their acceptance criteria pass and gates are green.
 
-1. **Resolved** — acceptance criteria met, quality gates pass, AND every follow-on bead it spawned
-   is also terminal. Close child beads here; the parent/standalone bead is closed in **Phase 4**
-   after the PR (per the parent-vs-child rule above) — never inside the loop.
+### Terminal conditions (a sub-issue is "done" when ONE holds)
+
+1. **Resolved** — acceptance criteria met, quality gates pass, AND every follow-on sub-issue it spawned
+   is also terminal. Close the sub-issue here; the parent is never closed in the loop (Phase 4 / the
+   merge automation owns the parent's `shipped`).
 2. **Blocked / needs human** — genuinely stuck on a decision, access, or ambiguity you can't
-   resolve from the repo or the bead. `bd update <id> --status=blocked --notes="…"` and
-   `bd label add <id> human`, surface the question — don't guess. (Terminal for this run; re-enters
+   resolve from the repo or the issue. Add a blocker (`gh issue edit <sub> --repo <origin> --add-blocked-by <blocker>`) or a `human`-labeled
+   comment, surface the question — don't guess. (Terminal for this run; re-enters
    the loop once the user answers.)
 
-Stop only when every target bead — initial **and** spawned follow-ons — is in state 1 or 2. Never
-report "done" while a ready bead is unstarted or a follow-on is open.
+Stop only when every target sub-issue — initial **and** spawned follow-ons — is in state 1 or 2. Never
+report "done" while an open sub-issue is unstarted or a follow-on is open.
 
 ### Procedure
 
-1. **Scope the set.** From the input: an epic/parent id → its children (`bd show <id>`); explicit
-   ids → those; none → `bd ready`. Read each bead's description, design, acceptance, and deps.
-2. **Plan waves.** A wave = beads ready now (no open blockers, via `bd ready`). Within a wave,
-   split **parallel-safe** (file-disjoint — the design notes usually name the files) from
+1. **Scope the set.** From the input: the parent `<N>` → its open sub-issues (`gh issue view <N> --repo <origin> --json subIssues`);
+   explicit ids → those; none → `--ready-work`. Read each issue's body, acceptance criteria, and dependencies.
+2. **Plan waves.** A wave = sub-issues ready now (no open `blocked-by`). Within a wave,
+   split **parallel-safe** (file-disjoint — the plan usually names the files) from
    **must-serialize** (same files). Announce the plan briefly before dispatching.
-3. **Dispatch.** `bd update <id> --claim`, then spawn one subagent per bead with the brief below
+3. **Dispatch.** Assign the sub-issue to yourself (`gh issue edit <sub> --repo <origin> --add-assignee @me`), then spawn one subagent per sub-issue with the brief below
    (Task tool / `general-purpose`, or a specialist agent). Send parallel dispatches in one message.
    For file-conflicting parallel work, isolate each agent in its own git worktree (`skill: git-worktree`) and reconcile on return.
    **Model tiering:** run implementation subagents on an Opus-tier model (`model: "opus"`), in the
@@ -536,40 +534,38 @@ report "done" while a ready bead is unstarted or a follow-on is open.
    cheaper tier.
 4. **Verify & branch** (orchestrator, per returned subagent):
    - Review the diff vs acceptance criteria; integrate any worktree.
-   - Re-run the project's quality gates at the top level (catches cross-bead breakage one agent
+   - Re-run the project's quality gates at the top level (catches cross-issue breakage one agent
      can't see).
-   - **Met + clean, is a child bead** → `bd close <id> --reason="…" --suggest-next`.
-   - **Met + surfaced required work** → file follow-on(s): `bd create … --deps discovered-from:<id>`
-     then `bd dep add <parent> <new>` so the parent can't close early; add to the target set;
-     then close this child.
-   - **Met, is the parent/standalone bead** → leave open; Phase 4 closes it after the PR.
+   - **Met + clean** → `gh issue close <sub> --repo <origin>`.
+   - **Met + surfaced required work** → file follow-on(s): `gh issue create --repo <origin> --parent <N> --blocked-by <sub> …`
+     so the parent can't complete early; add to the target set; then close this sub-issue.
    - **Gates fail / criteria unmet** → loop (step 5). **Blocked** → escalate (step 5).
 5. **Loop or escalate.**
-   - *Loop:* re-dispatch the same bead with the specific failure appended ("tsc error X at
+   - *Loop:* re-dispatch the same sub-issue with the specific failure appended ("tsc error X at
      file:line", "criterion N unmet"). Max ~2 retries.
-   - *Escalate:* mark blocked + `human` label, stop touching it, collect all such items, ask the
-     user in ONE batch (AskUserQuestion). On reply: reopen (`--status=open`) and re-dispatch.
-6. **Next wave.** Re-check `bd ready` (closing unblocks dependents and follow-ons). Repeat until
+   - *Escalate:* add a blocker + `human`-labeled comment, stop touching it, collect all such items, ask the
+     user in ONE batch (AskUserQuestion). On reply: remove the blocker and re-dispatch.
+6. **Next wave.** Re-check readiness (closing a sub-issue unblocks dependents and follow-ons). Repeat until
    the full set — initial and follow-ons — is terminal. Then proceed to Phase 3/4 for the PR
-   (which closes the parent/standalone bead).
+   (the merge, not this loop, stamps the parent `shipped`).
 
 ### Subagent brief template (copy, fill in)
 
 ```
-You are implementing exactly one tracked issue. Do ONLY this issue.
+You are implementing exactly one tracked sub-issue. Do ONLY this sub-issue.
 
-ISSUE: <id> — <title>
-<paste the full issue (bead / todo): description, design notes, acceptance criteria, dependencies>
+SUB-ISSUE: <number> — <title>
+<paste the full issue: body, design notes, acceptance criteria, dependencies>
 
 CONTEXT:
-- Repo + relevant existing files (the design names them); patterns to mirror
+- Repo + relevant existing files (the plan names them); patterns to mirror
 - Conventions: match surrounding code, reuse existing components/helpers, do NOT add scope,
-  backend, or features beyond this bead. Keep the app runnable.
+  backend, or features beyond this sub-issue. Keep the app runnable.
 
 DO:
 1. Implement the acceptance criteria — nothing more.
 2. Run this project's quality gates (tests + lint + type-check + build as applicable). Must be clean.
-3. Do NOT change tracker state (no claim/close/block) — the orchestrator owns that.
+3. Do NOT touch board or issue state (no assign/close/block/status) — the orchestrator owns all of it.
 
 REPORT BACK (your final message = structured result, not prose to a human):
 - Files created/modified (absolute paths)
@@ -579,12 +575,12 @@ REPORT BACK (your final message = structured result, not prose to a human):
 ```
 
 ### Rules baked in
-- Respect the dependency graph — never dispatch a blocked bead.
-- Parallelize only file-disjoint beads; otherwise serialize or isolate with the `git-worktree` skill.
-- One bead = one subagent, tightly scoped; subagents never run bead state changes.
-- Discovered work becomes a follow-on bead that gates its parent — never a silent extra.
-- Bound retries (~2), then mark blocked and escalate — don't loop forever.
-- Quality gates are mandatory before any bead is closed; the parent/standalone bead closes in Phase 4.
+- Respect the dependency graph — never dispatch a sub-issue with an open `blocked-by`.
+- Parallelize only file-disjoint sub-issues; otherwise serialize or isolate with the `git-worktree` skill.
+- One sub-issue = one subagent, tightly scoped; subagents never run board/tracker state changes.
+- Discovered work becomes a follow-on sub-issue that gates its parent — never a silent extra.
+- Bound retries (~2), then block and escalate — don't loop forever.
+- Quality gates are mandatory before any sub-issue is closed; the parent's `shipped` comes from the merge.
 
 ---
 
@@ -687,7 +683,7 @@ See the `orchestrating-swarms` skill for detailed swarm patterns and best practi
 
 ### Ship Complete Features
 
-- Mark all tasks completed before moving on
+- Close every sub-issue before opening the PR
 - Don't leave features 80% done
 - A finished feature that ships beats a perfect feature that doesn't
 
@@ -696,13 +692,14 @@ See the `orchestrating-swarms` skill for detailed swarm patterns and best practi
 Before creating PR, verify:
 
 - [ ] All clarifying questions asked and answered
-- [ ] All **child task** beads closed (`bd list --status=open --parent=<plan-bead>` is empty), or all TodoWrite items checked — the parent/standalone bead gets closed in Phase 4 after PR creation
+- [ ] No open sub-issues on the parent `<N>` (`gh issue view <N> --repo <origin> --json subIssues`), or all TodoWrite items checked (legacy flow) — the parent is stamped `shipped` by the merge automation, never closed by this command
 - [ ] Tests pass (run project's test command)
 - [ ] Linting passes (use linting-agent)
 - [ ] Code follows existing patterns
 - [ ] Figma designs match implementation (if applicable)
 - [ ] Before/after screenshots captured and uploaded (for UI changes)
 - [ ] Commit messages follow conventional format
+- [ ] PR body includes `Closes #<N>` and targets the default branch
 - [ ] PR description includes Post-Deploy Monitoring & Validation section (or explicit no-impact rationale)
 - [ ] PR description includes summary, testing notes, and screenshots
 - [ ] PR description includes Compound Engineered badge
@@ -725,7 +722,7 @@ For most features: tests + linting + following patterns is sufficient.
 - **Skipping clarifying questions** - Ask now, not after building wrong thing
 - **Ignoring plan references** - The plan has links for a reason
 - **Testing at the end** - Test continuously or suffer later
-- **Forgetting to track progress** - Update your tracker (`bd` or TodoWrite) as you go, or lose track of what's done
-- **80% done syndrome** - Finish the feature, don't move on early
-- **Forgetting to close the bead after PR creation** - The bead represents the work, not the merge. Close it in Phase 4 with the PR reference. If the PR is later rejected, reopen with `bd update --status=in_progress` — that's the rare exception, not the rule
+- **Forgetting to track progress** - Close sub-issues as you finish them (board mode) or update TodoWrite (legacy), or lose track of what's done
+- **Closing the issue at PR creation** - Don't. Opening the PR is the `in_review` transition; the *merge* closes the issue via `Closes #<N>` and the automation stamps `shipped`. Manually closing at PR-open subverts the automation and the reconciler's repairs
+- **Opening the PR with open sub-issues** - The parent can't enter `in_review` with open sub-issues; finish or deliberately re-scope them first
 - **Over-reviewing simple changes** - Save reviewer agents for complex work

@@ -121,7 +121,53 @@ Run the preflight script to discover the auto-detected tracker:
 TRACKER=$(python3 "${CLAUDE_PLUGIN_ROOT}/scripts/workflow-repo-preflight.py" 2>/dev/null | jq -r '.integrations.issue_tracker_resolved // "none"')
 ```
 
-If `TRACKER` is `beads`, `github`, or `none`, record it in the generated config (next step). The auto-detect chain — `.beads/ + bd` → beads, `gh auth` → github, else none — runs every time the workflows are invoked, but recording the explicit value makes resolution deterministic.
+`TRACKER` is one of `github-project`, `github`, or `none`. Record it in the generated config (next
+step). The auto-detect chain — committed board config (`agentic-engineering.md` with
+`github_project_owner` + `github_project_number`) → `github-project`; `gh auth status` succeeds →
+`github`; otherwise → `none` — runs every time the workflows are invoked, but recording the explicit
+value makes resolution deterministic. Beads no longer participates in tracker resolution; it remains
+available only as an optional, non-authoritative scratchpad for an implementer's own working notes
+(`bd remember`), never as a lifecycle source of truth.
+
+## Step 3.6: Lifecycle board (optional but recommended)
+
+If the project wants lifecycle tracking on GitHub Projects v2 (`github-project` mode) rather than
+plain issue tracking, offer to bootstrap the board now:
+
+```
+question: "Set up a GitHub Projects v2 lifecycle board for this repo?"
+header: "Lifecycle board"
+options:
+  - label: "Yes, bootstrap it"
+    description: "Creates the project, configures the 9-stage Status field, and writes committed board config."
+  - label: "Skip"
+    description: "Stay on plain github/none tracker mode for now — can be run later."
+```
+
+If yes, run the bootstrap script:
+
+```bash
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/bootstrap_lifecycle_board.py"
+```
+
+The script creates the project, rewrites the built-in Status field's options **ID-preservingly**
+(so existing automations stay wired to the renamed options), adds a Priority field, disables the
+pre-enabled "Item reopened" workflow (it would otherwise stamp a reopened issue back to `stub`,
+erasing its lifecycle position), and writes the **committed** config file `agentic-engineering.md`
+at the repo root with `github_project_owner` and `github_project_number`. This file must be
+committed (not `.local`) — fresh clones and worktree-isolated subagents need to resolve the same
+board identity.
+
+Two steps have no API and stay manual:
+
+1. **Auto-add-from-repo** — configure the board's auto-add workflow in the GitHub UI so new issues
+   land on the board at the `stub` column.
+2. **Ready-work saved view** — create a saved view filtered to `status:planned no:assignee`, sorted
+   by Priority. Note it over-shows blocked items (the view has no way to filter on blocked-by), so
+   check an item's Blocked-by field before starting work on it.
+
+After bootstrapping (and after the two manual steps), run `/lifecycle-doctor` to verify the board
+schema, automations, and config all resolve correctly before relying on it.
 
 ## Step 4: Build Agent List and Write File
 
@@ -148,7 +194,7 @@ Write `agentic-engineering.local.md`:
 
 ```markdown
 ---
-issue_tracker: {detected tracker}    # beads | github | none
+issue_tracker: {detected tracker}    # github-project | github | none
 review_agents: [{computed agent list}]
 plan_review_agents: [{computed plan agent list}]
 ---
@@ -170,12 +216,13 @@ Examples:
 Saved to agentic-engineering.local.md
 
 Stack:         {type}
-Issue tracker: {tracker}    # beads, github, or none
+Issue tracker: {tracker}    # github-project, github, or none
 Review depth:  {depth}
 Agents:        {count} configured
                {agent list, one per line}
 
 Tip: Edit the "Review Context" section to add project-specific instructions.
-     Change issue_tracker: in the frontmatter to switch trackers (beads, github, none).
+     Change issue_tracker: in the frontmatter to switch trackers (github-project, github, none).
      Re-run this setup anytime to reconfigure.
+     Run /lifecycle-doctor anytime to verify the lifecycle board is wired correctly.
 ```
