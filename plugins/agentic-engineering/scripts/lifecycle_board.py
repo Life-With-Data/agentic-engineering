@@ -568,8 +568,8 @@ def evaluate_gate(command: str, stage: Optional[str], has_issue: bool,
         if not stage_at_least(stage, "planned"):
             return gr("route_to_plan", "plan", "work requires >= planned; groom first (hotfixes bypass the board)")
         if not plan_doc:
-            return gr("route_to_plan", "plan", "Status says planned but no plan doc with this join key exists — un-groomed")
-        return gr("proceed", "work", "planned with plan doc — claim next")
+            return gr("route_to_plan", "plan", f"Status is {stage} but no plan doc with this join key exists — un-groomed")
+        return gr("proceed", "work", f"{stage} with plan doc — claim (or resume) next")
 
     if command == "compound":
         if not has_issue:

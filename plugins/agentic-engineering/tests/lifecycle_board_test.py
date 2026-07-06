@@ -97,6 +97,14 @@ class GateTest(unittest.TestCase):
         g = lb.evaluate_gate("work", "planned", True, "docs/plans/x.md", None)
         self.assertEqual(g.verdict, "proceed")
 
+    def test_work_gate_no_doc_reason_names_the_actual_stage(self) -> None:
+        # Issue #46: the reason is echoed verbatim by commands on STOP — a
+        # hard-coded "planned" misdirects the human when the stage is later.
+        g = lb.evaluate_gate("work", "in_progress", True, None, None)
+        self.assertEqual(g.verdict, "route_to_plan")
+        self.assertIn("in_progress", g.reason)
+        self.assertNotIn("planned", g.reason)
+
     def test_work_terminal_stages_are_already_done(self) -> None:
         for stage in ("shipped", "deployed", "compounded", "abandoned"):
             with self.subTest(stage=stage):
