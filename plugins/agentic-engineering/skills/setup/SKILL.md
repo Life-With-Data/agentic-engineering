@@ -1,6 +1,6 @@
 ---
 name: setup
-description: Configure which review agents run for your project. Auto-detects stack and writes agentic-engineering.local.md.
+description: Configure which review agents run for your project. Auto-detects stack, writes agentic-engineering.local.md, and offers to bootstrap the lifecycle board and install the operating-principles always-on layer into CLAUDE.md/AGENTS.md.
 disable-model-invocation: true
 ---
 
@@ -170,6 +170,59 @@ Two steps have no API and stay manual:
 After bootstrapping (and after the two manual steps), run `/lifecycle-doctor` to verify the board
 schema, automations, and config all resolve correctly before relying on it.
 
+## Step 3.7: Install the operating-principles always-on layer
+
+The `operating-principles` skill ships a thin always-on layer — ten compressed execution rules plus
+a trigger line that pulls the full skill in for multi-step work — as a paste-ready block at
+`${CLAUDE_PLUGIN_ROOT}/skills/operating-principles/assets/claude-md-snippet.md`. Offer to install it
+into the repo's agent instruction files.
+
+Detect targets: `CLAUDE.md` and `AGENTS.md` at the repo root. A file already containing the marker
+string `operating-principles always-on layer` has the block — skip it. If every existing target
+already has the marker, skip this whole step silently (idempotent re-runs).
+
+If at least one existing target lacks the marker, use AskUserQuestion:
+
+```
+question: "Install the operating-principles always-on layer into {files lacking it}?"
+header: "Always-on"
+options:
+  - label: "Yes, install (Recommended)"
+    description: "Appends ten compressed execution rules + a trigger line that loads the full skill for multi-step work."
+  - label: "Skip"
+    description: "Leave {files} untouched. Re-run this setup anytime to install."
+```
+
+If neither `CLAUDE.md` nor `AGENTS.md` exists, offer instead:
+
+```
+question: "No CLAUDE.md or AGENTS.md found. Create CLAUDE.md with the operating-principles layer?"
+header: "Always-on"
+options:
+  - label: "Create CLAUDE.md"
+    description: "New file containing just the always-on block."
+  - label: "Skip"
+    description: "Leave the repo without agent instruction files."
+```
+
+On yes, append the block — the marker grep makes this idempotent and symlink-safe (when `AGENTS.md`
+links to `CLAUDE.md`, the second pass sees the marker the first pass just wrote and skips):
+
+```bash
+SNIPPET="${CLAUDE_PLUGIN_ROOT}/skills/operating-principles/assets/claude-md-snippet.md"
+for f in CLAUDE.md AGENTS.md; do
+  [ -f "$f" ] || continue                                          # existing files only
+  grep -q "operating-principles always-on layer" "$f" && continue  # already installed
+  printf '\n' >> "$f"
+  cat "$SNIPPET" >> "$f"
+done
+```
+
+For the create branch: `cat "$SNIPPET" > CLAUDE.md`.
+
+The ten rules are tool-agnostic; in `AGENTS.md` the trigger line's skill reference is inert for
+non-Claude tools while the rules themselves still apply as instructions.
+
 ## Step 4: Build Agent List and Write File
 
 **Stack-specific agents:**
@@ -221,6 +274,7 @@ Issue tracker: {tracker}    # github-project, github, or none
 Review depth:  {depth}
 Agents:        {count} configured
                {agent list, one per line}
+Always-on:     {operating-principles layer: installed into <files> | already present | skipped}
 
 Tip: Edit the "Review Context" section to add project-specific instructions.
      Change issue_tracker: in the frontmatter to switch trackers (github-project, github, none).

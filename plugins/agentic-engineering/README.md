@@ -8,7 +8,7 @@ AI-powered development tools that get smarter with every use. Make each unit of 
 |-----------|-------|
 | Agents | 30 |
 | Commands | 28 |
-| Skills | 23 |
+| Skills | 24 |
 | MCP Servers | 1 |
 
 > 📊 **[FLOWS.md](FLOWS.md)** — mermaid diagrams of every workflow (brainstorm → plan → work → review → compound) and how `/workflows:orchestrate` drives them.
@@ -140,6 +140,8 @@ stub → brainstormed → planned → in_progress → in_review → shipped
 
 ## Skills
 
+One skill is designed to be **always-on**: `operating-principles` ships a paste-ready CLAUDE.md block ([claude-md-snippet.md](skills/operating-principles/assets/claude-md-snippet.md)) — ten compressed execution rules plus a trigger line that pulls the full skill in (decomposition patterns, verification playbook, failure-mode catalog) when a task warrants depth. The workflow commands load it automatically for delegated sub-agents; the snippet extends the same discipline to every session. The `setup` skill offers to install it into a repo's existing `CLAUDE.md`/`AGENTS.md` (idempotent, marker-guarded).
+
 ### Architecture & Design
 
 | Skill | Description |
@@ -170,8 +172,9 @@ stub → brainstormed → planned → in_progress → in_review → shipped
 | `git-worktree` | Manage Git worktrees for parallel development |
 | `land-pr` | Drive an open PR through CI, review threads, and approval to merge |
 | `lifecycle` | The shared work-item lifecycle vocabulary — 9 stages, writer contracts, entry gates, claim semantics, and security invariants for the GitHub Projects v2 board |
+| `operating-principles` | How to operate: risk-first decomposition, independent-channel verification, deliberate next-action selection — distilled from Claude Fable 5, with an always-on CLAUDE.md snippet |
 | `resolve-pr-parallel` | Resolve PR review comments in parallel |
-| `setup` | Configure which review agents run for your project |
+| `setup` | Configure review agents, issue tracker, lifecycle board, and the operating-principles always-on layer |
 
 ### Testing & Quality
 

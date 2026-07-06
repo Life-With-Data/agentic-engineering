@@ -28,6 +28,8 @@ It never writes any other stage, never closes the issue, and never hand-assemble
 
 **Stage semantics.** Load the `lifecycle` skill for the 9-stage enum, the writer table, and the entry-gate/verdict vocabulary — this command references those definitions rather than restating them.
 
+**Execution discipline.** Load the `operating-principles` skill at entry and follow it throughout — risk-first decomposition with per-subtask exit checks, the goal → evidence → gap → action loop, two-strike backtrack, independent-channel verification, and Verified / Checked / Assumed reporting. The Phases below say *what* to do; that skill governs *how*.
+
 **Resolve the issue number `<N>`.** Take `<N>` from an explicit issue-number argument if one was given; otherwise read the `github_issue:` frontmatter key from the input plan document. If neither yields a number, there is no board item to gate on — proceed as the `no_board` branch (legacy flow) below.
 
 ### Preflight, banner, reconcile — then the gate
@@ -562,9 +564,11 @@ CONTEXT:
   backend, or features beyond this sub-issue. Keep the app runnable.
 
 DO:
-1. Implement the acceptance criteria — nothing more.
-2. Run this project's quality gates (tests + lint + type-check + build as applicable). Must be clean.
-3. Do NOT touch board or issue state (no assign/close/block/status) — the orchestrator owns all of it.
+1. Load the `operating-principles` skill and follow it: verify through a channel independent of
+   the one that produced the work, and label every claim Verified / Checked / Assumed.
+2. Implement the acceptance criteria — nothing more.
+3. Run this project's quality gates (tests + lint + type-check + build as applicable). Must be clean.
+4. Do NOT touch board or issue state (no assign/close/block/status) — the orchestrator owns all of it.
 
 REPORT BACK (your final message = structured result, not prose to a human):
 - Files created/modified (absolute paths)
