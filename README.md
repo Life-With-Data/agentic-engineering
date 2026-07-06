@@ -1,7 +1,7 @@
 # Agentic Engineering
 
 [![Build Status](https://github.com/aagnone3/agentic-engineering/actions/workflows/ci.yml/badge.svg)](https://github.com/aagnone3/agentic-engineering/actions/workflows/ci.yml)
-[![npm](https://img.shields.io/npm/v/@aagnone3/agentic-plugin)](https://www.npmjs.com/package/@aagnone3/agentic-plugin)
+[![Release](https://img.shields.io/github/v/release/aagnone3/agentic-engineering)](https://github.com/aagnone3/agentic-engineering/releases)
 
 A Claude Code plugin built on one idea: **each unit of engineering work should make the next one easier — not harder.**
 
@@ -53,10 +53,11 @@ The workflows auto-detect how you track work — a GitHub Projects v2 lifecycle 
 
 ## Use it in other AI tools
 
-This repo ships a Bun/TypeScript CLI ([`@aagnone3/agentic-plugin`](https://www.npmjs.com/package/@aagnone3/agentic-plugin)) that converts the plugin into other tools' native formats:
+This repo ships a Bun/TypeScript CLI (`agentic-plugin`) that converts the plugin into other tools' native formats. It runs straight from GitHub — no registry involved:
 
 ```bash
-bunx @aagnone3/agentic-plugin install agentic-engineering --to <target>
+npx github:aagnone3/agentic-engineering install agentic-engineering --to <target>
+# pin a release: npx github:aagnone3/agentic-engineering#v3.0.0 install ...
 ```
 
 | Target | Output | Notes |
@@ -97,7 +98,7 @@ bun run src/index.ts install ./plugins/agentic-engineering --to opencode
 Mirror your own Claude Code setup (`~/.claude/`) into other tools:
 
 ```bash
-bunx @aagnone3/agentic-plugin sync --target <opencode|codex|pi|droid|copilot>
+npx github:aagnone3/agentic-engineering sync --target <opencode|codex|pi|droid|copilot>
 ```
 
 Syncs personal skills from `~/.claude/skills/` (as symlinks, so edits reflect immediately) and MCP servers from `~/.claude/settings.json`.
