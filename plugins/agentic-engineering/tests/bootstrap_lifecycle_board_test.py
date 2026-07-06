@@ -399,6 +399,62 @@ class WorkflowConfigTest(unittest.TestCase):
         self.assertNotIn("organization(login:", query)
 
 
+class LinkRepoTest(unittest.TestCase):
+    """link_repo is idempotent (skips the mutation when already linked) and
+    non-fatal (a link failure degrades to a warning, never a raise)."""
+
+    @staticmethod
+    def _repos_payload(slugs):
+        nodes = [{"nameWithOwner": s} for s in slugs]
+        return json.dumps({"data": {"repositoryOwner": {"projectV2": {
+            "repositories": {"nodes": nodes}}}}})
+
+    def test_links_when_not_linked(self) -> None:
+        project = bs.Project(number=3, id="P", created=True)
+        runner = FakeRunner([
+            (["api", "graphql"], _ok(self._repos_payload([]))),
+            (["project", "link", "3", "--owner", "acme", "--repo", "acme/widget"], _ok("")),
+        ])
+        result = bs.link_repo(project, _ctx(), runner)
+        self.assertTrue(result["linked"])
+        self.assertFalse(result["already_linked"])
+        self.assertIsNone(result["warning"])
+
+    def test_skips_mutation_when_already_linked(self) -> None:
+        project = bs.Project(number=3, id="P", created=True)
+        runner = FakeRunner([
+            (["api", "graphql"], _ok(self._repos_payload(["acme/widget"]))),
+        ])
+        result = bs.link_repo(project, _ctx(), runner)
+        self.assertFalse(result["linked"])
+        self.assertTrue(result["already_linked"])
+        self.assertIsNone(result["warning"])
+        self.assertFalse(any(c[:2] == ["project", "link"] for c in runner.calls))
+
+    def test_attempts_link_when_link_state_unknown(self) -> None:
+        # A failed/unparseable links query returns None → still attempt the link
+        # (idempotent server-side) rather than silently skip.
+        project = bs.Project(number=3, id="P", created=True)
+        runner = FakeRunner([
+            (["api", "graphql"], _fail("boom")),
+            (["project", "link", "3", "--owner", "acme", "--repo", "acme/widget"], _ok("")),
+        ])
+        result = bs.link_repo(project, _ctx(), runner)
+        self.assertTrue(result["linked"])
+
+    def test_nonfatal_warning_on_link_failure(self) -> None:
+        project = bs.Project(number=3, id="P", created=True)
+        runner = FakeRunner([
+            (["api", "graphql"], _ok(self._repos_payload([]))),
+            (["project", "link", "3", "--owner", "acme", "--repo", "acme/widget"],
+             _fail("insufficient permission")),
+        ])
+        result = bs.link_repo(project, _ctx(), runner)
+        self.assertFalse(result["linked"])
+        self.assertIsNotNone(result["warning"])
+        self.assertIn("acme/widget", result["warning"])
+
+
 class ConfigWriteTest(unittest.TestCase):
     def test_creates_file_when_absent(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

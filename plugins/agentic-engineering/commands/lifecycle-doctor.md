@@ -25,7 +25,7 @@ Group the `checks` array into a table (columns: Check, Status, Detail, Fix) unde
 
 **Repo shape** — `origin`, `issues_enabled`
 
-**Board schema** — `board_config`, `status_options`, `priority_field`
+**Board schema** — `board_config`, `status_options`, `priority_field`, `board_repo_link`
 
 **Delivery topology** — `default_branch_merges`, `deployments`
 

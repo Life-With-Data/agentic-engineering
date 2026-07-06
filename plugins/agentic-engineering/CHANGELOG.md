@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Bootstrap now links the lifecycle board to its origin repo.** Projects v2 boards are owned by a user/org and can only be _linked_ to a repo — there is no repo-owned board — and linking is what surfaces the board on the repo's **Projects** tab and enables auto-add-from-repo. `bootstrap_lifecycle_board.py` gained a `link_repo` step (after workflow config, before the committed-config write) that is **idempotent** (queries current links via a shared `lifecycle_board.project_linked_repos` helper and skips the mutation when already linked) and **non-fatal** (a link failure degrades to a summary warning, never an abort — board resolution only needs `owner`+`number`). `/lifecycle-doctor` gained a matching `board_repo_link` check under Board schema: PASS when linked, WARN with the exact `gh project link …` fix when not, SKIP when unreadable. This closes the gap where a freshly bootstrapped board was invisible on the repo's Projects tab, which read as "no board" in the multi-repo/multi-customer model. Related footgun this surfaces: the committed `agentic-engineering.md` records one board's `owner`/`number`, so a fork/clone under a different owner must re-run bootstrap to point at _its own_ board.
+
 ### Removed
 
 - **npm distribution of the converter CLI.** The `@aagnone3/agentic-plugin` package was never successfully published (the advertised `bunx` command had never worked), and GitHub alone distributes everything: the plugin via the git-based marketplace, the CLI via `npx github:aagnone3/agentic-engineering` (pinnable to a release tag). Deleted `publish.yml`, marked `package.json` private (hard-prevents accidental registry publishes), and updated the README install instructions. Unused distribution surface is untested surface — same doctrine as the 3.0.0 Linear removal.
