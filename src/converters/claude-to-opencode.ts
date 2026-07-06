@@ -337,7 +337,7 @@ function applyPermissions(
     }
   }
 
-  const permission: Record<string, "allow" | "deny"> = {}
+  const permission: NonNullable<OpenCodeConfig["permission"]> = {}
   const tools: Record<string, boolean> = {}
 
   for (const tool of sourceTools) {
@@ -356,7 +356,7 @@ function applyPermissions(
         for (const pattern of toolPatterns) {
           patternPermission[pattern] = "allow"
         }
-        ;(permission as Record<string, typeof patternPermission>)[tool] = patternPermission
+        permission[tool] = patternPermission
       } else {
         permission[tool] = enabled.has(tool) ? "allow" : "deny"
       }
@@ -370,7 +370,7 @@ function applyPermissions(
       for (const pattern of toolPatterns) {
         patternPermission[pattern] = "allow"
       }
-      ;(permission as Record<string, typeof patternPermission>)[tool] = patternPermission
+      permission[tool] = patternPermission
     }
   }
 
@@ -386,8 +386,8 @@ function applyPermissions(
     for (const pattern of combined) {
       combinedPermission[pattern] = "allow"
     }
-    ;(permission as Record<string, typeof combinedPermission>).edit = combinedPermission
-    ;(permission as Record<string, typeof combinedPermission>).write = combinedPermission
+    permission.edit = combinedPermission
+    permission.write = combinedPermission
   }
 
   config.permission = permission
