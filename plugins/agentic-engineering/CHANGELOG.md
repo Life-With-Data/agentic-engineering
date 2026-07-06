@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Removed
+
+- **npm distribution of the converter CLI.** The `@aagnone3/agentic-plugin` package was never successfully published (the advertised `bunx` command had never worked), and GitHub alone distributes everything: the plugin via the git-based marketplace, the CLI via `npx github:aagnone3/agentic-engineering` (pinnable to a release tag). Deleted `publish.yml`, marked `package.json` private (hard-prevents accidental registry publishes), and updated the README install instructions. Unused distribution surface is untested surface — same doctrine as the 3.0.0 Linear removal.
+
 ## [3.0.0] - 2026-07-06
 
 ### Added
