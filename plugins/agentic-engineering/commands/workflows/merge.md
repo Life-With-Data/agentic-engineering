@@ -15,7 +15,9 @@ logic — it delegates entirely to the [`land-pr`](../../skills/land-pr/SKILL.md
 - confirms the PR was independently reviewed and is mergeable,
 - merges and cleans up (deletes the branch, fast-forwards the local default branch), and
 - idempotently closes the corresponding tracker item — dispatching on the resolved issue tracker
-  (`beads` / `github` / `none`).
+  (the lifecycle board via the shared reconciler, or `github` / `none` legacy close).
+
+`land-pr` verifies the `shipped` stamp via `lifecycle_board.py --reconcile` rather than writing status itself — the merge automation is the writer; the reconciler only repairs drift if the automation missed it.
 
 ## Run
 

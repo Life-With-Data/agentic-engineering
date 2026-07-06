@@ -89,17 +89,28 @@ class PlanTrackerGuardTest(unittest.TestCase):
         body = json.loads(result.stdout)
         self.assertEqual(body["decision"], "block")
         self.assertIn("bad.md", body["reason"])
-        self.assertIn("bead_id", body["reason"])
+        self.assertIn("github_issue", body["reason"])
         self.assertIn("issue_tracker: none", body["reason"])
 
-    def test_passes_when_bead_id_set(self) -> None:
-        plan = self._make_plan("good.md", "title: good\nbead_id: bd-42")
+    def test_passes_when_github_issue_bare_number_set(self) -> None:
+        plan = self._make_plan("good.md", "title: good\ngithub_issue: 42")
         transcript = _write_transcript(
             self.cwd, [{"name": "Edit", "input": {"file_path": str(plan)}}]
         )
         result = _run({"transcript_path": str(transcript)}, self.cwd)
         self.assertEqual(result.returncode, 0)
         self.assertEqual(result.stdout, "")
+
+    def test_blocks_when_only_bead_id_set(self) -> None:
+        # beads is a non-authoritative scratchpad: bead_id is no longer a tracker
+        # field, so a plan carrying only bead_id must still block.
+        plan = self._make_plan("bead_only.md", "title: b\nbead_id: bd-42")
+        transcript = _write_transcript(
+            self.cwd, [{"name": "Write", "input": {"file_path": str(plan)}}]
+        )
+        result = _run({"transcript_path": str(transcript)}, self.cwd)
+        self.assertEqual(result.returncode, 0)
+        self.assertEqual(json.loads(result.stdout)["decision"], "block")
 
     def test_passes_with_issue_tracker_none_carveout(self) -> None:
         plan = self._make_plan(
@@ -113,8 +124,10 @@ class PlanTrackerGuardTest(unittest.TestCase):
         self.assertEqual(result.stdout, "")
 
     def test_blocks_on_template_placeholders(self) -> None:
+        # Template placeholders like "github_issue: NNN" are non-numeric and
+        # must not satisfy the tracker requirement.
         plan = self._make_plan(
-            "placeholder.md", "title: tpl\nbead_id: bd-NNN"
+            "placeholder.md", "title: tpl\ngithub_issue: NNN"
         )
         transcript = _write_transcript(
             self.cwd, [{"name": "Write", "input": {"file_path": str(plan)}}]
@@ -123,43 +136,17 @@ class PlanTrackerGuardTest(unittest.TestCase):
         self.assertEqual(result.returncode, 0)
         self.assertEqual(json.loads(result.stdout)["decision"], "block")
 
-    def test_passes_with_uppercase_base36_bead_id(self) -> None:
-        # Beads can be configured with an uppercase prefix (e.g. "AL-"), giving
-        # IDs like "AL-09v" / "AL-eh4": uppercase prefix, lowercase base-36 suffix.
-        for bead_id in ("AL-09v", "AL-eh4"):
-            with self.subTest(bead_id=bead_id):
-                plan = self._make_plan(
-                    f"upper_{bead_id}.md", f"title: up\nbead_id: {bead_id}"
-                )
-                transcript = _write_transcript(
-                    self.cwd, [{"name": "Write", "input": {"file_path": str(plan)}}]
-                )
-                result = _run({"transcript_path": str(transcript)}, self.cwd)
-                self.assertEqual(result.returncode, 0)
-                self.assertEqual(result.stdout, "")
-
-    def test_passes_with_uppercase_dotted_base36_bead_id(self) -> None:
-        # Beads child IDs carry a dotted base-36 suffix (e.g. "AL-xs7.3"); the
-        # uppercase prefix must be accepted here too, via the base-36 branch's
-        # (?:\.[a-z0-9]+)* dotted-segment tail.
-        plan = self._make_plan("upper_dotted.md", "title: up\nbead_id: AL-xs7.3")
+    def test_passes_with_crlf_line_endings(self) -> None:
+        # A CRLF plan file with a valid github_issue must PASS — the closing
+        # fence regex must tolerate the trailing CR (verified false-block).
+        path = self.cwd / "docs" / "plans" / "crlf.md"
+        path.write_bytes(b"---\r\ntitle: crlf\r\ngithub_issue: 42\r\n---\r\n\r\n# body\r\n")
         transcript = _write_transcript(
-            self.cwd, [{"name": "Write", "input": {"file_path": str(plan)}}]
+            self.cwd, [{"name": "Write", "input": {"file_path": str(path)}}]
         )
         result = _run({"transcript_path": str(transcript)}, self.cwd)
-        self.assertEqual(result.returncode, 0)
+        self.assertEqual(result.returncode, 0, msg=result.stderr)
         self.assertEqual(result.stdout, "")
-
-    def test_blocks_uppercase_prefixed_placeholder(self) -> None:
-        # Allowing an uppercase prefix must NOT admit uppercase-suffix
-        # placeholders like "AL-NNN" — the suffix must stay lowercase base-36.
-        plan = self._make_plan("upper_ph.md", "title: tpl\nbead_id: AL-NNN")
-        transcript = _write_transcript(
-            self.cwd, [{"name": "Write", "input": {"file_path": str(plan)}}]
-        )
-        result = _run({"transcript_path": str(transcript)}, self.cwd)
-        self.assertEqual(result.returncode, 0)
-        self.assertEqual(json.loads(result.stdout)["decision"], "block")
 
     def test_passes_with_github_issue_with_hash_value(self) -> None:
         plan = self._make_plan(

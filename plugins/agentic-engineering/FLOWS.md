@@ -25,19 +25,88 @@ How the individual flows compose into one pipeline, with the artifact each stage
 ```mermaid
 flowchart LR
     idea([feature idea]) --> B["brainstorm"]
-    B -->|"docs/brainstorms/*.md"| P["plan"]
-    P -->|"docs/plans/*-plan.md<br/>+ tracker id"| D{"deepen?"}
+    B -->|"docs/brainstorms/*.md<br/><b>brainstormed</b>"| P["plan"]
+    P -->|"docs/plans/*-plan.md<br/>+ github_issue<br/><b>planned</b>"| D{"deepen?"}
     D -->|yes| DP["deepen-plan"]
     D -->|no| W
     DP --> W["work"]
-    W -->|"PR opened"| R["review"]
+    W -->|"PR opened<br/><b>in_progress → in_review</b>"| R["review / land"]
     R --> TB["test-browser*"]
     TB --> FV["feature-video*"]
     FV --> C["compound"]
-    C -->|"docs/solutions/*.md"| done([shipped])
+    R -->|"merge<br/><b>shipped</b>"| C
+    C -->|"docs/solutions/*.md<br/><b>compounded</b>"| done([compounded])
 ```
 
-`/workflows:orchestrate` runs this whole chain for you. `/lfg` and `/slfg` run it fully autonomously.
+The **bold** labels are the lifecycle stages stamped on the board's Status field as each artifact lands (see the state machine below). `/workflows:orchestrate` runs this whole chain for you. `/lfg` and `/slfg` run it fully autonomously.
+
+---
+
+## The lifecycle state machine
+
+In `github-project` mode a GitHub Projects v2 board is the source of truth. Every work item is an issue on the board carrying a Status stage; every command reads and moves that stage through one engine (`scripts/lifecycle_board.py`) instead of inferring pipeline position from filenames. This is the canonical picture — the [`lifecycle` skill](skills/lifecycle/SKILL.md) is the prose definition.
+
+Each transition has exactly **one writer** (a command, a built-in automation, or the shared reconciler). Forward stages are strictly ordered except two legal skips (`stub → planned`, `shipped → compounded`). `deployed` and `compounded` are order-independent terminal refinements of `shipped`; `abandoned` is an off-ramp reachable from **any** stage — closing an item as not-planned abandons it even after it shipped (the reconciler honors an explicit not-planned close as a deliberate human act; the `deployed` high-water rule applies to rollbacks, not to not-planned closes).
+
+```mermaid
+stateDiagram-v2
+    [*] --> stub
+    stub --> brainstormed: brainstorm
+    stub --> planned: plan (crisp)
+    brainstormed --> planned: plan
+    planned --> in_progress: work --claim
+    in_progress --> in_review: work (PR opens, Closes #N)
+    in_review --> shipped: merge → "Item closed" automation
+
+    shipped --> deployed: consumer deploy workflow
+    shipped --> compounded: compound
+    note right of deployed
+        deployed & compounded are order-independent
+        refinements of shipped. deployed is a
+        high-water mark — rollbacks never regress it.
+    end note
+
+    stub --> abandoned: abandoned
+    brainstormed --> abandoned
+    planned --> abandoned
+    in_progress --> abandoned
+    in_review --> abandoned
+    shipped --> abandoned: not-planned close
+    deployed --> abandoned
+    compounded --> abandoned
+
+    deployed --> [*]
+    compounded --> [*]
+    abandoned --> [*]
+
+    note left of shipped
+        Reconciler repairs (labeled by rule):
+        merged_close_missed: (closed+merged, <shipped) → shipped
+        not_planned_close: (closed as not-planned) → abandoned
+        pr_closed_unmerged: in_review → in_progress
+        pr_reopened: in_progress → in_review
+        abandoned_cascade: closes a parent's open sub-issues
+        Flag (report-only, never repaired):
+        merged_to_non_default_branch → git-flow stall
+    end note
+```
+
+**Writers per transition:**
+
+| Transition | Writer |
+|---|---|
+| → `stub` | `/triage`, `/upstream-scan`, humans (create + board-add + `--set-status stub`) |
+| → `brainstormed` | `/workflows:brainstorm` (on doc completion) |
+| → `planned` | `/workflows:plan` Step 7 (issue + sub-issues + deps + `--set-status planned`) |
+| → `in_progress` | `/workflows:work` Phase 1 (`--claim`) |
+| → `in_review` | `/workflows:work` Phase 4 (PR opens; issue NOT closed) |
+| → `shipped` | Built-in "Item closed" automation (merge automation stamps it) |
+| → `deployed` | Consumer repo's deploy workflow (comment-always / Status-best-effort) |
+| → `compounded` | `/workflows:compound` (join key present only) |
+| → `abandoned` | Humans; reconciler on close-as-not-planned |
+| *repairs / cascade* | The shared reconciler (the five labeled repairs; the `abandoned_cascade` on sub-issues) |
+
+The three report-only flags (`merged_to_non_default_branch`, `stale_join_key`, `truncated_ready_work`) emit issue comments + JSON but are never auto-repaired — the repair set stays closed at five.
 
 ---
 
@@ -47,7 +116,7 @@ The orchestrator drives every stage automatically. In the default **delegate** m
 
 ```mermaid
 flowchart TD
-    start(["/workflows:orchestrate"]) --> detect["detect stage from artifacts<br/>(resumable)"]
+    start(["/workflows:orchestrate"]) --> detect["reconcile + read board stage<br/>(legacy artifact fallback)"]
     detect --> B["brainstorm"]
     B --> g1{{"approach selection †"}}
     g1 --> P["plan"]
@@ -65,7 +134,7 @@ flowchart TD
     L --> g3{{"FINAL-REVIEW GATE ‡<br/>packet + decision log"}}
     g3 --> M["merge"]
     M --> C["compound"]
-    C --> done([shipped])
+    C --> done([compounded])
 
     classDef gate fill:#ffe8cc,stroke:#e8590c,stroke-width:2px;
     class g1,gate,g2,g3 gate
@@ -103,7 +172,7 @@ flowchart TD
 
 ## /workflows:plan — decide HOW to build it
 
-Tracker-issue creation (Step 7) is a hard gate enforced by the `plan-tracker-guard` Stop hook: the plan cannot exit without a `bead_id` / `github_issue` (or an explicit `issue_tracker: none`).
+Tracker-issue creation (Step 7) is a hard gate enforced by the `plan-tracker-guard` Stop hook: the plan cannot exit without a `github_issue` join key (or an explicit `issue_tracker: none`). In `github-project` mode Step 7 also creates the sub-issues + dependencies, adds the item to the board, and stamps Status=`planned`.
 
 ```mermaid
 flowchart TD
@@ -119,8 +188,8 @@ flowchart TD
     consolidate --> specflow["spec-flow-analyzer"]
     specflow --> detail{"detail level<br/>MINIMAL / MORE / A LOT"}
     detail --> writefile["write plan file"]
-    writefile --> tracker[["Step 7: create tracker issue<br/>(MANDATORY GATE)"]]
-    tracker --> guard{"tracker id recorded?"}
+    writefile --> tracker[["Step 7: issue + sub-issues + board add,<br/>Status=planned (MANDATORY GATE)"]]
+    tracker --> guard{"github_issue recorded?"}
     guard -->|no| tracker
     guard -->|yes| opts{{"post-generation options"}}
 
@@ -157,7 +226,7 @@ flowchart TD
 
 ## /workflows:work — execute the plan and ship a PR
 
-Tracker-aware (beads / GitHub / none) and supports three execution styles: **inline** (default), **orchestrated** (one sub-agent per bead), and **swarm** (parallel teammates).
+Mode-aware (`github-project` / `github` / `none`) and supports three execution styles: **inline** (default), **orchestrated** (one sub-agent per sub-issue), and **swarm** (parallel teammates). In `github-project` mode Phase 1 claims the item via `--claim` (Status=`in_progress`); Phase 4 opens the PR with `Closes #N` and sets Status=`in_review` — the issue is **not** closed at PR creation. The merge automation stamps `shipped`.
 
 ```mermaid
 flowchart TD
@@ -165,15 +234,16 @@ flowchart TD
     readplan --> clar{"anything ambiguous?"}
     clar -->|yes| ask{{"clarify with you"}}
     ask --> preflight
-    clar -->|no| preflight["repo preflight script:<br/>resolve tracker + branch state"]
-    preflight --> branch["branch / worktree setup"]
-    branch --> tasks["create task list<br/>(beads or TodoWrite)"]
+    clar -->|no| preflight["repo preflight script:<br/>resolve mode"]
+    preflight --> claim["lifecycle_board.py --claim<br/>(Status=in_progress)"]
+    claim --> branch["branch / worktree setup"]
+    branch --> tasks["create task list<br/>(sub-issues or TodoWrite)"]
     tasks --> loop{"tasks remain?"}
     loop -->|yes| impl["implement → test →<br/>system-wide check → commit"]
     impl --> loop
     loop -->|no| quality["quality checks:<br/>tests + lint + integration boundaries"]
     quality --> ship["commit + capture screenshots*"]
-    ship --> pr[["create PR + close tracker bead"]]
+    ship --> pr[["open PR (Closes #N),<br/>Status=in_review — issue NOT closed"]]
     pr --> done([PR open])
 
     classDef gate fill:#ffe8cc,stroke:#e8590c,stroke-width:2px;
@@ -184,7 +254,7 @@ flowchart TD
 
 ## /workflows:review — multi-agent code review
 
-Runs configured review agents in parallel (plus conditional migration agents), synthesizes findings into P1/P2/P3, and records them tracker-aware (beads or `todos/*.md`). P1 findings block merge.
+Runs configured review agents in parallel (plus conditional migration agents), synthesizes findings into P1/P2/P3, and records them as `todos/*.md` file-todos. P1 findings block merge.
 
 ```mermaid
 flowchart TD
@@ -195,7 +265,7 @@ flowchart TD
     core --> simp["code-simplicity-reviewer"]
     cond --> simp
     simp --> synth["synthesize + dedupe<br/>+ assign P1 / P2 / P3"]
-    synth --> track["create findings<br/>(beads or todos/*.md)"]
+    synth --> track["create findings<br/>(todos/*.md)"]
     track --> report["summary report"]
     report --> e2e{"offer E2E testing"}
     e2e --> done([findings tracked])

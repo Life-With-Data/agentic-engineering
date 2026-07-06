@@ -1,7 +1,11 @@
 #!/usr/bin/env python3
 """Stop-hook safety net: block turn termination if any plan file modified in
-this session lacks a tracker ID (``bead_id`` / ``github_issue``) in its YAML
-frontmatter, unless the plan explicitly opts out with ``issue_tracker: none``.
+this session lacks a tracker ID (``github_issue``) in its YAML frontmatter,
+unless the plan explicitly opts out with ``issue_tracker: none``.
+
+Under the unified lifecycle, GitHub is the sole authoritative tracker; beads is
+demoted to a non-authoritative scratchpad, so ``bead_id`` is no longer a valid
+tracker ID for plans.
 """
 from __future__ import annotations
 
@@ -12,22 +16,20 @@ import sys
 from pathlib import Path
 from typing import Final, Iterator
 
-TRACKER_FIELDS: Final = ("bead_id", "github_issue")
+TRACKER_FIELDS: Final = ("github_issue",)
 PLAN_PATH_RE: Final = re.compile(r"(?:^|/)docs/plans/[^/]+\.md$")
 EDIT_TOOLS: Final = frozenset({"Write", "Edit", "MultiEdit", "NotebookEdit"})
-FRONTMATTER_FENCE_RE: Final = re.compile(r"^---[ \t]*$", re.MULTILINE)
-# Real tracker IDs look like "bd-42", "cre-zpz", "cre-1ul.6",
-# "AL-09v", "123", or "org/repo#42". Two prefixed forms:
-#   - <prefix>-<digits>            e.g. bd-42 (any-case prefix)
-#   - <prefix>-<lower base36 + .>  e.g. cre-zpz, cre-1ul.6, AL-09v
-#                                  (beads base-36 IDs; prefix may be any case)
-# The lowercase requirement is on the SUFFIX, not the prefix: it keeps uppercase
-# placeholders like "bd-NNN" / "AL-NNN" rejected (their suffix isn't lowercase
-# base-36) while still accepting custom uppercase prefixes such as beads' "AL-".
+# Tolerate a trailing CR so CRLF-line-ended plan files (Windows editors) are not
+# falsely treated as having no closing fence (verified false-block).
+FRONTMATTER_FENCE_RE: Final = re.compile(r"^---[ \t]*\r?$", re.MULTILINE)
+# A real ``github_issue`` value is either a bare issue number or a qualified
+# ``owner/repo#N`` reference:
+#   - <digits>                     e.g. 42 (bare issue number)
+#   - <owner>/<repo>#<digits>      e.g. org/repo#42 (qualified form)
+# Bare digits keep template placeholders like "github_issue: NNN" rejected
+# (non-numeric → no match).
 REAL_TRACKER_VALUE_RE: Final = re.compile(
-    r"^([A-Za-z][A-Za-z0-9_]*-\d+"
-    r"|[A-Za-z][A-Za-z0-9_]*-[a-z0-9]+(?:\.[a-z0-9]+)*"
-    r"|\d+"
+    r"^(\d+"
     r"|[\w.-]+/[\w.-]+#\d+)$"
 )
 # Inline comments only count when '#' is preceded by whitespace — otherwise
@@ -193,12 +195,11 @@ def evaluate(paths: list[str]) -> list[str]:
 
 REMEDIATION = (
     "Refusing to end turn — the following plan files lack a tracker ID "
-    "in their YAML frontmatter (one of bead_id / github_issue):\n\n"
+    "in their YAML frontmatter (github_issue):\n\n"
     "{listing}\n\n"
     "Fix each file by either:\n"
-    "  (a) Creating a tracker issue and writing the ID into the frontmatter:\n"
-    "        beads:   bd create --title '<t>' --type=feature  → set 'bead_id: bd-N'\n"
-    "        github:  gh issue create --title '<t>' --body-file <plan-path>\n"
+    "  (a) Creating a GitHub issue and writing the ID into the frontmatter:\n"
+    "        gh issue create --title '<t>' --body-file <plan-path>\n"
     "                   → set 'github_issue: <N>'\n"
     "  (b) OR setting 'issue_tracker: none' in the frontmatter to opt out\n"
     "      (the documented un-tracked carve-out).\n"

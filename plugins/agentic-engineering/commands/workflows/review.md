@@ -21,6 +21,10 @@ argument-hint: "[PR number, GitHub URL, branch name, or latest]"
 - For document reviews: Path to a markdown file or document
 </requirements>
 
+## Lifecycle note
+
+This command performs no lifecycle transition — review operates *inside* the `in_review` stage rather than moving an item into or out of it. Findings are stored in `todos/*.md` this iteration regardless of board configuration; see Step 2 below.
+
 ## Main Tasks
 
 ### 1. Determine Review Target & Setup (ALWAYS FIRST)
@@ -229,37 +233,9 @@ Remove duplicates, prioritize by severity and impact.
 
 </synthesis_tasks>
 
-#### Step 2: Create Findings (Tracker-Aware)
+#### Step 2: Create Findings (file-todos)
 
-Resolve the issue tracker first:
-
-```bash
-TRACKER=$(python3 "${CLAUDE_PLUGIN_ROOT}/scripts/workflow-repo-preflight.py" | jq -r '.integrations.issue_tracker_resolved')
-```
-
-Print a banner: `Findings will be tracked in: <TRACKER>`.
-
-**When `TRACKER == beads`** — create one bead per finding instead of a `todos/*.md` file. Skip the rest of this Step 2 and the file-todos subsections below; use this loop:
-
-```bash
-# PLAN_BEAD=$(yq '.bead_id' <plan-or-pr-frontmatter>)  # if available
-for finding in <findings>:
-  FINDING_ID=$(bd q \
-    --title="<short finding title>" \
-    --description="<problem statement + findings + proposed solutions>" \
-    --acceptance="<criteria>" \
-    --type=bug \
-    --priority=<1 for p1, 2 for p2, 3 for p3>)
-  bd tag "$FINDING_ID" code-review <category>      # e.g. security, performance
-  if [ -n "$PLAN_BEAD" ]; then
-    bd dep add "$FINDING_ID" "$PLAN_BEAD"
-  fi
-done
-```
-
-After all beads are created, jump to **Step 3: Summary Report** below.
-
-**When `TRACKER` is `github` or `none`** — use the file-todos skill path documented below.
+Findings always go to `todos/*.md` via the file-todos skill — this is a single path regardless of lifecycle board configuration (`github-project` / `github` / `none` all use it; there is no tracker dispatch to resolve here).
 
 <critical_instruction> Use the file-todos skill to create todo files for ALL findings immediately. Do NOT present findings one-by-one asking for user approval. Create all todo files in parallel using the skill, then summarize results to user. </critical_instruction>
 

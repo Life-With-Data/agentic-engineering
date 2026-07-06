@@ -21,6 +21,20 @@ Captures problem solutions while context is fresh, creating structured documenta
 /workflows:compound [brief context]    # Provide additional context hint
 ```
 
+## Entry Gate (run before anything else)
+
+**Writer contract:** this command performs exactly one transition: `shipped|deployed → compounded`.
+
+1. Run `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/lifecycle_board.py" --gate compound [--issue <N>]` (pass `--issue` only if the fix being documented is join-keyed to a tracked issue; omit it for hotfixes with no board item).
+2. Branch on `verdict` — exactly these outcomes, nothing else:
+   - **`proceed`**, no issue (hotfix path) → continue to Phase 1; do not stamp any status — there is nothing to stamp.
+   - **`proceed`**, issue at `shipped`/`deployed` → continue to Phase 1; this run owns the write to `compounded` after the doc is written (Phase 2 step 6).
+   - **`already_done`** (already `compounded`) → report: "Issue #<N> is already compounded — nothing to do." Then STOP.
+   - **`repair_needed`** (issue exists but stage is pre-merge, i.e. not yet `shipped`) → continue to Phase 1 and document anyway (documenting doesn't require the merge to have landed), but do **not** stamp `compounded` — the issue hasn't shipped yet.
+   - **`no_board`** (no board configured / legacy repo) → continue to Phase 1 using the legacy flow (no lifecycle write in Phase 2 step 6).
+
+Stage semantics and mechanics: load the `lifecycle` skill.
+
 ## Execution Strategy: Two-Phase Orchestration
 
 <critical_requirement>
@@ -80,7 +94,11 @@ The orchestrating agent (main conversation) performs these steps:
 3. Validate YAML frontmatter against schema
 4. Create directory if needed: `mkdir -p docs/solutions/[category]/`
 5. Write the SINGLE final file: `docs/solutions/[category]/[filename].md`
-6. If `bd` is on PATH (check via the preflight script's `integrations.beads_remember_available`), record a one-line insight pointing back to the solution doc:
+6. **Lifecycle stamp** — only if the Entry Gate verdict was `proceed` with a `shipped`/`deployed` issue (never for the hotfix no-issue path, never for `repair_needed`, never if the gate returned `no_board`):
+   ```bash
+   python3 "${CLAUDE_PLUGIN_ROOT}/scripts/lifecycle_board.py" --set-status <N> compounded
+   ```
+7. If `bd` is on PATH (check via the preflight script's `integrations.beads_remember_available`), record a one-line insight pointing back to the solution doc — this is tracker-independent knowledge memory, not a lifecycle write:
    ```bash
    bd remember "<one-line insight>" --link "docs/solutions/[category]/[filename].md"
    ```
