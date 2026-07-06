@@ -1,12 +1,4 @@
 import type { ClaudePlugin } from "../types/claude"
-import type { OpenCodeBundle } from "../types/opencode"
-import type { CodexBundle } from "../types/codex"
-import type { CursorBundle } from "../types/cursor"
-import type { DroidBundle } from "../types/droid"
-import type { PiBundle } from "../types/pi"
-import type { CopilotBundle } from "../types/copilot"
-import type { GeminiBundle } from "../types/gemini"
-import type { KiroBundle } from "../types/kiro"
 import { convertClaudeToOpenCode, type ClaudeToOpenCodeOptions } from "../converters/claude-to-opencode"
 import { convertClaudeToClaude } from "../converters/claude-to-claude"
 import { convertClaudeToCodex } from "../converters/claude-to-codex"
@@ -33,59 +25,66 @@ export type TargetHandler<TBundle = unknown> = {
   write: (outputRoot: string, bundle: TBundle) => Promise<void>
 }
 
+// The registry maps target names to handlers with heterogeneous bundle types,
+// which the Record value type can't express — each entry erases TBundle here,
+// after inference has verified that convert's output matches write's input.
+function defineTarget<TBundle>(handler: TargetHandler<TBundle>): TargetHandler {
+  return handler as unknown as TargetHandler
+}
+
 export const targets: Record<string, TargetHandler> = {
-  claude: {
+  claude: defineTarget({
     name: "claude",
     implemented: true,
-    convert: convertClaudeToClaude as TargetHandler<ClaudePlugin>["convert"],
-    write: writeClaudeBundle as TargetHandler<ClaudePlugin>["write"],
-  },
-  opencode: {
+    convert: convertClaudeToClaude,
+    write: writeClaudeBundle,
+  }),
+  opencode: defineTarget({
     name: "opencode",
     implemented: true,
     convert: convertClaudeToOpenCode,
     write: writeOpenCodeBundle,
-  },
-  codex: {
+  }),
+  codex: defineTarget({
     name: "codex",
     implemented: true,
-    convert: convertClaudeToCodex as TargetHandler<CodexBundle>["convert"],
-    write: writeCodexBundle as TargetHandler<CodexBundle>["write"],
-  },
-  cursor: {
+    convert: convertClaudeToCodex,
+    write: writeCodexBundle,
+  }),
+  cursor: defineTarget({
     name: "cursor",
     implemented: true,
-    convert: convertClaudeToCursor as TargetHandler<CursorBundle>["convert"],
-    write: writeCursorBundle as TargetHandler<CursorBundle>["write"],
-  },
-  droid: {
+    convert: convertClaudeToCursor,
+    write: writeCursorBundle,
+  }),
+  droid: defineTarget({
     name: "droid",
     implemented: true,
-    convert: convertClaudeToDroid as TargetHandler<DroidBundle>["convert"],
-    write: writeDroidBundle as TargetHandler<DroidBundle>["write"],
-  },
-  pi: {
+    convert: convertClaudeToDroid,
+    write: writeDroidBundle,
+  }),
+  pi: defineTarget({
     name: "pi",
     implemented: true,
-    convert: convertClaudeToPi as TargetHandler<PiBundle>["convert"],
-    write: writePiBundle as TargetHandler<PiBundle>["write"],
-  },
-  copilot: {
+    convert: convertClaudeToPi,
+    write: writePiBundle,
+  }),
+  copilot: defineTarget({
     name: "copilot",
     implemented: true,
-    convert: convertClaudeToCopilot as TargetHandler<CopilotBundle>["convert"],
-    write: writeCopilotBundle as TargetHandler<CopilotBundle>["write"],
-  },
-  gemini: {
+    convert: convertClaudeToCopilot,
+    write: writeCopilotBundle,
+  }),
+  gemini: defineTarget({
     name: "gemini",
     implemented: true,
-    convert: convertClaudeToGemini as TargetHandler<GeminiBundle>["convert"],
-    write: writeGeminiBundle as TargetHandler<GeminiBundle>["write"],
-  },
-  kiro: {
+    convert: convertClaudeToGemini,
+    write: writeGeminiBundle,
+  }),
+  kiro: defineTarget({
     name: "kiro",
     implemented: true,
-    convert: convertClaudeToKiro as TargetHandler<KiroBundle>["convert"],
-    write: writeKiroBundle as TargetHandler<KiroBundle>["write"],
-  },
+    convert: convertClaudeToKiro,
+    write: writeKiroBundle,
+  }),
 }
