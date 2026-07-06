@@ -21,6 +21,13 @@
 # discipline is in-script (lifecycle_board.py self-enforces explicit --owner; Security
 # invariant 7). Read-only commands (pr view, issue list, project item-list, api reads) are
 # never touched.
+#
+# HONEST LIMITS: text matching here is a backstop, not the real control — the gh-default pin
+# (ensure-gh-default-repo.sh) plus in-script explicit --owner/--repo discipline are what
+# actually prevent upstream writes. Arbitrary shell obfuscation (variable expansion,
+# `$(printf ...)`, base64, here-docs) is uncatchable by text matching and remains out of
+# scope; this hook only defeats the cheap, common bypasses (surrounding/interior quotes and
+# the -R short flag).
 
 set -euo pipefail
 
@@ -30,6 +37,21 @@ ORIGIN_DEFAULT='aagnone3/agentic-engineering'
 
 COMMAND=$(jq -r '.tool_input.command // empty')
 [ -n "$COMMAND" ] || exit 0
+
+# Normalized copy with single/double quotes stripped, so interior-quote bypasses
+# (Every""Inc, Every''Inc, "EveryInc"/repo) collapse back to the literal slug. The
+# upstream owner/slug is matched against BOTH $COMMAND (raw) and $COMMAND_NQ (normalized).
+COMMAND_NQ=${COMMAND//\"/}
+COMMAND_NQ=${COMMAND_NQ//\'/}
+
+# grep the upstream token against raw AND quote-stripped text. `-e` guards patterns
+# that begin with `-` (e.g. `--owner …`) from being read as grep options.
+matches_upstream() {
+  local pattern="$1"
+  echo "$COMMAND" | grep -Eq -e "$pattern" && return 0
+  echo "$COMMAND_NQ" | grep -Eq -e "$pattern" && return 0
+  return 1
+}
 
 deny() {
   jq -n --arg reason "$1" '{
@@ -50,7 +72,8 @@ resolved=$(git config --get remote.origin.gh-resolved 2>/dev/null || true)
 
 # is_flagless_unpinned: true when the command names no explicit target flag AND gh's default
 # repo is not pinned to origin, so gh would silently resolve to the parent. Mirrors the
-# original flagless-PR check (b). $1 = the flag regex that would make the target explicit.
+# original flagless-PR check (b). $1 = the flag regex that would make the target explicit
+# (callers pass an alternation covering both the long flag and its -R/-owner short form).
 is_flagless_unpinned() {
   local flag_re="$1"
   echo "$COMMAND" | grep -Eq -- "$flag_re" && return 1
@@ -62,9 +85,19 @@ is_flagless_unpinned() {
 # resolved repo for the whole invocation, so it silently redirects issue/pr writes to
 # whatever it names — the fork trap by another door.
 # ---------------------------------------------------------------------------
-if echo "$COMMAND" | grep -Eq "(^|[; &(])GH_REPO=[\"']?${UPSTREAM_OWNER}/" \
+if matches_upstream "(^|[; &(])GH_REPO=[\"']?${UPSTREAM_OWNER}/" \
   && echo "$COMMAND" | grep -Eq 'gh +(pr|issue|project|api) '; then
   deny "BLOCKED (fork trap): GH_REPO=${UPSTREAM_OWNER}/… redirects this gh write to upstream. Drop the GH_REPO override (or set GH_REPO=${origin_display}) so writes land on origin."
+fi
+
+# ---------------------------------------------------------------------------
+# GH_HOST=<host> env-prefix on any gh write → always block (mirror the bootstrap's
+# refusal). GH_HOST redirects gh at a different GitHub host entirely, which silently
+# bypasses the origin/upstream reasoning — reject it on any gh write regardless of value.
+# ---------------------------------------------------------------------------
+if echo "$COMMAND" | grep -Eq "(^|[; &(])GH_HOST=" \
+  && echo "$COMMAND" | grep -Eq 'gh +(pr|issue|project|api) '; then
+  deny "BLOCKED (fork trap): a GH_HOST= prefix redirects this gh write to a different GitHub host, bypassing the origin pin. Drop the GH_HOST override so writes resolve against origin (${origin_display})."
 fi
 
 # ---------------------------------------------------------------------------
@@ -73,7 +106,7 @@ fi
 # ---------------------------------------------------------------------------
 if echo "$COMMAND" | grep -Eq 'gh +api ' && ! echo "$COMMAND" | grep -Eq 'gh +api +graphql'; then
   if echo "$COMMAND" | grep -Eq -- '(-X|--method) +(POST|PATCH|PUT|DELETE)'; then
-    if echo "$COMMAND" | grep -Eq "repos/${UPSTREAM_OWNER}/"; then
+    if matches_upstream "repos/${UPSTREAM_OWNER}/"; then
       deny "BLOCKED (fork trap): this is a gh api REST write to repos/${UPSTREAM_OWNER}/… — it would mutate upstream. Point the path at repos/${origin_display}/… instead."
     fi
   fi
@@ -86,7 +119,7 @@ fi
 # ---------------------------------------------------------------------------
 if echo "$COMMAND" | grep -Eq 'gh +api +graphql'; then
   if echo "$COMMAND" | grep -Eq 'updateProjectV2ItemFieldValue|updateProjectV2Field|addProjectV2ItemById|createProjectV2|deleteProjectV2Item|deleteProjectV2Workflow|addProjectV2DraftIssue'; then
-    if echo "$COMMAND" | grep -Eq "${UPSTREAM_OWNER}([/\"' ]|\$)"; then
+    if matches_upstream "${UPSTREAM_OWNER}([/\"' ]|\$)"; then
       deny "BLOCKED (fork trap): this gh api graphql ProjectV2 mutation references ${UPSTREAM_OWNER}. Board mutations must target origin (${origin_display}); remove the upstream reference and pass origin-owned project/field/item node IDs."
     fi
   fi
@@ -98,7 +131,7 @@ fi
 # Read subcommands (field-list, item-list, list, view) are intentionally not matched.
 # ---------------------------------------------------------------------------
 if echo "$COMMAND" | grep -Eq 'gh +project +(item-add|item-edit|item-create|item-delete|item-archive|field-create|field-delete|edit|create|delete|close|copy|link|unlink|mark-template)( |$)'; then
-  if echo "$COMMAND" | grep -Eq -- "--owner +[\"']?${UPSTREAM_OWNER}([\"' ]|\$)"; then
+  if matches_upstream "--owner +[\"']?${UPSTREAM_OWNER}([\"' ]|\$)"; then
     deny "BLOCKED (fork trap): this gh project write names --owner ${UPSTREAM_OWNER} — it would mutate an upstream-owned board. Use --owner ${origin_display%%/*}."
   fi
   if is_flagless_unpinned '--owner'; then
@@ -110,15 +143,16 @@ fi
 # gh pr / gh issue subcommands that act against a base repo (the original checks a+b).
 # ---------------------------------------------------------------------------
 if echo "$COMMAND" | grep -Eq 'gh +(pr +(create|merge|edit|ready)|issue +(create|edit|close|reopen|comment))'; then
-  # (a) Explicit upstream reference → always block.
-  if echo "$COMMAND" | grep -q "$UPSTREAM_SLUG"; then
+  # (a) Explicit upstream reference → always block. Matched against raw AND quote-stripped
+  # text so Every""Inc / "EveryInc"/repo bypasses collapse back to the slug.
+  if matches_upstream "${UPSTREAM_SLUG}"; then
     deny "BLOCKED (fork trap): never target ${UPSTREAM_SLUG}. PRs and issues must go to origin (${origin_display}). Drop the upstream repo / use --repo ${origin_display}."
   fi
 
-  # (b) Flagless command (no --repo) while gh's default repo does not resolve to origin → it
-  # would silently target upstream. Block with the exact fix.
-  if is_flagless_unpinned '--repo'; then
-    deny "BLOCKED (fork trap): this gh command has no --repo and gh's default repo is not pinned to origin, so it would target upstream. Fix once with: gh repo set-default ${origin_display} (or: git config remote.origin.gh-resolved base) — or add --repo ${origin_display} to the command."
+  # (b) Flagless command (no --repo AND no -R) while gh's default repo does not resolve to
+  # origin → it would silently target upstream. Block with the exact fix.
+  if is_flagless_unpinned '(--repo|-R)([ =]|$)'; then
+    deny "BLOCKED (fork trap): this gh command has no --repo/-R and gh's default repo is not pinned to origin, so it would target upstream. Fix once with: gh repo set-default ${origin_display} (or: git config remote.origin.gh-resolved base) — or add --repo ${origin_display} to the command."
   fi
 fi
 

@@ -119,7 +119,7 @@ def get_changed_counts() -> dict[str, int]:
     }
 
 
-def get_pr_context() -> dict[str, Any]:
+def get_pr_context(origin_slug: str = "") -> dict[str, Any]:
     gh_path = shutil.which("gh")
     if not gh_path:
         return {
@@ -132,8 +132,14 @@ def get_pr_context() -> dict[str, Any]:
     gh_authenticated = auth_status.returncode == 0
 
     pr_data: Any = None
-    if gh_authenticated:
-        pr_result = run(["gh", "pr", "view", "--json", "number,title,url,headRefName,baseRefName"])
+    # Explicit --repo (fork-trap discipline): a flagless `gh pr view` resolves
+    # via gh's default repo, which can be the upstream parent. Skip the PR read
+    # entirely when origin is unresolved rather than risk the wrong repo.
+    if gh_authenticated and origin_slug:
+        pr_result = run([
+            "gh", "pr", "view", "--repo", origin_slug,
+            "--json", "number,title,url,headRefName,baseRefName",
+        ])
         if pr_result.returncode == 0 and pr_result.stdout.strip():
             try:
                 pr_data = json.loads(pr_result.stdout)
@@ -283,6 +289,11 @@ def main() -> int:
     counts = get_changed_counts()
     dirty = not (staged_clean and unstaged_clean and counts["untracked_files"] == 0)
 
+    # Origin slug for the explicit-repo `gh pr view` (fork-trap discipline).
+    origin_owner, origin_repo = lifecycle_board.parse_origin(
+        git_ok(["remote", "get-url", "origin"]))
+    origin_slug = f"{origin_owner}/{origin_repo}" if origin_owner and origin_repo else ""
+
     data = {
         "ok": True,
         "repo": {
@@ -298,7 +309,7 @@ def main() -> int:
             **counts,
         },
         "integrations": {},
-        "github": get_pr_context(),
+        "github": get_pr_context(origin_slug),
     }
 
     beads_installed = shutil.which("bd") is not None

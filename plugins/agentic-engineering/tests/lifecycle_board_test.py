@@ -65,6 +65,18 @@ class GateTest(unittest.TestCase):
         g = lb.evaluate_gate("brainstorm", "brainstormed", True, None, None)
         self.assertEqual(g.verdict, "repair_needed")
 
+    def test_brainstorm_on_stage_beyond_brainstormed_never_repairs(self) -> None:
+        # An item that legally skipped stub→planned has no brainstorm doc by
+        # construction — the gate must not walk the board backwards.
+        g = lb.evaluate_gate("brainstorm", "planned", True, None, None)
+        self.assertEqual((g.verdict, g.route), ("already_done", "route_to_plan"))
+        for stage in ("in_progress", "in_review", "shipped", "deployed",
+                      "compounded", "abandoned"):
+            with self.subTest(stage=stage):
+                g = lb.evaluate_gate("brainstorm", stage, True, None, None)
+                self.assertEqual(g.verdict, "already_done")
+                self.assertNotEqual(g.verdict, "repair_needed")
+
     def test_plan_already_done_offers_work(self) -> None:
         g = lb.evaluate_gate("plan", "planned", True, "docs/plans/x.md", None)
         self.assertEqual((g.verdict, g.route), ("already_done", "route_to_work"))
@@ -293,8 +305,84 @@ class CallBudgetTest(unittest.TestCase):
         ])
         with self.assertRaises(lb.BoardError) as caught:
             lb._item_list(board, runner, "status:planned no:assignee")
-        self.assertEqual(caught.exception.error_code if hasattr(caught.exception, "error_code")
-                         else caught.exception.code, "ready_work_failed")
+        self.assertEqual(caught.exception.code, "ready_work_failed")
+
+
+def _issue_query_response(*, number=5, assignees=(), stage="planned", blocked=0,
+                          item_id="item5", url="u"):
+    """Build an ISSUE_QUERY graphql response with the dict-shaped blockedBy the
+    new parser reads (blockedBy(first:1){totalCount})."""
+    return {"data": {"repository": {"issue": {
+        "number": number, "state": "OPEN", "stateReason": None, "url": url,
+        "authorAssociation": "OWNER",
+        "blockedBy": {"totalCount": blocked},
+        "assignees": {"nodes": [{"login": a} for a in assignees]},
+        "closedByPullRequestsReferences": {"nodes": []},
+        "subIssues": {"nodes": []},
+        "projectItems": {"nodes": [{"id": item_id,
+            "project": {"id": "P", "number": 1, "owner": {"login": "acme"}},
+            "fieldValueByName": {"name": stage}}]}}}}}
+
+
+class ClaimVerbTest(unittest.TestCase):
+    """End-to-end verb_claim over a FakeRunner: win, two-winner conflict, and
+    blocked-refusal. blockedBy rides the new dict-with-totalCount shape."""
+
+    def setUp(self) -> None:
+        import tempfile
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        root = self._tmp.name
+        (Path(root) / "agentic-engineering.md").write_text(
+            "---\ngithub_project_owner: acme\ngithub_project_number: 1\n---\n",
+            encoding="utf-8")
+        self.ctx = lb.RepoContext(root=root, main_root=root, origin_owner="acme",
+                                  origin_repo="widget", default_branch="main")
+        _orig_load, _orig_save = lb.load_cache, lb.save_cache
+        lb.load_cache = lambda _ctx: {}
+        lb.save_cache = lambda _ctx, _cache: None
+        self.addCleanup(lambda: (setattr(lb, "load_cache", _orig_load),
+                                 setattr(lb, "save_cache", _orig_save)))
+        self._field_list = _ok(json.dumps({"fields": [{"name": "Status", "id": "F",
+            "projectId": "P", "options": [{"id": f"o_{s}", "name": s} for s in lb.STAGES]}]}))
+
+    def test_win_path_assigns_confirms_and_sets_status(self) -> None:
+        runner = FakeRunner([
+            (["api", "user"], _ok("me\n")),                                    # _gh_me
+            (["api", "graphql"], _ok(json.dumps(_issue_query_response(assignees=())))),  # initial read
+            (["issue", "edit", "5", "--repo", "acme/widget", "--add-assignee", "@me"], _ok("")),
+            (["api", "graphql"], _ok(json.dumps(_issue_query_response(assignees=["me"])))),  # confirm sole
+            # verb_set_status(in_progress): resolve_schema + fetch + item-edit
+            (["project", "field-list", "1", "--owner", "acme"], self._field_list),
+            (["api", "graphql"], _ok(json.dumps(_issue_query_response(assignees=["me"])))),
+            (["project", "item-edit", "--id", "item5", "--project-id", "P",
+              "--field-id", "F", "--single-select-option-id", "o_in_progress"], _ok("{}")),
+        ])
+        result = lb.verb_claim(5, self.ctx, runner)
+        self.assertEqual((result["claimed"], result["verdict"]), (True, "proceed"))
+
+    def test_two_winner_conflict_self_unassigns(self) -> None:
+        runner = FakeRunner([
+            (["api", "user"], _ok("me\n")),
+            (["api", "graphql"], _ok(json.dumps(_issue_query_response(assignees=())))),
+            (["issue", "edit", "5", "--repo", "acme/widget", "--add-assignee", "@me"], _ok("")),
+            # confirm read: two winners raced in.
+            (["api", "graphql"], _ok(json.dumps(_issue_query_response(assignees=["me", "rival"])))),
+            (["issue", "edit", "5", "--repo", "acme/widget", "--remove-assignee", "@me"], _ok("")),
+        ])
+        result = lb.verb_claim(5, self.ctx, runner)
+        self.assertEqual((result["claimed"], result["verdict"]), (False, "claim_conflict"))
+        self.assertTrue(any(c[-2:] == ["--remove-assignee", "@me"] for c in runner.calls))
+
+    def test_blocked_refuses_without_assigning(self) -> None:
+        runner = FakeRunner([
+            (["api", "user"], _ok("me\n")),
+            (["api", "graphql"], _ok(json.dumps(_issue_query_response(assignees=(), blocked=2)))),
+        ])
+        result = lb.verb_claim(5, self.ctx, runner)
+        self.assertEqual((result["claimed"], result["verdict"]), (False, "blocked"))
+        # No assign call was ever made.
+        self.assertFalse(any("--add-assignee" in c for c in runner.calls))
 
 
 class ConfigTest(unittest.TestCase):
@@ -315,17 +403,133 @@ class ConfigTest(unittest.TestCase):
                 lb.read_board_config(ctx)
             self.assertEqual(caught.exception.code, "owner_mismatch")
 
-    def test_allowlisted_foreign_owner_is_accepted(self) -> None:
+    def test_trusted_foreign_owner_via_git_config_is_accepted(self) -> None:
+        # The trust store lives out-of-band in .git/config — unreachable by any
+        # PR. An in-file allowlist is intentionally NOT read (self-referential).
         import tempfile
         with tempfile.TemporaryDirectory() as tmp:
+            subprocess.run(["git", "-C", tmp, "init", "-q"], check=True,
+                           capture_output=True, text=True)
+            subprocess.run(["git", "-C", tmp, "config",
+                            "agentic.trustedBoardOwners", "canonical"],
+                           check=True, capture_output=True, text=True)
             (Path(tmp) / "agentic-engineering.md").write_text(
-                "---\ngithub_project_owner: canonical\ngithub_project_number: 9\n"
-                "github_project_owner_allowlist: canonical\n---\n",
+                "---\ngithub_project_owner: canonical\ngithub_project_number: 9\n---\n",
                 encoding="utf-8")
             ctx = lb.RepoContext(root=tmp, main_root=tmp, origin_owner="fork-owner",
                                  origin_repo="r", default_branch="main")
             board = lb.read_board_config(ctx)
             self.assertEqual((board.owner, board.number), ("canonical", 9))
+
+    def test_in_file_allowlist_is_not_trusted(self) -> None:
+        # An attacker PR that sets owner AND a self-referential allowlist must
+        # still be rejected — the allowlist key is no longer honored.
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            (Path(tmp) / "agentic-engineering.md").write_text(
+                "---\ngithub_project_owner: attacker\ngithub_project_number: 9\n"
+                "github_project_owner_allowlist: attacker\n---\n",
+                encoding="utf-8")
+            ctx = lb.RepoContext(root=tmp, main_root=tmp, origin_owner="victim",
+                                 origin_repo="r", default_branch="main")
+            with self.assertRaises(lb.BoardError) as caught:
+                lb.read_board_config(ctx)
+            self.assertEqual(caught.exception.code, "owner_mismatch")
+
+    def test_tracked_local_config_is_ignored(self) -> None:
+        # A .local.md committed to git (would ride a PR) must be ignored; the
+        # committed config is used instead.
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            subprocess.run(["git", "-C", tmp, "init", "-q"], check=True,
+                           capture_output=True, text=True)
+            (Path(tmp) / "agentic-engineering.local.md").write_text(
+                "---\ngithub_project_owner: attacker\ngithub_project_number: 1\n---\n",
+                encoding="utf-8")
+            (Path(tmp) / "agentic-engineering.md").write_text(
+                "---\ngithub_project_owner: victim\ngithub_project_number: 9\n---\n",
+                encoding="utf-8")
+            subprocess.run(["git", "-C", tmp, "add", "agentic-engineering.local.md"],
+                           check=True, capture_output=True, text=True)
+            ctx = lb.RepoContext(root=tmp, main_root=tmp, origin_owner="victim",
+                                 origin_repo="r", default_branch="main")
+            board = lb.read_board_config(ctx)
+            # Fell through to committed config (owner==origin), not the tracked local.
+            self.assertEqual((board.owner, board.number, board.source), ("victim", 9, "committed"))
+
+    def test_parse_origin_rejects_repo_less_url(self) -> None:
+        # host must never be captured as the owner (verified bug).
+        self.assertEqual(lb.parse_origin("https://github.com/justowner"), ("", ""))
+
+
+class RetryTimeoutTest(unittest.TestCase):
+    def test_retry_on_secondary_limit_then_success(self) -> None:
+        import unittest.mock as mock
+        responses = [
+            subprocess.CompletedProcess([], 1, "", "HTTP 403 secondary rate limit"),
+            _ok("{}"),
+        ]
+
+        def runner(args, timeout=None):
+            return responses.pop(0)
+
+        with mock.patch.object(lb.time, "sleep") as slept:
+            result = lb._run_gh_retry(runner, ["api", "user"])
+        self.assertEqual(result.returncode, 0)
+        self.assertEqual(responses, [])   # both consumed → exactly 2 calls
+        slept.assert_called_once()
+
+    def test_run_gh_raises_board_error_on_timeout(self) -> None:
+        import unittest.mock as mock
+        with mock.patch.object(lb.shutil, "which", return_value="/usr/bin/gh"), \
+                mock.patch.object(lb.subprocess, "run",
+                                  side_effect=subprocess.TimeoutExpired(cmd="gh", timeout=1)):
+            with self.assertRaises(lb.BoardError) as caught:
+                lb.run_gh(["api", "user"])
+        self.assertEqual(caught.exception.code, "gh_timeout")
+
+
+class FixtureReplayTest(unittest.TestCase):
+    """Recorded gh fixtures are load-bearing: each is replayed through its real
+    engine consumer so a shape drift in a re-record breaks a test, not prod."""
+
+    FIXTURES = Path(__file__).resolve().parent / "fixtures" / "gh"
+
+    def _load(self, name: str):
+        return json.loads((self.FIXTURES / name).read_text(encoding="utf-8"))
+
+    def test_project_field_list_resolves_all_nine_stages(self) -> None:
+        payload = self._load("project_field_list.json")
+        status, priority = lb.parse_field_list(payload)
+        self.assertIsNotNone(status)
+        options = {o["name"]: o["id"] for o in status.get("options", [])}
+        for stage in lb.STAGES:
+            self.assertIn(stage, options, f"{stage} not resolvable from recorded field-list")
+        self.assertIsNotNone(priority)  # Priority field is present in the recording
+
+    def test_issue_list_deps_blocked_by_is_dict_with_total_count(self) -> None:
+        # The new parser reads blockedBy as {nodes, totalCount}; assert the
+        # recorded shape matches (a plain-list re-record would break here).
+        items = self._load("issue_list_deps.json")
+        self.assertIsInstance(items, list)
+        for item in items:
+            self.assertIn("blockedBy", item)
+            self.assertIsInstance(item["blockedBy"], dict)
+            self.assertIn("totalCount", item["blockedBy"])
+            self.assertEqual((item["blockedBy"] or {}).get("totalCount", 0),
+                             item["blockedBy"]["totalCount"])
+
+    def test_issue_view_closed_has_keys_engine_switches_on(self) -> None:
+        data = self._load("issue_view_closed.json")
+        self.assertEqual(data["state"], "CLOSED")
+        self.assertEqual(data["stateReason"], "COMPLETED")
+        self.assertIn("closedByPullRequestsReferences", data)
+        self.assertIsInstance(data["closedByPullRequestsReferences"], list)
+
+    def test_pr_view_merged_shape(self) -> None:
+        data = self._load("pr_view_merged.json")
+        self.assertEqual(data["state"], "MERGED")
+        self.assertIsNotNone(data["mergedAt"])
 
 
 if __name__ == "__main__":

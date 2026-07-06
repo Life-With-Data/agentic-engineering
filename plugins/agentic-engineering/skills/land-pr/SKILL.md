@@ -181,7 +181,7 @@ repairs a missed stamp (e.g. the automation was disabled or lagged) by setting S
 and posting a one-line audit comment. Never hand-roll a second reconcile check here; this is the
 one implementation every command uses.
 
-- **`github-project` / `github-project`-adjacent repos** — the command above is sufficient.
+- **`github-project` / `github`-adjacent repos** — the command above is sufficient.
 - **plain `github` mode (legacy, no board)** — `gh issue close <n> --repo <origin> --comment "merged PR #${PR_NUM}"` if still open.
 - **`none` / file-todos** — ensure the plan's checkboxes are all checked; there is no frontmatter
   status field to update (the `status:` key no longer exists on plan docs).

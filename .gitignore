@@ -5,3 +5,6 @@ node_modules/
 todos/
 __pycache__/
 *.pyc
+# Local, per-machine board override — must never be committed (a PR carrying it
+# is ignored by the engine's trust check, but keep it out of git entirely).
+agentic-engineering.local.md

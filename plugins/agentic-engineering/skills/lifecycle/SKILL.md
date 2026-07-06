@@ -32,7 +32,7 @@ The stages are exactly `lifecycle_board.STAGES`, spelled in snake_case (the Stat
 
 `deployed` and `compounded` are **order-independent** terminal refinements of `shipped` — deploys fire asynchronously (hours later) and compound runs minutes after merge, so their arrival order is not fixed; both compare as "at least shipped." The legal forward skips are `stub → planned` (crisp requirements) and `shipped → compounded` (deploys are asynchronous).
 
-`deployed` is a **high-water mark**: it means *has reached production at least once*. No writer, human convention, or repair ever regresses it; rollbacks and revert PRs never move the board. Reopened issues do **not** auto re-stage (bootstrap disables the "Item reopened" workflow, which would otherwise stamp `stub` and erase lifecycle position); re-staging a reopened item is a deliberate `--set-status` move.
+`deployed` is a **high-water mark**: it means *has reached production at least once*. No writer, human convention, or repair ever regresses it; rollbacks and revert PRs never move the board. Reopened issues do **not** auto re-stage (bootstrap disables the "Item reopened" workflow **if present** — new projects typically don't ship it, and `/lifecycle-doctor` re-checks; where present it would otherwise stamp `stub` and erase lifecycle position); re-staging a reopened item is a deliberate `--set-status` move.
 
 ## One writer per transition
 
@@ -71,17 +71,27 @@ Every command runs one idempotent entry gate on entry and routes around complete
 python3 "${CLAUDE_PLUGIN_ROOT}/scripts/lifecycle_board.py" --gate <command> [--issue N]
 ```
 
-`<command>` is one of `brainstorm | plan | work | compound | orchestrate`. The result carries `{stage, issue, plan_doc, brainstorm_doc, verdict, route, provenance}`. Branch on the closed verdict enum (`lifecycle_board.VERDICTS`):
+`<command>` is one of `brainstorm | plan | work | compound | orchestrate`. The result carries `{stage, issue, plan_doc, brainstorm_doc, verdict, route, provenance}`. There are **two closed enums**, each with its own routing table: the **gate enum** (returned by `--gate`) and the **claim enum** (returned only by `--claim`). The gate never reads assignees, so a claim verdict can never come out of `--gate`.
 
-| Verdict | Meaning | Command action |
+**Gate enum** — the five values in `lifecycle_board.VERDICTS` that `--gate` may return:
+
+| Gate verdict | Meaning | Command action |
 |---|---|---|
 | `proceed` | Ready for this command's transition | Do the one owned transition. |
-| `already_done` | This stage (or later) is reached with its artifact | STOP; follow `route` (e.g. plan → work). |
+| `already_done` | This stage (or later) is reached with its artifact | STOP; follow `route` (e.g. `route: route_to_work` means plan is done, hand to work). |
 | `route_to_plan` | Un-groomed for this command | STOP; hand off to `/workflows:plan`. |
-| `route_to_work` | Groomed past this command | STOP; hand off to `/workflows:work`. |
-| `claim_conflict` | Another assignee holds the claim | STOP; do not execute work. |
-| `repair_needed` | Stage/artifact drift, or an unresolved join key | Run `--reconcile --issue N`, then re-gate. |
+| `repair_needed` | Stage/artifact drift, or an unresolved join key | Treat the stage as un-groomed and let the current command repair by doing its normal work **without trusting the stage** — brainstorm/plan re-groom from scratch; compound documents but does not stamp. The closed repair set does not fabricate a missing artifact, and a stale join key needs a manual `github_issue:` frontmatter fix. |
 | `no_board` | Not in `github-project` mode | Fall back to the command's legacy `github`/`none` behavior. |
+
+`route_to_work` is **not** a gate verdict — it is a `route` value carried inside `already_done` (the plan is complete; hand off to work). `claim_conflict` is **not** a gate verdict either — it comes only from `--claim` (see below).
+
+**Claim enum** — the three values `--claim` may return (post-assignment confirmation; the gate never emits these):
+
+| Claim verdict | Meaning | Command action |
+|---|---|---|
+| `proceed` | Sole assignee confirmed, unblocked | Execute the claimed work. |
+| `claim_conflict` | Multiple assignees, or assigned to someone else | STOP; the loser self-unassigns and yields. |
+| `blocked` | Issue has ≥ 1 open `blocked-by` dependency | STOP; do not claim a blocked issue. |
 
 Universal routing rules:
 

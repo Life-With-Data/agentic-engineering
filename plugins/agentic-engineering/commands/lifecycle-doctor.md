@@ -51,7 +51,7 @@ If `$ARGUMENTS` contains `--live`, after the read-only report above, also run th
 python3 "${CLAUDE_PLUGIN_ROOT}/scripts/bootstrap_lifecycle_board.py" --probe-only
 ```
 
-This creates one scratch issue, adds it to the board, closes it, asserts the Status flips to `shipped`, then deletes the scratch issue — it needs `project` scope (see `project_scope` above). Append its evidence (issue number created/deleted, observed Status transition, pass/fail) to the report under a **Live probe** section. If the script is not yet present in this checkout, report that plainly (`--live probe unavailable: bootstrap_lifecycle_board.py not found`) rather than failing the whole command — the base report from Step 1–3 still stands on its own.
+This creates one scratch issue, adds it to the board, closes it, asserts the Status flips to `shipped`, then deletes the scratch issue — it needs `project` scope (see `project_scope` above). Append its evidence (issue number created/deleted, observed Status transition, pass/fail) to the report under a **Live probe** section.
 
 ## Step 5: Guidance — when to re-run
 
@@ -60,7 +60,7 @@ This creates one scratch issue, adds it to the board, closes it, asserts the Sta
 - After changing tokens, PAT/App credentials, or CD/deploy wiring
 - Before picking up the first real work item on a newly configured repo (this is the runbook's step 0)
 
-For any `SKIP` row (auto-add config, saved view), point at the manual checklist in the setup skill — these two steps have no API and must be verified by hand in the Project's UI. Secrets are unreadable by design: a `SKIP` on deploy-credential-shaped checks means "verify in repo settings," not a failure.
+The auto-add-from-repo config and the ready-work saved view have **no API** and are never checked by the doctor — verify both by hand in the Project's UI, following the manual checklist in the setup skill.
 
 ## Notes
 

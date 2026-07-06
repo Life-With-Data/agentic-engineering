@@ -11,8 +11,10 @@ in a tempdir. No network, no gh.
 """
 from __future__ import annotations
 
+import atexit
 import importlib.util
 import json
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -39,6 +41,7 @@ _bs_spec.loader.exec_module(bs)
 
 
 _HERMETIC_DIR = tempfile.mkdtemp(prefix="bootstrap-test-ctx-")
+atexit.register(lambda: shutil.rmtree(_HERMETIC_DIR, ignore_errors=True))
 
 
 def _ctx(owner="acme", repo="widget"):
@@ -452,6 +455,21 @@ class ConfigWriteTest(unittest.TestCase):
             self.assertEqual(meta["title"], "Config")
             self.assertIn("body text", updated)
 
+    def test_empty_frontmatter_gets_keys_without_second_block(self) -> None:
+        # `---\n---\n` (empty frontmatter) must have the keys inserted between
+        # the fences, not a second --- block prepended.
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / bs.COMMITTED_CONFIG
+            path.write_text("---\n---\nbody\n", encoding="utf-8")
+            bs.write_committed_config(tmp, "acme", 8)
+            updated = path.read_text(encoding="utf-8")
+            # Exactly two fence lines (one open, one close) — no doubled block.
+            self.assertEqual(updated.count("---\n"), 2, updated)
+            meta = lb.parse_frontmatter(updated)
+            self.assertEqual(meta["github_project_owner"], "acme")
+            self.assertEqual(meta["github_project_number"], "8")
+            self.assertIn("body", updated)
+
     def test_updated_config_survives_read_board_config(self) -> None:
         # The write must round-trip through the real reader (owner==origin).
         with tempfile.TemporaryDirectory() as tmp:
@@ -503,21 +521,20 @@ class ProbeTest(unittest.TestCase):
             (["issue", "create", "--repo", "acme/widget"],
              _ok("https://github.com/acme/widget/issues/99\n")),
             # verb_set_status: resolve_schema (field-list) then fetch_issue_state
-            # (graphql + issue view blockedBy) then item-edit.
+            # (one graphql read — blockedBy now rides ISSUE_QUERY) then item-edit.
             (["project", "field-list", "3", "--owner", "acme"], _ok(json.dumps(board_stub))),
             (["api", "graphql"], _ok(json.dumps({"data": {"repository": {"issue": {
                 "number": 99, "state": "OPEN", "stateReason": None, "url": "u",
-                "authorAssociation": "OWNER", "assignees": {"nodes": []},
+                "authorAssociation": "OWNER", "blockedBy": {"totalCount": 0},
+                "assignees": {"nodes": []},
                 "closedByPullRequestsReferences": {"nodes": []}, "subIssues": {"nodes": []},
                 "projectItems": {"nodes": [{"id": "item99",
                     "project": {"id": "P", "number": 3, "owner": {"login": "acme"}},
                     "fieldValueByName": None}]}}}}}))),
-            (["issue", "view", "99", "--repo", "acme/widget"], _ok(json.dumps({"blockedBy": []}))),
             (["project", "item-edit", "--id", "item99"], _ok("{}")),
             (["issue", "close", "99", "--repo", "acme/widget"], _ok("")),
             # poll #1 → already shipped.
             (["api", "graphql"], _ok(json.dumps(issue_shipped))),
-            (["issue", "view", "99", "--repo", "acme/widget"], _ok(json.dumps({"blockedBy": []}))),
             (["issue", "delete", "99", "--repo", "acme/widget", "--yes"], _ok("")),
         ])
         result = bs.run_probe(project, ctx, runner, sleep=lambda _s: None)
@@ -532,7 +549,8 @@ class ProbeTest(unittest.TestCase):
                                   "options": [{"id": f"o_{s}", "name": s} for s in bs.STAGES]}]}
         open_stub = {"data": {"repository": {"issue": {
             "number": 99, "state": "OPEN", "stateReason": None, "url": "u",
-            "authorAssociation": "OWNER", "assignees": {"nodes": []},
+            "authorAssociation": "OWNER", "blockedBy": {"totalCount": 0},
+            "assignees": {"nodes": []},
             "closedByPullRequestsReferences": {"nodes": []}, "subIssues": {"nodes": []},
             "projectItems": {"nodes": [{"id": "item99",
                 "project": {"id": "P", "number": 3, "owner": {"login": "acme"}},
@@ -545,11 +563,9 @@ class ProbeTest(unittest.TestCase):
              _ok("https://github.com/acme/widget/issues/99\n")),
             (["project", "field-list", "3", "--owner", "acme"], _ok(json.dumps(board_stub))),
             (["api", "graphql"], _ok(json.dumps(open_stub))),
-            (["issue", "view", "99", "--repo", "acme/widget"], _ok(json.dumps({"blockedBy": []}))),
             (["project", "item-edit", "--id", "item99"], _ok("{}")),
             (["issue", "close", "99", "--repo", "acme/widget"], _ok("")),
             (["api", "graphql"], _ok(json.dumps(open_stub))),
-            (["issue", "view", "99", "--repo", "acme/widget"], _ok(json.dumps({"blockedBy": []}))),
             (["issue", "delete", "99", "--repo", "acme/widget", "--yes"], _ok("")),
         ])
         result = bs.run_probe(project, ctx, runner, sleep=lambda _s: None, now=lambda: next(clock))

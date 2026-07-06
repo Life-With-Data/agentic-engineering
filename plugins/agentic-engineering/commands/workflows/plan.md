@@ -38,7 +38,8 @@ Branch on the JSON `verdict` (a closed enum — no prose predicates):
 | `verdict` | Action |
 |---|---|
 | `proceed` | Continue to Step 0 below and plan normally. |
-| `already_done` | A plan already exists — report the existing plan path (the `plan_doc` field in the JSON) and offer `/workflows:work` as the next step, then **STOP**. Do not re-plan. |
+| `already_done` (plan exists) | A plan already exists — report the existing plan path (the `plan_doc` field in the JSON) and offer `/workflows:work` as the next step, then **STOP**. Do not re-plan. |
+| `already_done` (abandoned) | The item is `abandoned` (the gate returns `already_done` with `route: none` and `plan_doc: null`). Report that the item is abandoned and **STOP** — do **not** offer `/workflows:work` and do not re-plan. |
 | `repair_needed` | Status says planned but no join-keyed plan doc exists — treat the item as un-groomed and **continue**; this run repairs it by producing the missing plan and re-stamping in Step 7. |
 | `no_board` | No board configured (legacy mode). **Continue degraded** via the legacy flow (Step 0's un-keyed fallback + Step 7's `github`/`none` branches). |
 

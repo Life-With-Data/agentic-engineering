@@ -152,8 +152,9 @@ python3 "${CLAUDE_PLUGIN_ROOT}/scripts/bootstrap_lifecycle_board.py"
 
 The script creates the project, rewrites the built-in Status field's options **ID-preservingly**
 (so existing automations stay wired to the renamed options), adds a Priority field, disables the
-pre-enabled "Item reopened" workflow (it would otherwise stamp a reopened issue back to `stub`,
-erasing its lifecycle position), and writes the **committed** config file `agentic-engineering.md`
+"Item reopened" workflow **if present** (new projects typically don't ship it; `/lifecycle-doctor`
+re-checks — where present it would otherwise stamp a reopened issue back to `stub`, erasing its
+lifecycle position), and writes the **committed** config file `agentic-engineering.md`
 at the repo root with `github_project_owner` and `github_project_number`. This file must be
 committed (not `.local`) — fresh clones and worktree-isolated subagents need to resolve the same
 board identity.

@@ -19,7 +19,9 @@ from typing import Final, Iterator
 TRACKER_FIELDS: Final = ("github_issue",)
 PLAN_PATH_RE: Final = re.compile(r"(?:^|/)docs/plans/[^/]+\.md$")
 EDIT_TOOLS: Final = frozenset({"Write", "Edit", "MultiEdit", "NotebookEdit"})
-FRONTMATTER_FENCE_RE: Final = re.compile(r"^---[ \t]*$", re.MULTILINE)
+# Tolerate a trailing CR so CRLF-line-ended plan files (Windows editors) are not
+# falsely treated as having no closing fence (verified false-block).
+FRONTMATTER_FENCE_RE: Final = re.compile(r"^---[ \t]*\r?$", re.MULTILINE)
 # A real ``github_issue`` value is either a bare issue number or a qualified
 # ``owner/repo#N`` reference:
 #   - <digits>                     e.g. 42 (bare issue number)

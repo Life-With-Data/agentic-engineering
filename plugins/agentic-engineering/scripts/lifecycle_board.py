@@ -33,6 +33,7 @@ from __future__ import annotations
 
 import dataclasses
 import json
+import os
 import pathlib
 import re
 import shutil
@@ -40,8 +41,7 @@ import subprocess
 import sys
 import time
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from typing import Any, Callable, Optional
+from typing import Callable, Optional
 
 # --------------------------------------------------------------------------
 # Lifecycle vocabulary (the sole definition — the lifecycle skill documents
@@ -77,15 +77,17 @@ TERMINAL_STAGES = {"shipped", "deployed", "compounded"}
 TRUSTED_ASSOCIATIONS = {"OWNER", "MEMBER", "COLLABORATOR"}
 PRIORITY_ORDER = {"p1": 0, "p2": 1, "p3": 2}
 
+# Gate verdicts emitted by evaluate_gate. `route_to_work`/`route_to_plan` are
+# routes, not verdicts; claim_conflict/blocked are claim-only outcomes.
 VERDICTS = (
     "proceed",
     "already_done",
     "route_to_plan",
-    "route_to_work",
-    "claim_conflict",
     "repair_needed",
     "no_board",
 )
+# Claim protocol outcomes (verb_claim), disjoint from the gate VERDICTS.
+CLAIM_VERDICTS = ("proceed", "claim_conflict", "blocked")
 
 READY_WORK_LIMIT = 50
 RECONCILE_TTL_SECONDS = 600
@@ -185,11 +187,23 @@ class RepoContext:
 
 
 def parse_origin(url: str) -> "tuple[str, str]":
-    """Parse owner/repo from https or ssh git remote URLs."""
-    m = re.search(r"[:/]([\w.-]+)/([\w.-]+?)(?:\.git)?/?$", url.strip())
-    if not m:
-        return ("", "")
-    return (m.group(1), m.group(2))
+    """Parse owner/repo from https or ssh git remote URLs.
+
+    Repo-less URLs (`https://github.com/justowner`) must NOT parse — otherwise
+    the host (`github.com`) is captured as the owner. The owner segment is
+    required to follow the ``:``/``/`` that separates it from the authority, and
+    the authority itself (host, optionally with a port) is consumed first.
+    """
+    url = url.strip()
+    # SSH: git@host:owner/repo(.git)
+    m = re.match(r"^[\w.-]+@[\w.-]+:([\w.-]+)/([\w.-]+?)(?:\.git)?/?$", url)
+    if m:
+        return (m.group(1), m.group(2))
+    # HTTPS/SSH-URL: scheme://[user@]host[:port]/owner/repo(.git)
+    m = re.match(r"^[a-zA-Z][\w+.-]*://[^/]+/([\w.-]+)/([\w.-]+?)(?:\.git)?/?$", url)
+    if m:
+        return (m.group(1), m.group(2))
+    return ("", "")
 
 
 def repo_context() -> RepoContext:
@@ -225,13 +239,31 @@ def parse_frontmatter(text: str) -> "dict[str, str]":
     return out
 
 
+def _is_tracked(ctx: RepoContext, name: str) -> bool:
+    """True if `name` at ctx.root is tracked in git (would ride a PR)."""
+    result = subprocess.run(
+        ["git", "-C", ctx.root, "ls-files", "--error-unmatch", name],
+        text=True, capture_output=True)
+    return result.returncode == 0
+
+
+def _trusted_board_owners(ctx: RepoContext) -> "set[str]":
+    """The out-of-band trust store: `git config agentic.trustedBoardOwners`
+    (comma/space-separated). It lives in .git/config, unreachable by any PR —
+    the human sets it once (`git config agentic.trustedBoardOwners <owner>`)."""
+    raw = _git(["-C", ctx.root, "config", "--get", "agentic.trustedBoardOwners"])
+    return {tok for tok in re.split(r"[,\s]+", raw) if tok}
+
+
 def read_board_config(ctx: RepoContext) -> Optional[BoardConfig]:
     """Committed config wins identity; .local may override for testing.
 
-    Security invariant: the configured owner must match the origin owner
-    unless it appears in `github_project_owner_allowlist` (comma-separated)
-    in the same file — a PR must not be able to redirect agents to an
-    attacker-owned board.
+    Security invariant: the configured owner must match the origin owner unless
+    it appears in the out-of-band trust store `git config
+    agentic.trustedBoardOwners` — a self-referential in-file allowlist would let
+    an attacker PR set owner + allowlist together, so the allowlist is NOT read
+    from the config file. A `.local.md` that is *tracked* in git (i.e. would
+    ride a PR) is ignored: local config must never be committed.
     """
     for name, source_root, source in (
         (LOCAL_CONFIG, ctx.root, "local"),
@@ -239,6 +271,10 @@ def read_board_config(ctx: RepoContext) -> Optional[BoardConfig]:
     ):
         path = pathlib.Path(source_root) / name
         if not path.is_file():
+            continue
+        if name == LOCAL_CONFIG and _is_tracked(ctx, name):
+            print(f"warning: {name} is tracked in git — a PR must not carry it; "
+                  "ignoring it and using committed config", file=sys.stderr)
             continue
         meta = parse_frontmatter(path.read_text(encoding="utf-8"))
         owner = meta.get("github_project_owner", "")
@@ -253,13 +289,12 @@ def read_board_config(ctx: RepoContext) -> Optional[BoardConfig]:
             raise BoardError("board_config_invalid",
                              f"{name}: github_project_number {number!r} is not an integer",
                              f"Fix github_project_number in {name}")
-        allow = {a.strip() for a in meta.get("github_project_owner_allowlist", "").split(",") if a.strip()}
-        if ctx.origin_owner and owner != ctx.origin_owner and owner not in allow:
+        if ctx.origin_owner and owner != ctx.origin_owner and owner not in _trusted_board_owners(ctx):
             raise BoardError(
                 "owner_mismatch",
                 f"Configured board owner {owner!r} does not match origin owner {ctx.origin_owner!r}",
-                f"Point github_project_owner at {ctx.origin_owner!r}, or add {owner!r} to "
-                f"github_project_owner_allowlist in {name} after confirming it is trusted",
+                f"Point github_project_owner at {ctx.origin_owner!r}, or — after confirming "
+                f"{owner!r} is trusted — run: git config agentic.trustedBoardOwners {owner}",
             )
         return BoardConfig(owner=owner, number=int(number), source=source)
     return None
@@ -293,7 +328,10 @@ def load_cache(ctx: RepoContext) -> dict:
 
 def save_cache(ctx: RepoContext, cache: dict) -> None:
     try:
-        _cache_path(ctx).write_text(json.dumps(cache, indent=2), encoding="utf-8")
+        path = _cache_path(ctx)
+        tmp = path.with_name(path.name + f".{os.getpid()}.tmp")
+        tmp.write_text(json.dumps(cache, indent=2), encoding="utf-8")
+        os.replace(tmp, path)  # atomic: no partial/truncated cache is ever read
     except OSError:
         pass  # cache is an optimization, never correctness
 
@@ -308,7 +346,6 @@ class BoardSchema:
     status_field_id: str
     status_options: "dict[str, str]"      # stage name -> option id
     priority_field_id: Optional[str] = None
-    priority_options: "dict[str, str]" = field(default_factory=dict)
 
 
 def parse_field_list(payload: dict) -> "tuple[Optional[dict], Optional[dict]]":
@@ -324,9 +361,17 @@ def parse_field_list(payload: dict) -> "tuple[Optional[dict], Optional[dict]]":
 def resolve_schema(board: BoardConfig, ctx: RepoContext, runner: GhRunner,
                    cache: Optional[dict] = None) -> BoardSchema:
     cache = cache if cache is not None else {}
+    cache_key = f"{board.owner}/{board.number}"
     cached = cache.get("schema", {})
-    if cached and time.time() - cached.get("fetched_at", 0) < RECONCILE_TTL_SECONDS:
-        return BoardSchema(**{k: v for k, v in cached.items() if k != "fetched_at"})
+    if (cached and cached.get("board_key") == cache_key
+            and time.time() - cached.get("fetched_at", 0) < RECONCILE_TTL_SECONDS):
+        options = cached.get("status_options") or {}
+        if all(s in options for s in STAGES):
+            try:
+                return BoardSchema(**{k: v for k, v in cached.items()
+                                     if k not in ("fetched_at", "board_key")})
+            except TypeError:
+                pass  # cache record shape drifted — fall through to a fresh fetch
 
     result = _run_gh_retry(runner, ["project", "field-list", str(board.number),
                                     "--owner", board.owner, "--format", "json"])
@@ -362,9 +407,9 @@ def resolve_schema(board: BoardConfig, ctx: RepoContext, runner: GhRunner,
         status_field_id=status["id"],
         status_options=options,
         priority_field_id=priority["id"] if priority else None,
-        priority_options={o["name"]: o["id"] for o in (priority or {}).get("options", [])},
     )
-    cache["schema"] = {**dataclasses.asdict(schema), "fetched_at": time.time()}
+    cache["schema"] = {**dataclasses.asdict(schema), "fetched_at": time.time(),
+                       "board_key": cache_key}
     return schema
 
 
@@ -376,8 +421,9 @@ ISSUE_QUERY = """
 query($owner: String!, $repo: String!, $number: Int!) {
   repository(owner: $owner, name: $repo) {
     issue(number: $number) {
-      number title state stateReason url
+      number state stateReason url
       authorAssociation
+      blockedBy(first: 1) { totalCount }
       assignees(first: 10) { nodes { login } }
       closedByPullRequestsReferences(first: 5) {
         nodes { number state merged baseRefName author { login } }
@@ -411,7 +457,6 @@ class IssueState:
     open_sub_issues: "list[int]"
     blocked_by_count: int
     url: str = ""
-    title: str = ""
 
 
 def parse_issue_state(data: dict, board: BoardConfig) -> Optional[IssueState]:
@@ -440,38 +485,26 @@ def parse_issue_state(data: dict, board: BoardConfig) -> Optional[IssueState]:
         ],
         open_sub_issues=[n["number"] for n in issue.get("subIssues", {}).get("nodes", [])
                          if n.get("state") == "OPEN"],
-        blocked_by_count=_blocked_count(issue),
+        blocked_by_count=(issue.get("blockedBy") or {}).get("totalCount", 0),
         url=issue.get("url", ""),
-        title=issue.get("title", ""),
     )
-
-
-def _blocked_count(issue: dict) -> int:
-    # gh >= 2.94 exposes blockedBy via `gh issue view --json blockedBy`; in the
-    # GraphQL read we derive it separately (see fetch_issue_state).
-    return issue.get("_blocked_by_count", 0)
 
 
 def fetch_issue_state(number: int, board: BoardConfig, ctx: RepoContext,
                       runner: GhRunner) -> Optional[IssueState]:
+    """Return the parsed issue state, None on a genuine 404 (issue is null),
+    or raise BoardError('gh_read_failed') on a transport/auth failure — the
+    caller must not conflate a failed read with a missing issue."""
     result = _run_gh_retry(runner, [
         "api", "graphql",
         "-f", f"query={ISSUE_QUERY}",
         "-F", f"owner={ctx.origin_owner}", "-F", f"repo={ctx.origin_repo}", "-F", f"number={number}",
     ])
     if result.returncode != 0:
-        return None
-    state = parse_issue_state(json.loads(result.stdout or "{}"), board)
-    if state is not None:
-        blocked = _run_gh_retry(runner, [
-            "issue", "view", str(number), "--repo", ctx.slug, "--json", "blockedBy",
-        ])
-        if blocked.returncode == 0:
-            try:
-                state.blocked_by_count = len(json.loads(blocked.stdout).get("blockedBy", []))
-            except (json.JSONDecodeError, TypeError):
-                pass
-    return state
+        raise BoardError("gh_read_failed",
+                         f"reading issue #{number} in {ctx.slug} failed: {result.stderr.strip()[:200]}",
+                         "retry; check network/auth (gh auth status)")
+    return parse_issue_state(json.loads(result.stdout or "{}"), board)
 
 
 # --------------------------------------------------------------------------
@@ -506,7 +539,15 @@ def evaluate_gate(command: str, stage: Optional[str], has_issue: bool,
     if command == "brainstorm":
         if not has_issue or stage in (None, "stub"):
             return gr("proceed", "brainstorm", "un-groomed item")
-        if stage_at_least(stage, "brainstormed") and brainstorm_doc:
+        # Beyond brainstormed (planned+, terminal, or abandoned): the item legally
+        # skipped stub→planned and has no brainstorm doc by construction — never
+        # repair_needed (that would walk the board backwards).
+        if stage == "planned":
+            return gr("already_done", "route_to_plan", "already planned — brainstorming is behind us")
+        if _ORDER.get(stage, -2) > _ORDER["brainstormed"] or stage == "abandoned":
+            return gr("already_done", "none", f"already {stage} — brainstorming is behind us")
+        # stage == brainstormed exactly.
+        if brainstorm_doc:
             return gr("already_done", "route_to_plan", "brainstormed with doc — groom no further, plan next")
         return gr("repair_needed", "brainstorm", "stage says brainstormed but no doc — re-groom (this run repairs it)")
 
@@ -645,6 +686,29 @@ class ReadyItem:
     repo: str
 
 
+def _origin_issue_number(item: dict, origin_slug: str) -> Optional[int]:
+    """The single repo-scoping predicate + normalizer for board items.
+
+    Returns the issue number only when the item is an origin-repo Issue:
+      - content must not be JSON-null (a shared board can carry null content);
+      - type must be "Issue" or absent (PR-typed items are dropped);
+      - the repository (string or {nameWithOwner}) normalized must equal the
+        origin slug or be empty (shared/portfolio boards: read-tolerated,
+        never foreign-written).
+    Everything else returns None so callers never emit a foreign `issue(number)`
+    read or a foreign write."""
+    content = item.get("content") or {}
+    if content.get("type") not in ("Issue", None):
+        return None
+    repo = content.get("repository") or ""
+    if isinstance(repo, dict):
+        repo = repo.get("nameWithOwner", "")
+    if repo and repo != origin_slug:
+        return None
+    number = content.get("number")
+    return number if isinstance(number, int) else None
+
+
 def merge_ready_legs(board_items: "list[dict]", blocked_counts: "dict[int, int]",
                      origin_slug: str) -> "tuple[list[ReadyItem], bool]":
     """Leg 1 (item-list, server-filtered) x leg 2 (batched blockedBy counts).
@@ -652,21 +716,14 @@ def merge_ready_legs(board_items: "list[dict]", blocked_counts: "dict[int, int]"
     truncated = len(board_items) >= READY_WORK_LIMIT
     ready: "list[ReadyItem]" = []
     for item in board_items:
-        content = item.get("content") or {}
-        if content.get("type") not in ("Issue", None):
-            continue
-        repo = (content.get("repository") or "")
-        if isinstance(repo, dict):
-            repo = repo.get("nameWithOwner", "")
-        if repo and repo != origin_slug:
-            continue  # shared/portfolio board: read-tolerated, never written
-        number = content.get("number")
+        number = _origin_issue_number(item, origin_slug)
         if number is None:
             continue
         if blocked_counts.get(number, 0) > 0:
             continue
+        content = item.get("content") or {}
         ready.append(ReadyItem(number=number, title=content.get("title", item.get("title", "")),
-                               priority=(item.get("priority") or None), repo=repo or origin_slug))
+                               priority=(item.get("priority") or None), repo=origin_slug))
     ready.sort(key=lambda r: PRIORITY_ORDER.get((r.priority or "").lower(), 99))
     return ready, truncated
 
@@ -701,9 +758,9 @@ def find_docs_for_issue(number: int, ctx: RepoContext) -> "tuple[Optional[str], 
             raw = meta.get("github_issue", "")
             if raw and normalize_join_key(raw, ctx.slug) == want:
                 rel = str(path.relative_to(ctx.root))
-                if current == "plan" and plan is None:
+                if current == "plan":
                     plan = rel
-                elif current == "brainstorm" and brainstorm is None:
+                else:
                     brainstorm = rel
                 break
     return plan, brainstorm
@@ -812,19 +869,45 @@ def verb_claim(issue: int, ctx: RepoContext, runner: GhRunner) -> dict:
         decision = decide_claim(state.assignees, me, state.blocked_by_count)
         return {"issue": issue, "claimed": False, "verdict": "blocked", "reason": decision.reason}
 
+    assigned_by_us = False
     if not state.assignees:
         assign = _run_gh_retry(runner, ["issue", "edit", str(issue), "--repo", ctx.slug,
                                         "--add-assignee", "@me"])
         if assign.returncode != 0:
             raise BoardError("claim_failed", f"assign failed: {assign.stderr.strip()[:200]}",
                              "Verify triage permission on the repo")
-    confirm = fetch_issue_state(issue, board, ctx, runner)  # ALWAYS a fresh read
-    decision = decide_claim(confirm.assignees if confirm else [], me,
-                            confirm.blocked_by_count if confirm else 0)
+        assigned_by_us = True
+
+    # ALWAYS a fresh read to confirm. If the confirming read fails or 404s,
+    # never fabricate a conflict from empty data: undo our own assignment
+    # (best-effort) and surface the read failure honestly.
+    def _self_unassign() -> None:
+        _run_gh_retry(runner, ["issue", "edit", str(issue), "--repo", ctx.slug,
+                               "--remove-assignee", "@me"])
+
+    try:
+        confirm = fetch_issue_state(issue, board, ctx, runner)
+    except BoardError:
+        if assigned_by_us:
+            try:
+                _self_unassign()
+            except BoardError:
+                pass
+        raise BoardError("claim_unverified", "assignment succeeded but the confirming read failed",
+                         "retry --claim")
+    if confirm is None:
+        if assigned_by_us:
+            try:
+                _self_unassign()
+            except BoardError:
+                pass
+        raise BoardError("claim_unverified", "assignment succeeded but the confirming read failed",
+                         "retry --claim")
+
+    decision = decide_claim(confirm.assignees, me, confirm.blocked_by_count)
     if decision.action != "proceed":
-        if confirm and me in confirm.assignees and len(confirm.assignees) > 1:
-            _run_gh_retry(runner, ["issue", "edit", str(issue), "--repo", ctx.slug,
-                                   "--remove-assignee", "@me"])  # loser yields visibly
+        if me in confirm.assignees and len(confirm.assignees) > 1:
+            _self_unassign()  # loser yields visibly
         return {"issue": issue, "claimed": False,
                 "verdict": "claim_conflict" if decision.action == "conflict" else "blocked",
                 "reason": decision.reason}
@@ -870,8 +953,9 @@ def _batched_blocked_counts(numbers: "list[int]", ctx: RepoContext, runner: GhRu
 def verb_ready_work(ctx: RepoContext, runner: GhRunner) -> dict:
     board = _require_board(ctx)
     items = _item_list(board, runner, "status:planned no:assignee")   # call 1
-    numbers = [i.get("content", {}).get("number") for i in items
-               if i.get("content", {}).get("number") is not None]
+    # Scope BEFORE the batch: only origin-repo issue numbers may enter the
+    # per-number blockedBy query (foreign/PR items would hard-fail it).
+    numbers = [n for n in (_origin_issue_number(i, ctx.slug) for i in items) if n is not None]
     blocked = _batched_blocked_counts(numbers, ctx, runner)           # call 2
     ready, truncated = merge_ready_legs(items, blocked, ctx.slug)
     out = {"items": [dataclasses.asdict(r) for r in ready], "truncated": truncated, "flags": []}
@@ -898,17 +982,22 @@ def verb_reconcile(ctx: RepoContext, runner: GhRunner, issue: Optional[int] = No
     else:
         for query in ("status:in_progress", "status:in_review"):
             for item in _item_list(board, runner, query):
-                content = item.get("content") or {}
-                repo = content.get("repository", "")
-                if isinstance(repo, dict):
-                    repo = repo.get("nameWithOwner", "")
-                if repo and repo != ctx.slug:
-                    continue  # foreign items: never examined, never written
-                if content.get("number") is not None:
-                    numbers.append(content["number"])
+                number = _origin_issue_number(item, ctx.slug)  # foreign items: never examined
+                if number is not None:
+                    numbers.append(number)
 
-    states = [s for s in (fetch_issue_state(n, board, ctx, runner) for n in dict.fromkeys(numbers))
-              if s is not None]
+    # A failed read of one issue must not abort the whole run — record it and
+    # keep reconciling the rest (a 404 legitimately drops the issue).
+    states: "list[IssueState]" = []
+    read_failures: "list[dict]" = []
+    for n in dict.fromkeys(numbers):
+        try:
+            state = fetch_issue_state(n, board, ctx, runner)
+        except BoardError as exc:
+            read_failures.append({"issue": n, "error_code": exc.code, "error": str(exc)})
+            continue
+        if state is not None:
+            states.append(state)
     repairs, flags = plan_repairs(states, ctx.default_branch)
 
     applied, failed = [], []
@@ -916,24 +1005,39 @@ def verb_reconcile(ctx: RepoContext, runner: GhRunner, issue: Optional[int] = No
         try:
             if repair.to_stage:
                 verb_set_status(repair.issue, repair.to_stage, ctx, runner)
+            cascade_failed = None
             for sub in repair.close_sub_issues:
-                _run_gh_retry(runner, ["issue", "close", str(sub), "--repo", ctx.slug,
-                                       "--reason", "not planned",
-                                       "--comment", f"reconciler: parent #{repair.issue} abandoned"])
+                close = _run_gh_retry(runner, ["issue", "close", str(sub), "--repo", ctx.slug,
+                                               "--reason", "not planned",
+                                               "--comment", f"reconciler: parent #{repair.issue} abandoned"])
+                if close.returncode != 0:
+                    cascade_failed = sub
+                    break
+            if cascade_failed is not None:
+                failed.append({**dataclasses.asdict(repair),
+                               "error_code": "cascade_close_failed",
+                               "error": f"could not close sub-issue #{cascade_failed}"})
+                continue
+            # Flag/repair comments are best-effort: a failed comment does not
+            # undo the applied Status write, so its returncode is not checked.
             _run_gh_retry(runner, ["issue", "comment", str(repair.issue), "--repo", ctx.slug,
                                    "--body", repair.comment])
             applied.append(dataclasses.asdict(repair))
         except BoardError as exc:
             failed.append({**dataclasses.asdict(repair), "error_code": exc.code, "error": str(exc)})
     for flag in flags:
+        # Best-effort: a failed flag comment is not a repair failure.
         _run_gh_retry(runner, ["issue", "comment", str(flag.issue), "--repo", ctx.slug,
                                "--body", flag.comment])
 
     if issue is None:
-        cache["last_reconciled_at"] = now
-        save_cache(ctx, cache)
+        # Re-load the cache right before saving so a concurrent writer's schema
+        # cache is not clobbered — set only our own field.
+        fresh = load_cache(ctx)
+        fresh["last_reconciled_at"] = now
+        save_cache(ctx, fresh)
     return {"skipped_ttl": False, "repairs_applied": applied, "repairs_failed": failed,
-            "flags": [dataclasses.asdict(f) for f in flags]}
+            "read_failures": read_failures, "flags": [dataclasses.asdict(f) for f in flags]}
 
 
 # --------------------------------------------------------------------------
@@ -1076,6 +1180,10 @@ def main(argv: "list[str]") -> int:
             return _emit(verb_doctor(ctx, run_gh))
     except BoardError as err:
         return _emit_error(err)
+    except Exception as exc:  # noqa: BLE001 — edge-of-CLI belt-and-braces
+        print(json.dumps({"ok": False, "error_code": "internal", "error": str(exc),
+                          "fix": "report this — gh emitted an unexpected shape"}, indent=2))
+        return 1
     return 0
 
 

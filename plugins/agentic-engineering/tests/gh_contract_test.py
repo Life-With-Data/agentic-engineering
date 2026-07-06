@@ -30,6 +30,7 @@ Run with:
 """
 from __future__ import annotations
 
+import json
 import re
 import shutil
 import subprocess
@@ -47,6 +48,8 @@ HELP_FLAG_MATRIX = {
     "issue edit": ["--add-blocked-by", "--add-blocking", "--parent"],
     "issue list": ["--json"],
     "issue view": ["--json"],
+    "issue close": ["--reason", "--comment"],
+    "issue comment": ["--body"],
     "project item-list": ["--query", "--owner", "--format", "--limit"],
     "project item-edit": [
         "--project-id",
@@ -219,7 +222,6 @@ class GhJsonShapeProbeTest(unittest.TestCase):
         self.assertEqual(
             proc.returncode, 0, f"issue view failed: {proc.stderr}"
         )
-        import json
 
         data = json.loads(proc.stdout)
         self.assertIn("state", data)
@@ -253,7 +255,6 @@ class GhJsonShapeProbeTest(unittest.TestCase):
         self.assertEqual(
             proc.returncode, 0, f"issue view failed: {proc.stderr}"
         )
-        import json
 
         data = json.loads(proc.stdout)
         self.assertEqual(data["state"], "CLOSED")
@@ -299,7 +300,6 @@ class GhJsonShapeProbeTest(unittest.TestCase):
         self.assertEqual(
             proc.returncode, 0, f"pr list failed: {proc.stderr}"
         )
-        import json
 
         prs = json.loads(proc.stdout)
         self.assertIsInstance(prs, list)

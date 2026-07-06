@@ -73,11 +73,10 @@ Run these in order, once, at entry:
    | `proceed` | `stage ≥ planned` **and** a join-keyed plan doc exists | Continue to **Phase 1**. |
    | `route_to_plan` | Not yet groomed to `planned`, **or** Status says planned but no plan doc | Tell the user to run **`/workflows:plan`** first. Hotfixes bypass the board entirely (plain PR flow, no gate, no board exception). **STOP.** |
    | `already_done` | Stage is terminal (`shipped`/`deployed`/`compounded`) or `abandoned` | Report the stage to the user and that the work is already at/past this command's scope. **STOP.** |
-   | `claim_conflict` | Someone else holds the claim | Report the current assignee(s)/holder from the gate `reason`. **STOP.** |
+   | `repair_needed` | Stale join key, or a stage claiming `planned`/`brainstormed` with no matching artifact | The board can't be trusted for this item. Report the flag/reason, tell the user to fix the doc's `github_issue:` frontmatter (or re-run `/workflows:plan` if the plan doc is genuinely missing), and **STOP**. |
    | `no_board` | No board configured (mode is `github`/`none`) | Fall through to the **Legacy flow (no board)** below and continue **degraded** — no stage machinery, no board writes. |
-   | *(anything with `flags`)* | e.g. `stale_join_key` | If a `stale_join_key` flag is present, the join key resolves to nothing in this repo — report it and **STOP**; fix the doc frontmatter before retrying. |
 
-   Only `proceed` (with a board) and `no_board` (degraded) continue past this gate.
+   `claim_conflict` and `blocked` are **not** gate verdicts — they are returned by `--claim` in Phase 1, not here. Only `proceed` (with a board) and `no_board` (degraded) continue past this gate; every other verdict **STOPs**.
 
 ### Legacy flow (no board)
 

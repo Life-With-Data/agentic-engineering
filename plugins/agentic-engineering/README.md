@@ -108,7 +108,7 @@ stub → brainstormed → planned → in_progress → in_review → shipped
                               deployed / compounded (terminal refinements) · abandoned (off-ramp)
 ```
 
-`deployed` and `compounded` are **order-independent** refinements of `shipped`; `abandoned` is reachable from any pre-terminal stage. Each transition has exactly one writer, and a shared reconciler applies a closed set of five repairs. The full vocabulary — stages, writer contracts, entry-gate verdicts, claim semantics, and security invariants — lives in the [`lifecycle` skill](skills/lifecycle/SKILL.md), which every workflow command loads. Humans and agents have parity: assign yourself and drag a card to `in_progress` (the drag is the claim), or run `--claim`; manual card order in views is decorative (the API cannot read it).
+`deployed` and `compounded` are **order-independent** refinements of `shipped`; `abandoned` is reachable from any stage — closing an item as not-planned abandons it even post-ship (the `deployed` high-water rule applies to rollbacks, not to explicit not-planned closes). Each transition has exactly one writer, and a shared reconciler applies a closed set of five repairs. The full vocabulary — stages, writer contracts, entry-gate verdicts, claim semantics, and security invariants — lives in the [`lifecycle` skill](skills/lifecycle/SKILL.md), which every workflow command loads. Humans and agents have parity: assign yourself and drag a card to `in_progress` (the drag is the claim), or run `--claim`; manual card order in views is decorative (the API cannot read it).
 
 ### Utility Commands
 

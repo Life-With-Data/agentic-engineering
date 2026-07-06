@@ -136,6 +136,18 @@ class PlanTrackerGuardTest(unittest.TestCase):
         self.assertEqual(result.returncode, 0)
         self.assertEqual(json.loads(result.stdout)["decision"], "block")
 
+    def test_passes_with_crlf_line_endings(self) -> None:
+        # A CRLF plan file with a valid github_issue must PASS — the closing
+        # fence regex must tolerate the trailing CR (verified false-block).
+        path = self.cwd / "docs" / "plans" / "crlf.md"
+        path.write_bytes(b"---\r\ntitle: crlf\r\ngithub_issue: 42\r\n---\r\n\r\n# body\r\n")
+        transcript = _write_transcript(
+            self.cwd, [{"name": "Write", "input": {"file_path": str(path)}}]
+        )
+        result = _run({"transcript_path": str(transcript)}, self.cwd)
+        self.assertEqual(result.returncode, 0, msg=result.stderr)
+        self.assertEqual(result.stdout, "")
+
     def test_passes_with_github_issue_with_hash_value(self) -> None:
         plan = self._make_plan(
             "gh.md", "title: gh\ngithub_issue: aagnone3/context#8"

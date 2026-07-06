@@ -226,6 +226,8 @@ the edit/regenerate path), place its number `$N` on the report repo's lifecycle 
 `stub` — the report issue is a long-lived work item like any other. Skip this for the edit
 path and in `dry-run`.
 
+**Writer contract:** this command performs exactly one transition per new report issue: `→ stub`.
+
 If the report repo has a configured lifecycle board (preflight resolves `github-project`),
 run `lifecycle_board.py --set-status <N> stub` (create → board-add → set-status is one
 sequence; `--set-status` board-adds automatically):

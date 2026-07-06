@@ -46,7 +46,6 @@ import json
 import os
 import pathlib
 import re
-import shutil
 import subprocess
 import sys
 import time
@@ -122,14 +121,9 @@ PROBE_POLL_INTERVAL = 3
 
 
 # --------------------------------------------------------------------------
-# Effect seam (injected in tests) — same signature as lifecycle_board.run_gh.
+# Effect seam (injected in tests) — the two scripts share one subprocess
+# implementation and one gh-missing error via lifecycle_board.run_gh directly.
 # --------------------------------------------------------------------------
-
-def run_gh(args: "list[str]", timeout: int = lb.GH_TIMEOUT_SECONDS) -> "subprocess.CompletedProcess[str]":
-    """Default gh runner. Delegates to lifecycle_board.run_gh so the two
-    scripts share one subprocess implementation and one gh-missing error."""
-    return lb.run_gh(args, timeout=timeout)
-
 
 def _check(result: "subprocess.CompletedProcess[str]", code: str, what: str, fix: str) -> dict:
     """Assert a gh call succeeded, else raise the board error contract, and
@@ -181,8 +175,7 @@ def check_gh_authenticated(runner: GhRunner) -> None:
                          "Run `gh auth login`, then `gh auth refresh -s project`")
 
 
-def _project_scope_hint() -> str:
-    return "Grant the project scope: `gh auth refresh -s project`"
+_PROJECT_SCOPE_HINT = "Grant the project scope: `gh auth refresh -s project`"
 
 
 # --------------------------------------------------------------------------
@@ -212,14 +205,14 @@ def resolve_or_create_project(ctx: "lb.RepoContext", runner: GhRunner) -> Projec
         payload = _check(view, "project_not_found",
                          f"reading existing project {existing.owner}/{existing.number}",
                          "Verify the project still exists, or remove its entry from "
-                         f"{COMMITTED_CONFIG} to create a fresh one; " + _project_scope_hint())
+                         f"{COMMITTED_CONFIG} to create a fresh one; " + _PROJECT_SCOPE_HINT)
         return Project(number=existing.number, id=payload.get("id", ""), created=False)
 
     title = f"{ctx.origin_repo} lifecycle"
     create = runner(["project", "create", "--owner", owner, "--title", title, "--format", "json"])
     payload = _check(create, "project_create_failed", f"creating project {title!r} under {owner}",
                      "Verify the `project` scope and that you can create projects under "
-                     f"{owner}; " + _project_scope_hint())
+                     f"{owner}; " + _PROJECT_SCOPE_HINT)
     number = payload.get("number")
     if number is None:
         raise BoardError("project_create_failed", "project create returned no number",
@@ -243,7 +236,7 @@ def read_status_field(project: Project, ctx: "lb.RepoContext", runner: GhRunner)
                      "--format", "json"])
     payload = _check(result, "project_not_found",
                      f"reading fields of project {ctx.origin_owner}/{project.number}",
-                     "Verify the project exists and gh has the `project` scope; " + _project_scope_hint())
+                     "Verify the project exists and gh has the `project` scope; " + _PROJECT_SCOPE_HINT)
     status, _priority = lb.parse_field_list(payload)
     if not status:
         raise BoardError("option_missing", "Project has no built-in Status field",
@@ -369,7 +362,7 @@ def apply_status_options(status: StatusField, options: "list[dict]", runner: GhR
     ])
     payload = _check(result, "board_write_failed", "updateProjectV2Field (Status options)",
                      "Verify the `project` scope and board write permission (viewerCanUpdate); "
-                     + _project_scope_hint())
+                     + _PROJECT_SCOPE_HINT)
     field = (((payload.get("data") or {}).get("updateProjectV2Field") or {})
              .get("projectV2Field") or {})
     return field.get("options", [])
@@ -385,7 +378,7 @@ def ensure_priority_field(project: Project, ctx: "lb.RepoContext", runner: GhRun
     listing = runner(["project", "field-list", str(project.number), "--owner", ctx.origin_owner,
                       "--format", "json"])
     payload = _check(listing, "project_not_found", "re-reading fields for Priority check",
-                     "Verify the project exists and the `project` scope; " + _project_scope_hint())
+                     "Verify the project exists and the `project` scope; " + _PROJECT_SCOPE_HINT)
     _status, priority = lb.parse_field_list(payload)
     if priority:
         return {"created": False, "field_id": priority.get("id")}
@@ -394,7 +387,7 @@ def ensure_priority_field(project: Project, ctx: "lb.RepoContext", runner: GhRun
                      "--name", PRIORITY_FIELD_NAME, "--data-type", "SINGLE_SELECT",
                      "--single-select-options", ",".join(PRIORITY_OPTIONS), "--format", "json"])
     created = _check(create, "board_write_failed", "creating the Priority field",
-                     "Verify the `project` scope and board write permission; " + _project_scope_hint())
+                     "Verify the `project` scope and board write permission; " + _PROJECT_SCOPE_HINT)
     return {"created": True, "field_id": created.get("id")}
 
 
@@ -439,7 +432,7 @@ def query_workflows(project: Project, ctx: "lb.RepoContext", runner: GhRunner) -
         "-F", f"owner={ctx.origin_owner}", "-F", f"number={project.number}",
     ])
     payload = _check(result, "board_read_failed", "querying project workflows",
-                     "Verify the `project` scope; " + _project_scope_hint())
+                     "Verify the `project` scope; " + _PROJECT_SCOPE_HINT)
     data = payload.get("data") or {}
     node = ((data.get("repositoryOwner") or {}).get("projectV2") or {})
     nodes = (node.get("workflows") or {}).get("nodes")
@@ -464,7 +457,7 @@ def configure_workflows(project: Project, ctx: "lb.RepoContext", runner: GhRunne
             "-f", f"workflowId={reopened['id']}",
         ])
         _check(result, "board_write_failed", f"disabling the {REOPENED_WORKFLOW!r} workflow",
-               "Verify the `project` scope and board write permission; " + _project_scope_hint())
+               "Verify the `project` scope and board write permission; " + _PROJECT_SCOPE_HINT)
         reopened_disabled = True
 
     closed = by_name.get(CLOSED_WORKFLOW)
@@ -509,6 +502,14 @@ def _upsert_frontmatter_keys(text: str, keys: "dict[str, str]") -> str:
     """Update the given keys inside a leading --- fenced frontmatter block,
     preserving all other content. If a key is absent it is appended just
     before the closing fence. If the file has no frontmatter, one is prepended."""
+    # Empty frontmatter (`---\n---\n`) has no inner content, so the general
+    # regex below (which requires a `\n---` before the closing fence) misses it.
+    # Insert the keys between the two fences rather than prepending a 2nd block.
+    empty = re.match(r"^(---[ \t]*\n)(---[ \t]*(?:\n|$))", text)
+    if empty:
+        block = empty.group(1) + "".join(f"{k}: {v}\n" for k, v in keys.items()) + empty.group(2)
+        return block + text[empty.end():]
+
     m = re.match(r"^(---\s*\n)(.*?)(\n---\s*(?:\n|$))", text, re.DOTALL)
     if not m:
         block = "---\n" + "".join(f"{k}: {v}\n" for k, v in keys.items()) + "---\n"
@@ -674,14 +675,16 @@ def main(argv: "list[str]") -> int:
                                  "No committed board config — run the full bootstrap first",
                                  "python3 .../bootstrap_lifecycle_board.py")
             project = Project(number=board.number, id="", created=False)
-            print(json.dumps({"ok": True, "probe": run_probe(project, ctx, run_gh)}, indent=2))
+            print(json.dumps({"ok": True, "probe": run_probe(project, ctx, lb.run_gh)}, indent=2))
             return 0
-        summary = bootstrap(ctx, run_gh, probe=args.probe)
+        summary = bootstrap(ctx, lb.run_gh, probe=args.probe)
         print(json.dumps(summary, indent=2))
         return 0
     except BoardError as err:
-        print(json.dumps({"ok": False, "error_code": err.code, "error": str(err), "fix": err.fix},
-                         indent=2))
+        return lb._emit_error(err)
+    except Exception as exc:  # noqa: BLE001 — edge-of-CLI belt-and-braces
+        print(json.dumps({"ok": False, "error_code": "internal", "error": str(exc),
+                          "fix": "report this — gh emitted an unexpected shape"}, indent=2))
         return 1
 
 

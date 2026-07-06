@@ -134,6 +134,42 @@ class PinnedRepoTest(_RepoCase):
             "--repo EveryInc/compound-engineering-plugin --title x"
         )
 
+    # ---- quote-bypass forms (interior quotes collapse under normalization) --
+
+    def test_quote_bypass_double_quotes_denied(self) -> None:
+        self.assertDeny(
+            'gh pr create --repo Every""Inc/compound-engineering-plugin --title x'
+        )
+
+    def test_quote_bypass_single_quotes_denied(self) -> None:
+        self.assertDeny(
+            "gh pr create --repo Every''Inc/compound-engineering-plugin --title x"
+        )
+
+    def test_quote_bypass_wrapping_quotes_denied(self) -> None:
+        self.assertDeny(
+            'gh issue create --repo "EveryInc"/compound-engineering-plugin --title x'
+        )
+
+    # ---- -R short flag parity with --repo ---------------------------------
+
+    def test_dash_r_upstream_denied(self) -> None:
+        self.assertDeny(
+            "gh pr create -R EveryInc/compound-engineering-plugin --title x"
+        )
+
+    def test_dash_r_origin_allowed(self) -> None:
+        self.assertAllow(
+            "gh pr create -R aagnone3/agentic-engineering --title x"
+        )
+
+    # ---- GH_HOST env prefix -----------------------------------------------
+
+    def test_gh_host_prefix_denied(self) -> None:
+        self.assertDeny(
+            "GH_HOST=ghe.internal gh issue create --title x"
+        )
+
     def test_flagless_pr_allowed_when_pinned(self) -> None:
         # Pinned → flagless resolves to origin, so it is safe.
         self.assertAllow("gh pr create --title x --body y")
@@ -266,6 +302,12 @@ class UnpinnedRepoTest(_RepoCase):
         # An explicit origin --repo is safe regardless of pin state.
         self.assertAllow(
             "gh issue create --repo aagnone3/agentic-engineering --title x"
+        )
+
+    def test_explicit_dash_r_origin_allowed_when_unpinned(self) -> None:
+        # -R makes the target explicit, so the flagless-unpinned leg must not fire.
+        self.assertAllow(
+            "gh issue create -R aagnone3/agentic-engineering --title x"
         )
 
     def test_explicit_owner_origin_allowed_when_unpinned(self) -> None:

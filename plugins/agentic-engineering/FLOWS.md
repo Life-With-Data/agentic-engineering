@@ -35,7 +35,7 @@ flowchart LR
     TB --> FV["feature-video*"]
     FV --> C["compound"]
     R -->|"merge<br/><b>shipped</b>"| C
-    C -->|"docs/solutions/*.md<br/><b>compounded</b>"| done([shipped])
+    C -->|"docs/solutions/*.md<br/><b>compounded</b>"| done([compounded])
 ```
 
 The **bold** labels are the lifecycle stages stamped on the board's Status field as each artifact lands (see the state machine below). `/workflows:orchestrate` runs this whole chain for you. `/lfg` and `/slfg` run it fully autonomously.
@@ -46,7 +46,7 @@ The **bold** labels are the lifecycle stages stamped on the board's Status field
 
 In `github-project` mode a GitHub Projects v2 board is the source of truth. Every work item is an issue on the board carrying a Status stage; every command reads and moves that stage through one engine (`scripts/lifecycle_board.py`) instead of inferring pipeline position from filenames. This is the canonical picture — the [`lifecycle` skill](skills/lifecycle/SKILL.md) is the prose definition.
 
-Each transition has exactly **one writer** (a command, a built-in automation, or the shared reconciler). Forward stages are strictly ordered except two legal skips (`stub → planned`, `shipped → compounded`). `deployed` and `compounded` are order-independent terminal refinements of `shipped`; `abandoned` is an off-ramp reachable from any pre-terminal stage.
+Each transition has exactly **one writer** (a command, a built-in automation, or the shared reconciler). Forward stages are strictly ordered except two legal skips (`stub → planned`, `shipped → compounded`). `deployed` and `compounded` are order-independent terminal refinements of `shipped`; `abandoned` is an off-ramp reachable from **any** stage — closing an item as not-planned abandons it even after it shipped (the reconciler honors an explicit not-planned close as a deliberate human act; the `deployed` high-water rule applies to rollbacks, not to not-planned closes).
 
 ```mermaid
 stateDiagram-v2
@@ -71,6 +71,9 @@ stateDiagram-v2
     planned --> abandoned
     in_progress --> abandoned
     in_review --> abandoned
+    shipped --> abandoned: not-planned close
+    deployed --> abandoned
+    compounded --> abandoned
 
     deployed --> [*]
     compounded --> [*]
@@ -131,7 +134,7 @@ flowchart TD
     L --> g3{{"FINAL-REVIEW GATE ‡<br/>packet + decision log"}}
     g3 --> M["merge"]
     M --> C["compound"]
-    C --> done([shipped])
+    C --> done([compounded])
 
     classDef gate fill:#ffe8cc,stroke:#e8590c,stroke-width:2px;
     class g1,gate,g2,g3 gate
@@ -231,8 +234,9 @@ flowchart TD
     readplan --> clar{"anything ambiguous?"}
     clar -->|yes| ask{{"clarify with you"}}
     ask --> preflight
-    clar -->|no| preflight["repo preflight script:<br/>resolve mode + --claim (Status=in_progress)"]
-    preflight --> branch["branch / worktree setup"]
+    clar -->|no| preflight["repo preflight script:<br/>resolve mode"]
+    preflight --> claim["lifecycle_board.py --claim<br/>(Status=in_progress)"]
+    claim --> branch["branch / worktree setup"]
     branch --> tasks["create task list<br/>(sub-issues or TodoWrite)"]
     tasks --> loop{"tasks remain?"}
     loop -->|yes| impl["implement → test →<br/>system-wide check → commit"]
