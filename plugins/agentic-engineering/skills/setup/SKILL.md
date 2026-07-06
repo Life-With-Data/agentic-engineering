@@ -154,10 +154,12 @@ The script creates the project, rewrites the built-in Status field's options **I
 (so existing automations stay wired to the renamed options), adds a Priority field, disables the
 "Item reopened" workflow **if present** (new projects typically don't ship it; `/lifecycle-doctor`
 re-checks — where present it would otherwise stamp a reopened issue back to `stub`, erasing its
-lifecycle position), and writes the **committed** config file `agentic-engineering.md`
-at the repo root with `github_project_owner` and `github_project_number`. This file must be
-committed (not `.local`) — fresh clones and worktree-isolated subagents need to resolve the same
-board identity.
+lifecycle position), **links the board to the origin repo** (idempotent and non-fatal — Projects v2
+boards are owned by a user/org, so linking is the only repo-level association there is; it surfaces
+the board on the repo's Projects tab and enables auto-add), and writes the **committed** config file
+`agentic-engineering.md` at the repo root with `github_project_owner` and `github_project_number`.
+This file must be committed (not `.local`) — fresh clones and worktree-isolated subagents need to
+resolve the same board identity.
 
 Two steps have no API and stay manual:
 
@@ -169,6 +171,26 @@ Two steps have no API and stay manual:
 
 After bootstrapping (and after the two manual steps), run `/lifecycle-doctor` to verify the board
 schema, automations, and config all resolve correctly before relying on it.
+
+### Forking or cloning under a different owner — re-bootstrap
+
+`agentic-engineering.md` is committed, so it travels with the repo — and it names **one specific
+board** (`github_project_owner` / `github_project_number`). A Projects v2 board is owned by a
+user/org and cannot be co-owned, so a fork or clone under a **different** owner inherits a config
+that points at *someone else's* board. Left unfixed, lifecycle writes would target — or fail
+against — the upstream board, not yours.
+
+When adopting the plugin in a forked/cloned repo under a new owner, **re-run the bootstrap**:
+
+```bash
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/bootstrap_lifecycle_board.py"
+```
+
+Because no board yet exists under the new origin owner, the script creates a fresh one, links it to
+your repo, and rewrites the two `github_project_*` keys in place (preserving all other file
+content) — commit that change. `/lifecycle-doctor` confirms it: the `board_repo_link` check WARNs
+when the configured board is not linked to your origin repo, which is the tell that the committed
+config still points upstream.
 
 ## Step 3.7: Install the operating-principles always-on layer
 
