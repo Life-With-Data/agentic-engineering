@@ -1,7 +1,7 @@
 ---
 title: "feat(bootstrap): scaffold actions/add-to-project workflow for auto-add"
 type: feat
-status: active
+status: completed
 date: 2026-07-07
 github_issue: 63
 ---
