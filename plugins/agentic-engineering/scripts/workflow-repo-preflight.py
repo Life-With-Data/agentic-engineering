@@ -7,7 +7,8 @@ issue-tracker availability, and a recommended next action so agents can branch o
 explicit state instead of re-deriving it from prose instructions.
 
 Issue-tracker resolution order (first match wins):
-  1. issue_tracker: field in agentic-engineering.local.md frontmatter (explicit override)
+  1. issue_tracker: field in agentic-engineering.local.md frontmatter (explicit
+     override; a git-tracked copy is ignored — a PR must never carry it)
   2. committed board config (agentic-engineering.md with
      github_project_owner + github_project_number)              -> "github-project"
   3. `gh auth status` returns 0                                 -> "github"
@@ -163,9 +164,25 @@ def read_local_config_tracker(repo_root: str) -> tuple[Optional[str], Optional[s
     stale ``linear`` override from before 3.0.0) is surfaced as the second
     element instead of being silently ignored, so callers can tell the user
     their pinned tracker no longer resolves.
+
+    Security invariant (same gate as lifecycle_board.read_board_config): a
+    .local.md that is *tracked* in git would ride a PR, letting the PR pin
+    ``issue_tracker: none`` and downgrade the workflow out of board gating.
+    A tracked copy is ignored with a warning; resolution falls back to
+    auto-detect.
     """
     config_path = pathlib.Path(repo_root) / "agentic-engineering.local.md"
     if not config_path.is_file():
+        return (None, None)
+    tracked = subprocess.run(
+        ["git", "-C", repo_root, "ls-files", "--error-unmatch", config_path.name],
+        text=True, capture_output=True)
+    if tracked.returncode == 0:
+        print(
+            f"warning: {config_path.name} is tracked in git — a PR must not carry it; "
+            "ignoring its issue_tracker override and falling back to auto-detect",
+            file=sys.stderr,
+        )
         return (None, None)
     try:
         text = config_path.read_text(encoding="utf-8")
