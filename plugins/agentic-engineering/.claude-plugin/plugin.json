@@ -1,6 +1,6 @@
 {
   "name": "agentic-engineering",
-  "version": "3.5.1",
+  "version": "3.5.2",
   "description": "AI-powered development tools. 30 agents, 26 commands, 25 skills, 1 MCP server for code review, research, design, and workflow automation.",
   "author": {
     "name": "Anthony Agnone",

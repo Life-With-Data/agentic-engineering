@@ -5,6 +5,12 @@ All notable changes to the agentic-engineering plugin will be documented in this
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.5.2] - 2026-07-07
+
+### Fixed
+
+- **`git-worktree` skill: `ensure_gitignore()` upgraded to the plugin's canonical gitignore idiom** (the setup skill's Step 4.5 recipe). The old exact-line gate (`grep -q "^\.worktrees$"`) plus bare `echo >>` had two defects: appending to a `.gitignore` that lacks a final newline concatenated `.worktrees` onto the last existing pattern (corrupting both entries), and the exact-line grep missed broader/equivalent patterns (`.worktrees/`, wildcards, other ignore sources), appending a redundant line. Now gates on `git -C "$GIT_ROOT" check-ignore -q --no-index .worktrees` (honors every ignore source and pattern form; `--no-index` is load-bearing — a tracked path is never reported ignored, so without it a legacy tracked `.worktrees` would re-append forever) and repairs a missing trailing newline via the `tail -c1` guard before a `printf` append. The guard chain's short-circuit is `set -e`-safe (a non-final `&&` failure doesn't trip it, and the chain is never the function's last statement) — verified against missing/empty/no-trailing-newline/pattern-variant `.gitignore` fixtures. No component changes — counts unchanged.
+
 ## [3.5.1] - 2026-07-07
 
 ### Fixed
