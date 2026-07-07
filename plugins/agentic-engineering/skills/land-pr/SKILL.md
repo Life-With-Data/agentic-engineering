@@ -28,9 +28,10 @@ skill rather than reimplementing it.
 
 ## The merge gate (read first)
 
-Merging is outward-facing and effectively irreversible. The default is to **pause and ask the user
-before merging**. Merge automatically **only** when invoked in an autonomous context — `--auto` in
-the arguments, or when called from `/lfg`, `/slfg`, or `/workflows:orchestrate --auto` — **and** all
+Merging is outward-facing and effectively irreversible. Called on its own, land-pr **pauses and asks
+the user before merging**. Merge automatically **only** when invoked in an autonomous context —
+`--auto` in the arguments, or when called from `/workflows:orchestrate` in an autonomous run (its
+fully-autonomous default, or after its `--final-review` gate has been approved) — **and** all
 landability conditions below hold. Never auto-merge a PR that touches the default branch directly,
 force-pushes, or has any unresolved blocker.
 
@@ -51,16 +52,19 @@ A PR is **landable** when all of these are true:
    `IN_PROGRESS` required checks).
 2. **Threads resolved** — `get-pr-comments` returns `[]` (no unresolved, non-outdated review threads).
 3. **Independently reviewed** — an `/workflows:review` pass ran this cycle and its P1/blocking findings
-   are resolved (when landing inside the orchestrate/`lfg` pipeline this already happened upstream; if
-   landing a PR standalone that was never reviewed, run `/workflows:review` first). No reviewer has an
-   open `CHANGES_REQUESTED`.
+   are resolved. This is a **hard, non-skippable gate in every mode.** When landing inside the
+   orchestrate pipeline it already happened upstream; when landing a PR standalone, land-pr itself
+   confirms a review ran this cycle and, if it cannot, **runs `/workflows:review` before merging** and
+   resolves any P1s — a merge never happens on an unreviewed PR. No reviewer has an open
+   `CHANGES_REQUESTED`.
 4. **Mergeable** — `mergeStateStatus` is not `DIRTY` (conflicts), `BLOCKED` (branch protection), or
    `BEHIND` (needs update) for a reason you haven't cleared. A human GitHub `APPROVED` is **not**
    required unless branch protection enforces it.
 
 The `pr-landable-status` script computes 1, 2, and 4 mechanically and lists any `blockers`; condition
-3 (the independent review having run) is the caller's responsibility — verify it before an autonomous
-merge rather than relying on the script alone.
+3 (the independent review having run) is verified here before any merge — never assumed from the
+script alone, and never skipped because the run looks autonomous. If it cannot be confirmed, run
+`/workflows:review` and resolve its P1s first.
 
 ## Workflow
 
@@ -88,8 +92,11 @@ the mechanical conditions only — also confirm the independent review ran, per 
 
 ### 3. Drive to green (loop until landable)
 
-Repeat until all landability conditions hold, or you hit a blocker you cannot clear in ~2 attempts
-(then escalate to the user with the specific failure from `blockers`):
+Repeat until all landability conditions hold, or a blocker resists ~2 attempts that make **no
+strictly-measurable progress** — a fix that does not reduce the failing-check count, the unresolved-
+thread count, or the open-P1 count counts as a dry attempt (the uniform no-progress rule in
+`/workflows:orchestrate`). After two dry attempts, stop and escalate to the user with the specific
+failure from `blockers`:
 
 - **CI red or a required check failing** → inspect the failure, fix it, push, and re-check:
   ```bash
@@ -112,7 +119,7 @@ Repeat until all landability conditions hold, or you hit a blocker you cannot cl
 
 - **Independent review not yet run** → if no `/workflows:review` pass has reviewed this PR this cycle,
   run it now (it delegates to fresh reviewer sub-agents) and resolve any P1/blocking findings before
-  merging. Inside the orchestrate/`lfg` pipeline this already happened upstream — don't re-run it.
+  merging. Inside the orchestrate pipeline this already happened upstream — don't re-run it.
 
 - **Changes requested** (`reviewDecision: CHANGES_REQUESTED`) → resolve the reviewer's threads (above);
   the decision clears once they're addressed. Do **not** wait for a human `APPROVED` in autonomous mode
@@ -141,10 +148,10 @@ P1s clear, mergeable), then decide how to merge:
   (P1s resolved), and all threads resolved. Merge with squash and delete the branch? [y/N]"* Merge
   only on explicit yes.
 
-- **Autonomous (`--auto`, or called from `/lfg` / `/slfg` / `/workflows:orchestrate --auto`)** —
-  merge without asking **once and only once** all conditions hold. This is the point of autonomous
-  mode: do not bounce a "say the word and I'll merge" back to the user when the PR is already green,
-  reviewed, and mergeable — just merge. If a condition is genuinely unmet (CI stuck red after retries,
+- **Autonomous (`--auto`, or called from `/workflows:orchestrate` in an autonomous run)** — merge
+  without asking **once and only once** all conditions hold. This is the point of autonomous mode: do not bounce a
+  "say the word and I'll merge" back to the user when the PR is already green, reviewed, and
+  mergeable — just merge. If a condition is genuinely unmet (CI stuck red after retries,
   `CHANGES_REQUESTED` unresolved, or `mergeStateStatus: BLOCKED` by branch protection), do not merge;
   escalate that specific gap as a blocker.
 

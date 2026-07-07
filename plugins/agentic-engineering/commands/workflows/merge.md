@@ -28,5 +28,5 @@ skill: land-pr
 ```
 
 The **merge gate** is the skill's: pause-and-ask by default, auto-merge only in an autonomous
-context (`--auto`, or when called from `/lfg` / `/slfg` / `/workflows:orchestrate --auto`) and only
-once all landability conditions hold. See the skill for the full landability contract.
+context (`--auto`, or when called from `/workflows:orchestrate` in an autonomous run) and only once
+all landability conditions hold. See the skill for the full landability contract.

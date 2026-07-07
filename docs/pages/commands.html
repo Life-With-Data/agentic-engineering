@@ -49,7 +49,7 @@
           <h3>On This Page</h3>
           <ul>
             <li><a href="#workflow-commands">Workflow (7)</a></li>
-            <li><a href="#utility-commands">Utility (21)</a></li>
+            <li><a href="#utility-commands">Utility (19)</a></li>
           </ul>
         </div>
       </nav>
@@ -109,7 +109,7 @@
             <div class="command-detail-header">
               <code class="command-detail-name">/workflows:orchestrate</code>
             </div>
-            <p class="command-detail-description">Drive the brainstorm → plan → work → review → land → compound pipeline as the orchestrator — delegating implementation to sub-agents, reviewing their work, and surfacing only blockers and a final review</p>
+            <p class="command-detail-description">Drive the brainstorm → plan → work → review → land → compound pipeline as the orchestrator — delegating implementation to sub-agents, reviewing their work, and running fully autonomously by default (surfacing only genuine blockers; --final-review adds one pre-merge check)</p>
             <div class="card-code-block">
               <pre><code>/workflows:orchestrate</code></pre>
             </div>
@@ -144,7 +144,7 @@
         </section>
 
         <section id="utility-commands">
-          <h2><i class="fa-solid fa-screwdriver-wrench"></i> Utility Commands (21)</h2>
+          <h2><i class="fa-solid fa-screwdriver-wrench"></i> Utility Commands (19)</h2>
           <div class="command-detail" id="agent-native-audit">
             <div class="command-detail-header">
               <code class="command-detail-name">/agent-native-audit</code>
@@ -235,15 +235,6 @@
               <pre><code>/heal-skill</code></pre>
             </div>
           </div>
-          <div class="command-detail" id="lfg">
-            <div class="command-detail-header">
-              <code class="command-detail-name">/lfg</code>
-            </div>
-            <p class="command-detail-description">Full autonomous engineering workflow</p>
-            <div class="card-code-block">
-              <pre><code>/lfg</code></pre>
-            </div>
-          </div>
           <div class="command-detail" id="lifecycle-doctor">
             <div class="command-detail-header">
               <code class="command-detail-name">/lifecycle-doctor</code>
@@ -287,15 +278,6 @@
             <p class="command-detail-description">Resolve all pending CLI todos using parallel processing</p>
             <div class="card-code-block">
               <pre><code>/resolve_todo_parallel</code></pre>
-            </div>
-          </div>
-          <div class="command-detail" id="slfg">
-            <div class="command-detail-header">
-              <code class="command-detail-name">/slfg</code>
-            </div>
-            <p class="command-detail-description">Full autonomous engineering workflow using swarm mode for parallel execution</p>
-            <div class="card-code-block">
-              <pre><code>/slfg</code></pre>
             </div>
           </div>
           <div class="command-detail" id="test-browser">

@@ -1,7 +1,7 @@
 ---
 name: workflows:orchestrate
-description: Drive the brainstorm → plan → work → review → land → compound pipeline as the orchestrator — delegating implementation to sub-agents, reviewing their work, and surfacing only blockers and a final review
-argument-hint: "[feature idea, or path to an existing brainstorm/plan] [--steer | --careful] [--auto]"
+description: Drive the brainstorm → plan → work → review → land → compound pipeline as the orchestrator — delegating implementation to sub-agents, reviewing their work, and running fully autonomously by default (surfacing only genuine blockers; --final-review adds one pre-merge check)
+argument-hint: "[feature idea, or path to an existing brainstorm/plan] [--final-review | --steer | --careful]"
 disable-model-invocation: true
 ---
 
@@ -15,7 +15,7 @@ You are the **orchestrator** sitting between the user and the workflow pipeline.
 /workflows:brainstorm → /workflows:plan → [/deepen-plan?] → /workflows:work → /workflows:review → /workflows:compound
 ```
 
-The full expansion — including the finalization steps `/lfg` runs — is:
+The full expansion — including the finalization steps — is:
 
 ```
 brainstorm → plan → [deepen-plan?] → work (→ PR) → review → [resolve findings]
@@ -26,9 +26,9 @@ Your job is to **run that flow for them** — handling every menial transition a
 
 The contract, stated plainly:
 
-> **The orchestrator is a reviewer, not an implementer. Delegate the work to sub-agents, review what comes back, keep the pipeline moving, and surface to the user only blockers and the final review.**
+> **The orchestrator is a reviewer, not an implementer. Delegate the work to sub-agents, review what comes back, keep the pipeline moving, and surface to the user only genuine blockers — running the whole pipeline to a merge on its own by default.**
 
-This sits between `/lfg` (fully autonomous, no human in the loop) and running each command by hand (human in every loop). In the default **delegate** mode you self-answer the intermediate judgment calls — recording each one in a decision log — and pause exactly once, at the **Final-Review gate**, before the merge. `--steer` restores the classic human-checkpoint cadence for runs the user wants to drive, and `--auto` is a **modifier** on delegate mode that collapses that one remaining gate (auto-merge) for unattended runs.
+This command spans the full autonomy spectrum. **The default is fully autonomous:** no human in the loop, no approval prompts — the orchestrator self-answers every intermediate judgment call (recording each in a decision log), merges once the PR is landable, and surfaces *only* genuine blockers. From there each flag adds human involvement: **`--final-review`** keeps the autonomous run but pauses exactly once, at the **Final-Review gate**, before the merge; **`--steer`** restores the classic human-checkpoint cadence for runs the user wants to drive; **`--careful`** confirms at every stage boundary on top of that.
 
 ## Input
 
@@ -44,25 +44,25 @@ Parse the input:
 
 | Flag | Behavior |
 |------|----------|
-| _(default)_ | **Delegate mode.** The orchestrator runs the pipeline autonomously end-to-end: it delegates implementation to sub-agents, reviews their work itself, and self-answers the intermediate judgment gates (approach, plan approval, findings triage) — recording each call in the **decision log**. It surfaces to the user for exactly two things: **genuine blockers** and the single **Final-Review gate** before the merge. |
+| _(default)_ | **Fully autonomous.** The orchestrator runs the pipeline end-to-end with **no approval prompts of any kind**: it delegates implementation to sub-agents, reviews their work itself, self-answers the intermediate judgment gates (approach, plan approval, findings triage) — logging each call in the **decision log** — and, once CI is green, the independent review ran with P1s resolved, threads are resolved, and the PR is mergeable, `land-pr` merges with no prompt (the review packet becomes the final summary). It surfaces to the user for **genuine blockers only** (material scope change, branch protection, unresolvable ambiguity) — the universal floor that applies in every mode. Built for unattended runs (cron routines, overnight loops) where a paused gate means the work just sits. |
+| `--final-review` | **Autonomous, with one pre-merge check.** Identical to the default in every respect — same sub-agent delegation, same self-answered intermediate gates, same decision log — **except** it pauses exactly once, at the **Final-Review gate**, and presents the review packet for your go before merging. Use it when you want the hands-off run but the final merge to be your call. |
 | `--steer` | **Steer mode** (the classic cadence). Stop at the defined checkpoints below (approach, plan approval, findings triage, merge) and at blockers. Auto-handle all menial transitions. |
-| `--auto` | **A modifier on delegate mode, not a mode of its own.** Behavior is delegate mode in every respect except the last step: the Final-Review gate collapses, and once CI is green, the independent review ran with P1s resolved, and the PR is mergeable, `land-pr` auto-merges with no prompt — the review packet is emitted as the final summary instead of a question. For unattended runs (cron routines, overnight loops) where a paused gate means the work just sits. |
 | `--careful` | Pause for a quick confirmation at **every** stage boundary, plus all steer-mode checkpoints. |
 
-Autonomy ordering: `--careful` > `--steer` > _(default delegate)_, with `--auto` toggling only delegate's merge gate. Announce the resolved mode (and the `--auto` modifier, if set) in your opening status line.
+Autonomy ordering (most to least human involvement): `--careful` > `--steer` > `--final-review` > _(default, fully autonomous)_. Each step removes gates; the default removes the last one (Final-Review), leaving only the universal blocker floor. `--auto` is accepted as an explicit alias for the default. Announce the resolved mode in your opening status line.
 
 ## How You Operate
 
 You drive the pipeline by invoking the existing `/workflows:*` sub-commands in order. Each sub-command has its own internal questions. Your role is to **filter those questions**:
 
 - **Menial prompts** (branch naming, "proceed?", detail level, "continue on this branch?") → answer them yourself with the sensible default below. Do **not** forward them to the user.
-- **Judgment prompts** (which approach to build, approval to start implementing, which findings to fix) → in **`--steer`/`--careful`**, surface them via **AskUserQuestion**. In **delegate mode**, answer them yourself per the Decision Policy and record the call in the decision log — only a genuine blocker goes to the user.
+- **Judgment prompts** (which approach to build, approval to start implementing, which findings to fix) → in **`--steer`/`--careful`**, surface them via **AskUserQuestion**. In the **autonomous modes** (default and `--final-review`), answer them yourself per the Decision Policy and record the call in the decision log — only a genuine blocker goes to the user.
 
-You also **insert your own gates** where the pipeline itself wouldn't stop: the Plan-Approval gate (steer/careful) and the Final-Review gate (delegate mode).
+You also **insert your own gates** where the pipeline itself wouldn't stop: the Plan-Approval gate (steer/careful) and the Final-Review gate (`--final-review` only — the default merges without it).
 
 **Between checkpoints, do not stop.** Proceed from stage to stage automatically, emitting a one-line status banner at each transition so the user can watch progress. Only an AskUserQuestion checkpoint or a blocker pauses you.
 
-### Delegation & Review (delegate mode)
+### Delegation & Review (autonomous modes)
 
 The orchestrator does not implement feature code inline. It sits at the top of a two-tier structure:
 
@@ -73,40 +73,38 @@ The review loop per returned sub-agent: **verify → accept, retry, or escalate.
 
 **Decision log.** Every judgment call you make on the user's behalf (approach picked, plan self-approved, findings triaged, retries burned, scope filed as follow-ons) gets one line: `↳ decided: <what> — <why, briefly>`. Emit it in the status stream as it happens and replay the full log at the Final-Review gate / final summary. This is what makes autonomous continuation reviewable after the fact.
 
-**Optional continuation engine.** `/lfg` keeps itself moving by wrapping the run in the `ralph-wiggum` loop. You may do the same to harden the "keep going on your own" behavior — **in delegate mode only**, and only if the `ralph-wiggum` skill is available: at the start, run `/ralph-wiggum:ralph-loop "complete the orchestrate pipeline" --completion-promise "DONE"` and emit `<promise>DONE</promise>` when the pipeline finishes. This is purely a don't-stop-prematurely aid; it does **not** override your gates — every surviving 🧍 CHECKPOINT still pauses via AskUserQuestion (the loop blocks on user input just like `/goal` does), and every blocker still escalates. In `--steer` and `--careful` modes, skip the loop — the human cadence is the point. If the skill is unavailable, skip silently and rely on the prose loop above.
-
 ## Decision Policy
 
-This table is the heart of the orchestrator. Apply it literally. **🧍 CHECKPOINT** rows pause for the user in `--steer`/`--careful`; in **delegate mode** they collapse to the *Delegate-mode self-answer* noted in the row (logged in the decision log), with two exceptions: genuine blockers always escalate, and the **merge** row keeps its Final-Review gate — unless the `--auto` modifier is set, which collapses that gate too.
+This table is the heart of the orchestrator. Apply it literally. **🧍 CHECKPOINT** rows pause for the user in `--steer`/`--careful`; in the **autonomous modes** (default and `--final-review`) they collapse to the *Autonomous self-answer* noted in the row (logged in the decision log), with two exceptions that always hold: genuine blockers escalate, and material scope expansion stops the run. The **merge** row is the one place the two autonomous modes differ: the default merges once landable, and `--final-review` pauses there at the Final-Review gate.
 
 | Juncture | Mode | Default action |
 |----------|------|----------------|
 | Run repo preflight, print tracker banner | **AUTO** | Run `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/workflow-repo-preflight.py"`; follow its `recommendation.action`. |
 | Brainstorm: lightweight repo research | **AUTO** | Let it run. |
-| Brainstorm: **which approach to build** | **🧍 CHECKPOINT** | The user picks — this is WHAT-we-build steering. *Delegate-mode self-answer:* pick the approach the brainstorm's own analysis recommends and log it; if the fork is product-shaping with no clear winner, that's a blocker — escalate, don't guess. |
+| Brainstorm: **which approach to build** | **🧍 CHECKPOINT** | The user picks — this is WHAT-we-build steering. *Autonomous self-answer:* pick the approach the brainstorm's own analysis recommends and log it; if the fork is product-shaping with no clear winner, that's a blocker — escalate, don't guess. |
 | Brainstorm → plan transition | **AUTO** | When the brainstorm doc is written and its open questions are resolved, proceed to `/workflows:plan` (it auto-detects the brainstorm). |
 | Plan: research depth decision | **AUTO** | Let `/workflows:plan` decide per its own rules; don't intervene. |
 | Plan: detail level (MINIMAL/MORE/A LOT) | **AUTO** | Choose by scope: bug/small → MINIMAL, typical feature → MORE, architectural/multi-phase → A LOT. |
 | Plan: tracker-issue creation | **AUTO** | Mandatory Step 7 runs as-is: it creates/updates the GitHub issue, sub-issues (via the plan), dependencies, board-adds, and sets Status=`planned`. Capture the issue number `#<N>`. |
-| **Plan-Approval gate** (plan written, before any code) | **🧍 CHECKPOINT** | Show a tight plan summary + issue number `#<N>`. Ask: proceed / deepen first / refine / edit-and-recheck. See gate spec below. *Delegate-mode self-answer:* run the **plan self-review** (the `document-review` skill, plus `spec-flow-analyzer` for user-facing flows), fix what it surfaces, log the approval, and proceed — the plan summary is replayed at the Final-Review gate. |
-| Deepen the plan | **🧍 CHECKPOINT** (folded into Plan-Approval) | Only run `/deepen-plan` if the user asks for it at the gate, or (delegate) the plan is large/architectural. |
+| **Plan-Approval gate** (plan written, before any code) | **🧍 CHECKPOINT** | Show a tight plan summary + issue number `#<N>`. Ask: proceed / deepen first / refine / edit-and-recheck. See gate spec below. *Autonomous self-answer:* run the **plan self-review** (the `document-review` skill, plus `spec-flow-analyzer` for user-facing flows), fix what it surfaces, log the approval, and proceed — the plan summary is replayed at the Final-Review gate. |
+| Deepen the plan | **🧍 CHECKPOINT** (folded into Plan-Approval) | Only run `/deepen-plan` if the user asks for it at the gate, or (autonomous) the plan is large/architectural. |
 | Work: branch / worktree setup | **AUTO** | If already on a feature branch, continue on it. Else create `feat/…`-style branch from the default branch. Never commit to the default branch without explicit user say-so (that itself becomes a blocker → ask). |
 | Work: clarifying questions about the plan | **AUTO if resolvable** | Resolve from the plan + repo. Only escalate genuinely ambiguous items as a blocker. |
-| Work: implementation, tests, incremental commits | **AUTO** | In delegate mode: dispatch via **Orchestrated Execution** (see Delegation & Review) — one Opus-tier sub-agent per tracked issue/sub-issue; `/workflows:work` claims each via `--claim` (assignee = claim) and advances Status through `--set-status`. The orchestrator reviews every returned diff and re-runs gates before accepting. In `--steer`/`--careful`: execute per `/workflows:work` (inline is fine for small linear work). |
-| Work: discovered scope expansion | **🧍 CHECKPOINT if material** | A small follow-on task → file it and proceed (all modes). A direction change or significant new scope → pause and ask — **in every mode, including delegate with `--auto`**; redefining WHAT is being built is always the user's call. |
+| Work: implementation, tests, incremental commits | **AUTO** | In the autonomous modes: dispatch via **Orchestrated Execution** (see Delegation & Review) — one Opus-tier sub-agent per tracked issue/sub-issue; `/workflows:work` claims each via `--claim` (assignee = claim) and advances Status through `--set-status`. The orchestrator reviews every returned diff and re-runs gates before accepting. In `--steer`/`--careful`: execute per `/workflows:work` (inline is fine for small linear work). |
+| Work: discovered scope expansion | **🧍 CHECKPOINT if material** | A small follow-on task → file it and proceed (all modes). A direction change or significant new scope → pause and ask — **in every mode, including the fully-autonomous default**; redefining WHAT is being built is always the user's call, and counts as a genuine blocker. |
 | Work: open the PR | **AUTO** | `/workflows:work` Phase 4 opens the PR with `Closes #N` and sets Status=`in_review` (the issue is **not** closed at PR creation — the built-in "Item closed" automation owns `shipped` at merge). Outward-facing, but it's the expected terminal of the work stage in a solo/small-team flow. |
-| Review: run multi-agent review | **AUTO** | Run `/workflows:review` against the new PR. This is the **independent** review that justifies the eventual auto-merge: it fans out to fresh reviewer sub-agents (not the implementer), and `/workflows:review` always runs a baseline set (`agent-native-reviewer`, `learnings-researcher`, `integration-boundary-reviewer`) even with no `review_agents` configured — so the auto review is never empty. In delegate mode, if no `agentic-engineering.local.md` exists, proceed with that baseline rather than blocking on the interactive `setup` skill. |
+| Review: run multi-agent review | **AUTO — mandatory, never skipped in any mode (the fully-autonomous default included)** | Run `/workflows:review` against the new PR. This is the **independent** review that justifies the eventual merge: it fans out to fresh reviewer sub-agents (not the implementer), and `/workflows:review` always runs a baseline set (`agent-native-reviewer`, `learnings-researcher`, `integration-boundary-reviewer`) even with no `review_agents` configured — so the review is never empty. In the autonomous modes, if no `agentic-engineering.local.md` exists, proceed with that baseline rather than blocking on the interactive `setup` skill. A run that reaches land/merge without this review having run this cycle has no basis to merge — `land-pr` re-checks and runs it if it is somehow missing (condition 3). |
 | Review: **P1 (critical) findings** | **AUTO-FIX** | P1 blocks merge — fix it without asking (via `/resolve_todo_parallel` or direct edits), then re-verify. |
-| Review: **P2 / P3 findings triage** | **🧍 CHECKPOINT** | Present the categorized findings. The user decides which non-blocking items to fix now vs defer. *Delegate-mode self-answer:* fix P2s now, defer P3s as tracked todos/beads, log the split — the triage is replayed at the Final-Review gate. |
+| Review: **P2 / P3 findings triage** | **🧍 CHECKPOINT** | Present the categorized findings. The user decides which non-blocking items to fix now vs defer. *Autonomous self-answer:* fix P2s now, defer P3s as tracked todos/beads, log the split — the triage is replayed at the Final-Review gate. |
 | Review: resolve approved findings | **AUTO** | Run `/agentic-engineering:resolve_todo_parallel` to fix the items the user approved (and all P1s). |
-| Verify: browser / E2E tests (`/agentic-engineering:test-browser`) | **AUTO when applicable** | After findings are resolved, for web/iOS changes run `/test-browser` on affected pages. Failures become P1 todos → fix and re-run until green. Skip for non-UI changes (note the skip). This is `/lfg` step 7. |
-| Finalize: feature walkthrough video (`/agentic-engineering:feature-video`) | **AUTO when applicable** | For UI / user-facing changes, record the walkthrough and attach it to the PR (`/feature-video`). This is `/lfg` step 8. Skip with a one-line note for internal-only changes, or if the user opted out at the triage gate. |
+| Verify: browser / E2E tests (`/agentic-engineering:test-browser`) | **AUTO when applicable** | After findings are resolved, for web/iOS changes run `/test-browser` on affected pages. Failures become P1 todos → fix and re-run until green. Skip for non-UI changes (note the skip). |
+| Finalize: feature walkthrough video (`/agentic-engineering:feature-video`) | **AUTO when applicable** | For UI / user-facing changes, record the walkthrough and attach it to the PR (`/feature-video`). Skip with a one-line note for internal-only changes, or if the user opted out at the triage gate. |
 | Land: drive CI green + resolve threads (`land-pr` skill) | **AUTO** | Run the `land-pr` skill to wait on CI, resolve any remaining review threads, and reach a landable state (CI green, threads resolved, mergeable). The independent review that justifies the merge already ran upstream (the Review stage above) — that, not a human GitHub approval, is the review gate. |
-| Land: **the merge itself** (`gh pr merge`) | **🧍 FINAL-REVIEW GATE** (delegate) / **🧍 CHECKPOINT** (steer/careful) / **AUTO with `--auto`** | Merging is outward-facing and irreversible. In **delegate** mode, this is the run's single surfacing point: present the **Final-Review packet** (see gate spec below) and wait for the user's go. In **`--steer`/`--careful`**, stop and ask before merging. With the **`--auto` modifier**, the `land-pr` skill auto-merges with no further prompt — **once** CI is green, the upstream multi-agent review ran with P1s resolved, all threads are resolved, and the PR is mergeable. Do **not** wait on a human GitHub `APPROVED` (a solo run never gets one — that's the whole point of the autonomous review). Never merge on an unmet condition or directly to the default branch. The one real stop here is `mergeStateStatus: BLOCKED` (branch protection requires something the agent can't supply) → escalate as a blocker. |
+| Land: **the merge itself** (`gh pr merge`) | **AUTO** (default) / **🧍 FINAL-REVIEW GATE** (`--final-review`) / **🧍 CHECKPOINT** (steer/careful) | Merging is outward-facing and irreversible. In the **default** (fully autonomous) mode, the `land-pr` skill merges with no prompt — **once** CI is green, the upstream multi-agent review ran with P1s resolved, all threads are resolved, and the PR is mergeable. Under **`--final-review`**, this is the run's single surfacing point: present the **Final-Review packet** (see gate spec below) and wait for the user's go. In **`--steer`/`--careful`**, stop and ask before merging. In all cases, do **not** wait on a human GitHub `APPROVED` (a solo run never gets one — that's the whole point of the autonomous review). Never merge on an unmet condition or directly to the default branch. The one real stop even in the default is `mergeStateStatus: BLOCKED` (branch protection requires something the agent can't supply) → escalate as a blocker. |
 | Compound: document the solution | **AUTO** | Run `/workflows:compound` once work has shipped (merged) and a non-trivial problem was solved. |
 | Any genuine blocker | **🧍 ESCALATE** | Access, credentials, an ambiguous product decision, conflicting requirements, a failing gate you can't resolve in ~2 tries. Batch open blockers into ONE AskUserQuestion. Never guess on irreversible or product-shaping choices. |
 
-Mode collapse rules, precisely: in **delegate** mode (the default), every **🧍 CHECKPOINT** collapses to its *Delegate-mode self-answer* **except** material scope expansion, the Final-Review gate at the merge, and genuine blockers. The **`--auto` modifier** changes exactly one of those: the Final-Review gate collapses (auto-merge; the packet becomes the final summary) — scope expansion and blockers still stop the run. In `--careful`, add a lightweight confirm at each stage boundary on top of the steer checkpoints.
+Mode collapse rules, precisely: in the **default** (fully autonomous) mode, every **🧍 CHECKPOINT** collapses to its *Autonomous self-answer*, leaving **material scope expansion and genuine blockers as the only stops** — the run merges once landable with no other pause. That pair is the universal floor: it surfaces in *every* mode — autonomy never extends to redefining WHAT is built or overriding a blocker. **`--final-review`** is the default plus exactly one reinstated stop: the Final-Review gate at the merge (the packet is presented and the run waits for the user's go). In `--careful`, add a lightweight confirm at each stage boundary on top of the steer checkpoints.
 
 ## State Detection (Resumable)
 
@@ -145,7 +143,7 @@ Map the board `stage` to a resume point (this replaces the artifact-heuristic la
 |---|---|
 | `stub` | **brainstorm** |
 | `brainstormed` | **plan** |
-| `planned` | **work** (fresh — Plan-Approval gate in steer/careful, or plan self-review in delegate, if neither has happened this run) |
+| `planned` | **work** (fresh — Plan-Approval gate in steer/careful, or plan self-review when autonomous, if neither has happened this run) |
 | `in_progress` | **work** (resume — claim already held) |
 | `in_review` | the **review → land** ladder — sub-detect within `in_review` from the PR (see below) |
 | `shipped` | **compound** |
@@ -165,7 +163,7 @@ Map the board `stage` to a resume point (this replaces the artifact-heuristic la
 
 With no issue number resolvable (empty input, or a bare feature description):
 
-- Run `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/lifecycle_board.py" --ready-work` — it returns dispatchable items (`planned ∧ unassigned ∧ unblocked`, **Priority-sorted**). **Offer the top item** (in delegate mode, take it and log the pick; in steer/careful, confirm via AskUserQuestion). A `truncated_ready_work` flag means the list may be incomplete — note it.
+- Run `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/lifecycle_board.py" --ready-work` — it returns dispatchable items (`planned ∧ unassigned ∧ unblocked`, **Priority-sorted**). **Offer the top item** (when autonomous, take it and log the pick; in steer/careful, confirm via AskUserQuestion). A `truncated_ready_work` flag means the list may be incomplete — note it.
 - If the input is instead a **feature description**, don't consult ready-work — start a new run at **brainstorm** (or skip to **plan** if the description is already crisp and well-scoped: clear acceptance criteria, referenced patterns — say so).
 - If `--ready-work` returns no items and there's no description, ask the user once what to build.
 
@@ -179,7 +177,7 @@ Used **only** when `--gate` reports `mode: no_board` / `verdict: no_board` (plai
 4. **Open PR**, findings resolved, but **no walkthrough video** in the PR body (and the change is UI/user-facing) → resume at **feature-video**, then **land-pr**, then **compound**.
 5. **Open PR** + un-triaged findings (`todos/*-pending-*.md`) → resume at **findings triage** → resolve → **test-browser** → **feature-video** → **land-pr**.
 6. **Open PR**, no review yet → resume at **review**.
-7. **Plan** exists (`docs/plans/<recent>-plan.md`), checkboxes unstarted/partial, branch may exist → resume at **work** (after the Plan-Approval gate in steer/careful, or the plan self-review in delegate mode, if neither has happened this run).
+7. **Plan** exists (`docs/plans/<recent>-plan.md`), checkboxes unstarted/partial, branch may exist → resume at **work** (after the Plan-Approval gate in steer/careful, or the plan self-review when autonomous, if neither has happened this run).
 8. **Brainstorm** exists (`docs/brainstorms/<recent>.md`), no matching plan → resume at **plan**.
 9. **Nothing in flight** → start at **brainstorm**, unless the input description is already crisp and well-scoped (clear acceptance criteria, referenced patterns), in which case skip straight to **plan** and say so.
 
@@ -197,31 +195,54 @@ loop until pipeline complete:
     run the stage's sub-command, applying the Decision Policy:
         - auto-answer menial prompts with the documented defaults
         - judgment prompts: AskUserQuestion in steer/careful;
-          self-answer + decision log in delegate/auto
-        - work stage in delegate/auto: dispatch sub-agents per
+          self-answer + decision log when autonomous (default / --final-review)
+        - work stage when autonomous: dispatch sub-agents per
           Delegation & Review; verify every returned diff before accepting
         - honor the inserted gates (Plan-Approval in steer/careful;
-          Final-Review in delegate)
+          Final-Review under --final-review only — the default merges without it)
     on stage completion:
         - update trackers / check off plan checkboxes (AUTO, handled by sub-commands)
-        - re-detect stage
+        - re-detect stage; reset the stall counter (progress was made)
+    on no progress this pass (see No-Progress Stop):
+        - increment the stall counter for the current stage
+        - if the counter reaches 2, enter the `stalled` terminal state for this
+          stage → escalate as a blocker with the specific evidence
     on blocker:
         - collect it; if more of the current stage can proceed without it, continue
         - otherwise batch all open blockers into ONE AskUserQuestion and wait
-        - on answer: resume
+        - on answer: resume (reset the stall counter — new information arrived)
 
 on completion: emit final summary (below)
 ```
 
-Never report "done" while a stage is half-finished, a P1 finding is open, or a blocker is unanswered.
+Never report "done" while a stage is half-finished, a P1 finding is open, a blocker is unanswered, or a stage is `stalled`.
+
+## No-Progress Stop (uniform)
+
+A single stagnation rule governs the whole run, so no stage can spin forever and every stage inherits the same bound instead of re-inventing "try a couple of times." This replaces per-stage retry prose with one mechanism.
+
+**Progress metric (evaluated once per pass).** A pass **made progress** iff the board `stage` advanced **or** at least one of these strictly decreased versus the previous pass at this stage:
+
+- open sub-issues on the parent,
+- unresolved review threads on the PR,
+- failing required CI checks,
+- open P1 findings.
+
+Anything else — same counts, a re-run that changed nothing, a fix that didn't move any of the four — is a **no-progress pass**. The metric is evidence-based on purpose: it is not a clock, an iteration cap, a token budget, or a retry ceiling invented out of nothing. A genuinely advancing long run never trips it; only a spinning one does.
+
+**Stall counter.** One counter per stage. Increment it on each no-progress pass; **reset it to 0** on any progress or stage advance, and whenever a blocker answer injects new information.
+
+**Stop at 2.** Two consecutive no-progress passes at the same stage → that stage enters the **`stalled`** terminal state. Stop working it, gather the evidence (what was attempted on both passes, which of the four metrics did not move, the exact failure), and escalate as a blocker in the normal one-batch AskUserQuestion. `stalled` is a terminal state distinct from success — **never report a stalled stage as done**, and never auto-merge out of one.
+
+**Where the existing "~2 retries" live.** The bounded retries inside `land-pr` (drive-to-green) and `/workflows:work` Orchestrated Execution are *instances* of this rule: a retry that does not strictly shrink the blocker/failure set counts toward the stall bound. Treat their local counters and this run-level counter as the same budget — two dry attempts, then escalate.
 
 ## Checkpoint Specs
 
 ### Approach selection (during brainstorm)
 
-In `--steer`/`--careful`: let `/workflows:brainstorm` run its own approach exploration and AskUserQuestion — that question is already a meaningful one. Do not pre-answer it. In delegate mode: intercept it, pick the recommended approach, log the decision (escalating only a product-shaping fork with no clear winner). Once the approach is settled and the brainstorm doc is written with open questions resolved, proceed automatically to plan.
+In `--steer`/`--careful`: let `/workflows:brainstorm` run its own approach exploration and AskUserQuestion — that question is already a meaningful one. Do not pre-answer it. When autonomous (default / `--final-review`): intercept it, pick the recommended approach, log the decision (escalating only a product-shaping fork with no clear winner). Once the approach is settled and the brainstorm doc is written with open questions resolved, proceed automatically to plan.
 
-### Plan-Approval gate (steer/careful — replaced by plan self-review in delegate mode)
+### Plan-Approval gate (steer/careful — replaced by plan self-review when autonomous)
 
 After the plan file is written and its tracker issue is created, **stop**. Show:
 
@@ -241,11 +262,11 @@ Then **AskUserQuestion**: *"Plan is ready. How should I proceed?"*
 - **Refine** — structured self-review via the `document-review` skill, then return here.
 - **Let me edit** — open the plan (`open <plan_path>`), wait for the user, then re-read and return here.
 
-This gate is the single point where the user commits to an implementation before code is written. It applies in `--steer` and `--careful`. In **delegate mode**, the same commitment is made by the **plan self-review** instead: run the `document-review` skill against the plan (plus `spec-flow-analyzer` when the change has user-facing flows), fix what they surface, log `↳ decided: plan self-approved — <one-line basis>`, and proceed to work. The plan summary block above is still produced — it opens the Final-Review packet rather than a question.
+This gate is the single point where the user commits to an implementation before code is written. It applies in `--steer` and `--careful`. In the **autonomous modes** (default and `--final-review`), the same commitment is made by the **plan self-review** instead: run the `document-review` skill against the plan (plus `spec-flow-analyzer` when the change has user-facing flows), fix what they surface, log `↳ decided: plan self-approved — <one-line basis>`, and proceed to work. The plan summary block above is still produced — under `--final-review` it opens the Final-Review packet; in the default it opens the final summary.
 
 ### Findings triage (after review)
 
-P1 findings are already auto-fixed before you reach this gate. In delegate mode: fix P2s, defer P3s as tracked todos/beads, log the split, and move on — no pause. In `--steer`/`--careful`, present the rest:
+P1 findings are already auto-fixed before you reach this gate. When autonomous (default / `--final-review`): fix P2s, defer P3s as tracked todos/beads, log the split, and move on — no pause. In `--steer`/`--careful`, present the rest:
 
 ```
 🔍 Review complete — PR #<n>
@@ -263,9 +284,9 @@ Then **AskUserQuestion**: *"P1s are fixed. Which non-blocking findings should I 
 
 After resolution, proceed to compound (AUTO).
 
-### Final-Review gate (delegate mode's single gate)
+### Final-Review gate (`--final-review` only)
 
-Reached when `land-pr` reports the PR **landable**: CI green, review threads resolved, P1s (and P2s, per the triage rule) fixed, mergeable. Present the **Final-Review packet**:
+This gate exists **only under `--final-review`.** The default (fully autonomous) mode has no such gate — it merges once the PR is landable and emits the packet below as its final summary instead of a question. Under `--final-review`, it is reached when `land-pr` reports the PR **landable**: CI green, review threads resolved, P1s (and P2s, per the triage rule) fixed, mergeable. Present the **Final-Review packet**:
 
 ```
 🏁 Ready to land — PR #<n> (<url>)
@@ -287,7 +308,7 @@ Then **AskUserQuestion**: *"Everything is green and reviewed. How should I land 
 - **Request changes** — take the user's feedback as new P1 todos, resolve, and return here.
 - **Don't merge** — leave the PR open, note why, and stop after emitting the final summary.
 
-This is the one gate delegate mode never skips on its own. The **`--auto` modifier** exists to collapse exactly this gate and nothing else: merge automatically once landable and emit the same packet as the final summary.
+This gate is the whole of what `--final-review` adds over the default — one pause, at the merge, and nothing else. The default omits it and merges automatically once landable, emitting the same packet as its final summary. Either way every other stop is unaffected: material scope changes and genuine blockers still surface, in every mode.
 
 ## Sub-command Auto-Answer Cheatsheet
 
@@ -299,7 +320,7 @@ When a sub-command asks one of its built-in questions, answer as the orchestrato
 | brainstorm Phase 4: *"what next?"* | **Proceed to planning.** |
 | plan: *"description clear — proceed with research?"* | **Proceed.** |
 | plan: detail level | Pick by scope (see Decision Policy). |
-| plan Post-Generation menu | Route to the **Plan-Approval gate** (steer/careful) or the **plan self-review** (delegate) instead of auto-picking. |
+| plan Post-Generation menu | Route to the **Plan-Approval gate** (steer/careful) or the **plan self-review** (autonomous) instead of auto-picking. |
 | deepen-plan Post-Enhancement menu | **Start `/workflows:work`** (you only got here if the user chose to deepen). |
 | work Phase 1: *"continue on branch X or new branch?"* | Continue if on a feature branch; else new `feat/…` branch. |
 | work: *"commit to default branch?"* | **Never auto-yes.** Escalate as a blocker. |
@@ -327,7 +348,7 @@ When the pipeline completes, emit:
   Verify      ✓  test-browser: <pass/fail/N-A>
   Video       ✓  walkthrough attached to PR  (or: N/A — internal change)
   Land        ✓  PR #<n> merged (squash, branch deleted)
-                 (delegate: ⏸ paused at Final-Review gate — your call)
+                 (--final-review: ⏸ paused at Final-Review gate — your call)
                  (steer mode: ⏸ paused at merge gate — your call)
                  (blocked: 🚧 branch protection needs <reason> you must supply)
   Compound    ✓  docs/solutions/<file>
@@ -337,15 +358,15 @@ When the pipeline completes, emit:
   Decisions I auto-made: <count>  (decision log replayed above / at the gate)
   Deferred for later:    <list of deferred todos/beads, if any>
 
-Next: <if merged> done — PR #<n> is in <default-branch>.  <if steer-mode paused> the PR is green and reviewed — approve the merge to land it.  <if blocked> branch protection requires <reason>; supply it, then the merge lands.
+Next: <if merged> done — PR #<n> is in <default-branch>.  <if --final-review or steer-mode paused> the PR is green and reviewed — approve the merge to land it.  <if blocked> branch protection requires <reason>; supply it, then the merge lands.
 ```
 
 ## Guardrails
 
-- **Don't suppress meaningful questions.** In `--steer`/`--careful`, when in doubt about whether a juncture is menial or meaningful, treat it as meaningful and ask. In delegate mode, the same doubt resolves differently: if the call is recoverable and reviewable at the Final-Review gate, decide it yourself and log it; if it is product-shaping, irreversible, or would be expensive to unwind, it's a blocker — ask. Autonomy is never a license to guess on the calls that matter.
+- **Don't suppress meaningful questions.** In `--steer`/`--careful`, when in doubt about whether a juncture is menial or meaningful, treat it as meaningful and ask. When autonomous (default / `--final-review`), the same doubt resolves differently: if the call is recoverable and reviewable from the decision log, decide it yourself and log it; if it is product-shaping, irreversible, or would be expensive to unwind, it's a blocker — ask. Autonomy is never a license to guess on the calls that matter.
 - **Don't ask about chores.** Branch names, "should I proceed", detail levels, tracker bookkeeping — decide and move.
-- **Delegate mode is still reviewed.** Autonomous continuation rests on two reviews the orchestrator itself performs: the per-sub-agent diff review (nothing is accepted unverified) and the independent multi-agent `/workflows:review` of the PR. If either is skipped, the run has no basis for reaching the Final-Review gate — let alone an `--auto` merge.
-- **Irreversible / outward-facing actions** beyond the expected pipeline (force-push, closing others' PRs, deleting unrelated branches, anything touching the default branch directly) → always a blocker, never auto. The exceptions are the pipeline's own expected outward steps: opening the PR (`/workflows:work` Phase 4) and, **with the `--auto` modifier**, the `land-pr` merge — which squash-merges and deletes *its own just-merged feature branch* only after CI is green, the upstream independent review ran with P1s resolved, threads are resolved, and the PR is mergeable. (This is not a human-approval wait — see the Land rows above. Without `--auto`, the merge additionally waits on the Final-Review gate.)
+- **Autonomous runs are still reviewed.** Autonomous continuation rests on two reviews the orchestrator itself performs: the per-sub-agent diff review (nothing is accepted unverified) and the independent multi-agent `/workflows:review` of the PR. If either is skipped, the run has no basis to reach a merge — whether that merge is gated by `--final-review` or automatic in the default.
+- **Irreversible / outward-facing actions** beyond the expected pipeline (force-push, closing others' PRs, deleting unrelated branches, anything touching the default branch directly) → always a blocker, never auto. The exceptions are the pipeline's own expected outward steps: opening the PR (`/workflows:work` Phase 4) and, **in the default (fully autonomous) mode**, the `land-pr` merge — which squash-merges and deletes *its own just-merged feature branch* only after CI is green, the upstream independent review ran with P1s resolved, threads are resolved, and the PR is mergeable. (This is not a human-approval wait — see the Land rows above. Under `--final-review`, and in `--steer`/`--careful`, the merge additionally waits on a gate.)
 - **Honor every sub-command's own gates** — the tracker-issue gate in `/workflows:plan`, the P1-blocks-merge rule in `/workflows:review`, and the entry gates + writer contracts in every command (one writer per transition; the reconciler's closed repair set). You orchestrate them; you don't override them.
 - **Never bypass a verb.** Orchestrate reads board state through `--gate`/`--ready-work` and moves it through the sub-commands' own `--claim`/`--set-status` writers — never a raw `gh project item-edit`, raw item mutation, or hand-assembled board write of its own.
 - **Stay resumable.** Drive state from artifacts, not memory. If interrupted, a fresh `/workflows:orchestrate` must be able to pick up exactly where this left off.

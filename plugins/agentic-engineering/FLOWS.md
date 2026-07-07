@@ -38,7 +38,7 @@ flowchart LR
     C -->|"docs/solutions/*.md<br/><b>compounded</b>"| done([compounded])
 ```
 
-The **bold** labels are the lifecycle stages stamped on the board's Status field as each artifact lands (see the state machine below). `/workflows:orchestrate` runs this whole chain for you. `/lfg` and `/slfg` run it fully autonomously.
+The **bold** labels are the lifecycle stages stamped on the board's Status field as each artifact lands (see the state machine below). `/workflows:orchestrate` runs this whole chain for you — **fully autonomously by default** (merges once landable, surfaces only genuine blockers); add `--final-review` to pause once before the merge, or `--steer` for the classic checkpoint cadence.
 
 ---
 
@@ -112,7 +112,7 @@ The three report-only flags (`merged_to_non_default_branch`, `stale_join_key`, `
 
 ## /workflows:orchestrate — the orchestrator layer
 
-The orchestrator drives every stage automatically. In the default **delegate** mode it delegates implementation to sub-agents, reviews their diffs itself, self-answers the intermediate gates (logging every decision), and stops at exactly one hexagon — the **Final-Review gate** — plus genuine blockers. `--steer` restores the classic cadence where every hexagon below pauses for you.
+The orchestrator drives every stage automatically. **By default it is fully autonomous:** it delegates implementation to sub-agents, reviews their diffs itself, self-answers the intermediate gates (logging every decision), merges once the PR is landable, and stops only for genuine blockers — no hexagon pauses at all. `--final-review` adds exactly one hexagon, the **Final-Review gate**, before the merge; `--steer` restores the classic cadence where every hexagon below pauses for you.
 
 ```mermaid
 flowchart TD
@@ -140,10 +140,10 @@ flowchart TD
     class g1,gate,g2,g3 gate
 ```
 
-† pauses for you in `--steer`/`--careful`; in delegate mode the orchestrator self-answers and logs the decision.
-‡ delegate mode's single gate; the `--auto` modifier collapses it (auto-merge once landable, packet becomes the final summary).
+† pauses for you in `--steer`/`--careful`; when autonomous (default / `--final-review`) the orchestrator self-answers and logs the decision.
+‡ present **only under `--final-review`**; the default (fully autonomous) merges once landable with no gate (the packet becomes the final summary).
 
-**Autonomy dial:** `--careful` > `--steer` > *delegate (default)*; `--auto` is not a fourth mode but a modifier on delegate that toggles only the Final-Review gate. Blockers and material scope changes escalate in **every** mode. In delegate mode, the optional `ralph-wiggum` loop keeps the run moving — but surviving gates still pause it, exactly like `/goal`.
+**Autonomy dial:** `--careful` > `--steer` > `--final-review` > *default (fully autonomous)*. Each step removes gates; the default is the fully autonomous end of the dial — no Final-Review gate, no approval prompts, merges once landable. Blockers and material scope changes escalate in **every** mode, the default included — that pair is the universal floor.
 
 ---
 
@@ -297,23 +297,6 @@ flowchart TD
 
 ---
 
-## /lfg and /slfg — fully autonomous (no human in the loop)
+## Fully autonomous runs
 
-`/lfg` runs the pipeline end to end without stopping. `/slfg` is the same, but runs work in swarm mode and review + test-browser in parallel.
-
-```mermaid
-flowchart LR
-    ralph["ralph-loop*"] --> plan["plan"] --> deepen["deepen-plan"] --> work["work"] --> review["review"] --> resolve["resolve_todo_parallel"] --> tb["test-browser"] --> fv["feature-video"] --> done(["&lt;promise&gt;DONE&lt;/promise&gt;"])
-```
-
-```mermaid
-flowchart TD
-    plan["plan"] --> deepen["deepen-plan"] --> work["work (swarm mode)"]
-    work --> review["review (parallel)"]
-    work --> tb["test-browser (parallel)"]
-    review --> resolve["resolve_todo_parallel"]
-    tb --> resolve
-    resolve --> fv["feature-video"] --> done([DONE])
-```
-
-`/workflows:orchestrate` sits between these two extremes: it runs the same operations as `/lfg`, but pauses at the human checkpoints shown in the orchestrate diagram above.
+The **default** (`/workflows:orchestrate` with no flag) is already fully autonomous, no human in the loop: it drives the whole chain above, self-answers every intermediate judgment call, merges once the PR is landable (CI green, independent review ran with P1s resolved, threads resolved, mergeable), and surfaces only genuine blockers — material scope changes or something branch protection requires that the agent can't supply. Built for unattended runs (cron routines, overnight loops). Add **`--final-review`** when you want that same hands-off run but the final merge to be your call — it pauses once at the Final-Review gate before merging, and nowhere else.
