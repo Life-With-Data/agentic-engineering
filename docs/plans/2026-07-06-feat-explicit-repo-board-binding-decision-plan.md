@@ -1,7 +1,7 @@
 ---
 title: "feat(setup): make the repo→board binding an explicit, recorded decision"
 type: feat
-status: active
+status: completed
 date: 2026-07-06
 github_issue: 64
 ---
