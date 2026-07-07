@@ -10,7 +10,17 @@ Interactive setup for `agentic-engineering.local.md` — configures which agents
 
 ## Step 1: Check Existing Config
 
-Read `agentic-engineering.local.md` in the project root. If it exists, display current settings summary and use AskUserQuestion:
+Read `agentic-engineering.local.md` at the project root — the git toplevel (`git rev-parse
+--show-toplevel`) when inside a git repository, the current directory otherwise. Step 4 writes to
+the same location.
+
+If the file exists, first run the full Step 4.5 recipe block now — the gitignore-ensure is
+autonomous and idempotent, so running it early is safe. A copy committed before any `.gitignore`
+entry existed stays tracked forever — an ignore entry alone never untracks an already-tracked
+file — so when the recipe reports a tracked copy, present the warning and the untrack offer
+exactly as Step 4.5 specifies (its consent gate and non-interactive rule apply unchanged), before
+the menu, regardless of which option is chosen next. Then display current settings summary and
+use AskUserQuestion:
 
 ```
 question: "Settings file already exists. What would you like to do?"
@@ -353,6 +363,82 @@ Examples:
 - "Performance-critical: we serve 10k req/s on this endpoint"
 ```
 
+## Step 4.5: Protect the Local Config
+
+`agentic-engineering.local.md` is per-machine config and must never be committed: the lifecycle
+runtime (`scripts/lifecycle_board.py`) ignores a *tracked* copy as a security invariant — a tracked
+file rides PRs, and a PR must not be able to carry board identity or overrides — and prints a
+stderr warning on every invocation until the file is untracked. Guard against that at write time:
+
+```bash
+ROOT=$(git rev-parse --show-toplevel 2>/dev/null) || ROOT=""
+if [ -n "$ROOT" ]; then
+  # 1. Ensure a .gitignore entry (autonomous; always BEFORE any untrack offer,
+  #    so a later `git add -A` cannot immediately re-track the file).
+  if [ -L "$ROOT/.gitignore" ]; then
+    GITIGNORE="failed"   # symlinked .gitignore — refuse to modify (see note below)
+  elif git -C "$ROOT" check-ignore -q --no-index agentic-engineering.local.md; then
+    GITIGNORE="entry present"
+  else
+    [ -s "$ROOT/.gitignore" ] && [ -n "$(tail -c1 "$ROOT/.gitignore")" ] && printf '\n' >> "$ROOT/.gitignore"
+    printf 'agentic-engineering.local.md\n' >> "$ROOT/.gitignore"
+    # Re-verify so "added" is never claimed when the append did not take effect.
+    git -C "$ROOT" check-ignore -q --no-index agentic-engineering.local.md && GITIGNORE="added" || GITIGNORE="failed"
+  fi
+  # 2. Already tracked? (index check — the same command the runtime's _is_tracked uses)
+  git -C "$ROOT" ls-files --error-unmatch agentic-engineering.local.md >/dev/null 2>&1 && TRACKED=1 || TRACKED=0
+fi
+echo "root=${ROOT:-none} gitignore=${GITIGNORE:-n/a} tracked=${TRACKED:-n/a}"
+```
+
+Recipe notes:
+
+- A symlinked `.gitignore` is refused — git itself will not read one, and an autonomous append
+  must never write through a link to a file outside the repo. The tracked-check and the config
+  write still proceed; the status line reports `gitignore=failed`.
+- `git check-ignore -q --no-index` is the idempotence gate — it honors broader patterns
+  (`*.local.md`) and other ignore sources that an exact-line grep would misread; a manual
+  `!agentic-engineering.local.md` negation reads as not-ignored, so the append proceeds and
+  re-ignores the file — protect-by-default wins. No duplicate entries. `--no-index` is
+  load-bearing: without it, a still-tracked file is *never* reported as ignored (tracked files
+  aren't subject to exclude rules), so every re-run of setup against a legacy tracked copy would
+  append the entry again.
+- Append the exact literal line `agentic-engineering.local.md`, never a glob — the committed board
+  config `agentic-engineering.md` (Step 3.6) differs by one token and must never be ignored.
+- The `tail -c1` guard repairs a missing trailing newline so the append cannot corrupt the last
+  existing pattern. The append creates `.gitignore` when absent; a new or changed `.gitignore` is
+  itself a tracked change to commit.
+- Outside a git repository the recipe is inert (the status line reports `root=none`) — the config
+  write above stands.
+
+Shell variables do not survive the tool call, so the final `echo` is the recipe's only observable
+output — the consent gate below and Step 5's `Gitignore:`/`Tracked:` lines all derive from that
+status line. If the status line reports `tracked=1` — and Step 1 of this run has not already
+presented this offer — warn and offer to untrack (consent-gated — untracking mutates the index;
+the file itself stays on disk):
+
+```
+question: "agentic-engineering.local.md is tracked in git. The lifecycle runtime ignores a tracked copy (it would ride PRs) and warns on every run until it is untracked. Untrack it now?"
+header: "Untrack"
+options:
+  - label: "Yes, untrack (Recommended)"
+    description: "git rm --cached agentic-engineering.local.md — keeps the file on disk, stages the deletion."
+  - label: "No, leave tracked"
+    description: "Setup completes; the warning repeats on every run until untracked."
+```
+
+- On yes: from the root reported on the status line, run
+  `git rm --cached agentic-engineering.local.md` (with `--cached` it never touches the working
+  file). Then state plainly: the deletion is now **staged** — commit it, ideally together with the
+  `.gitignore` change, or the file still ships in PRs from HEAD. A tracked copy is shared across
+  every clone — it may even be someone else's committed config inherited with the clone — so
+  untracking affects only this clone's index until committed, and collaborators who pull that
+  commit have their unmodified working copies deleted and re-run this setup to regenerate their
+  own.
+- On no — or whenever no answer is obtainable (non-interactive runs must never auto-run
+  `git rm`) — print the exact command for later and move on; setup still completes:
+  `git rm --cached agentic-engineering.local.md`.
+
 ## Step 5: Confirm
 
 ```
@@ -364,6 +450,8 @@ Review depth:  {depth}
 Agents:        {count} configured
                {agent list, one per line}
 Always-on:     {operating-principles layer: installed into <files> | already present | skipped}
+Gitignore:     {entry present | added | failed (see warning) | n/a (not a git repo)}
+Tracked:       {no | untracked now (deletion staged — commit it) | still tracked (declined) | still tracked (no answer — command printed) | n/a (not a git repo)}
 
 Tip: Edit the "Review Context" section to add project-specific instructions.
      Change issue_tracker: in the frontmatter to switch trackers (github-project, github, none).

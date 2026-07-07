@@ -5,6 +5,12 @@ All notable changes to the agentic-engineering plugin will be documented in this
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.5.3] - 2026-07-07
+
+### Fixed
+
+- **`setup` now gitignores `agentic-engineering.local.md` on write and detects an already-tracked copy** (issue #62). The skill wrote per-machine config into the user's repo with no `.gitignore` handling, so a `git add .` committed it — exactly what the runtime forbids: `lifecycle_board.py` ignores a *tracked* `.local.md` as a security invariant and warns on every invocation, silently dropping the file's overrides. New Step 4.5 idempotently ensures the ignore entry — gated on `git check-ignore -q --no-index` (the skill's recipe notes explain why `--no-index` is load-bearing) — guards the append against a missing trailing newline, refuses to write through a symlinked `.gitignore`, and reports every outcome on a single echoed status line that the untrack consent gate and Step 5 confirmation consume, then detects a tracked copy (the same `git ls-files --error-unmatch` check the runtime's `_is_tracked` uses) and offers a consent-gated `git rm --cached` with the staged-deletion consequences spelled out. The full recipe also runs in Step 1 for existing configs, because legacy repos committed the file *before* any ignore entry existed and an entry alone never untracks it. All git operations anchor to `git rev-parse --show-toplevel`; non-git directories skip silently; the append is autonomous but untracking is never auto-run non-interactively. Live-verified in scratch repos (fresh, legacy-tracked with re-run, broader-pattern, no-trailing-newline, non-git). Skill instruction change only — no Python changes; component counts unchanged.
+
 ## [3.5.2] - 2026-07-07
 
 ### Fixed
