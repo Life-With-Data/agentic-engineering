@@ -1,6 +1,6 @@
 {
   "name": "agentic-engineering",
-  "version": "3.4.0",
+  "version": "3.5.0",
   "description": "AI-powered development tools. 30 agents, 26 commands, 25 skills, 1 MCP server for code review, research, design, and workflow automation.",
   "author": {
     "name": "Anthony Agnone",
@@ -64,6 +64,24 @@
           {
             "type": "command",
             "command": "python3 ${CLAUDE_PLUGIN_ROOT}/scripts/block-beads-jsonl-stage.py"
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 ${CLAUDE_PLUGIN_ROOT}/scripts/block-slack-webhook.py"
+          }
+        ]
+      },
+      {
+        "matcher": "Write|Edit|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 ${CLAUDE_PLUGIN_ROOT}/scripts/block-slack-webhook.py"
           }
         ]
       }
