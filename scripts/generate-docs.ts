@@ -12,8 +12,9 @@
  * Per reference page it owns two things:
  *   1. the component card sections (between `<!-- GENERATED:<id> START/END -->`)
  *   2. the sidebar "On This Page" list (the <ul> after that heading)
- * Plus the four stat numbers on the landing page. All other page chrome
- * (nav, header, intros, footer) is preserved verbatim.
+ * Plus the four stat numbers on the landing page, and the changelog page
+ * (rendered from plugins/agentic-engineering/CHANGELOG.md). All other page
+ * chrome (nav, header, intros, footer) is preserved verbatim.
  */
 import { existsSync, readFileSync, readdirSync, writeFileSync } from "fs"
 import path from "path"
@@ -68,6 +69,201 @@ export function collectMcp(): Component[] {
     description: String(cfg.url ?? cfg.type ?? ""),
     category: String(cfg.type ?? "http"),
   }))
+}
+
+// ---- changelog ---------------------------------------------------------
+// Parses plugins/agentic-engineering/CHANGELOG.md (Keep a Changelog format)
+// and renders it into docs/pages/changelog.html. Hand-rolled rather than a
+// markdown-library dependency: the shape is narrow (## version headers, ###
+// category headers, single/nested bullet lists, occasional prose paragraph
+// or table, three inline spans) and the output needs bespoke per-category
+// HTML/CSS wrapping a generic renderer wouldn't produce anyway.
+
+export type ChangelogEntry = { version: string; date: string; lines: string[] }
+
+export function parseChangelog(md: string): ChangelogEntry[] {
+  const entries: ChangelogEntry[] = []
+  let current: ChangelogEntry | null = null
+  const headerRe = /^## \[([^\]]+)\] - (\d{4}-\d{2}-\d{2})/
+  for (const line of md.split("\n")) {
+    const m = headerRe.exec(line)
+    if (m) {
+      current = { version: m[1], date: m[2], lines: [] }
+      entries.push(current)
+      continue
+    }
+    if (current) current.lines.push(line)
+  }
+  return entries
+}
+
+function inlineMd(s: string): string {
+  let out = esc(s)
+  out = out.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2">$1</a>')
+  out = out.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
+  out = out.replace(/`([^`]+)`/g, "<code>$1</code>")
+  return out
+}
+
+type ListItem = { text: string; children: ListItem[] }
+
+function parseList(lines: string[], start: number): { items: ListItem[]; next: number } {
+  const items: ListItem[] = []
+  let i = start
+  let baseIndent: number | null = null
+  while (i < lines.length) {
+    const m = /^(\s*)-\s+(.*)$/.exec(lines[i])
+    if (!m) break
+    const indent = m[1].length
+    if (baseIndent === null) baseIndent = indent
+    if (indent < baseIndent) break
+    if (indent > baseIndent) {
+      if (items.length === 0) break
+      const nested = parseList(lines, i)
+      items[items.length - 1].children.push(...nested.items)
+      i = nested.next
+      continue
+    }
+    items.push({ text: m[2], children: [] })
+    i++
+  }
+  return { items, next: i }
+}
+
+function itemsToHtml(items: ListItem[]): string {
+  return `<ul>\n${items.map((it) => `<li>${inlineMd(it.text)}${it.children.length ? "\n" + itemsToHtml(it.children) : ""}</li>`).join("\n")}\n</ul>`
+}
+
+function isTableRow(line: string): boolean {
+  return line.trim().startsWith("|")
+}
+
+function tableCells(line: string): string[] {
+  return line.trim().replace(/^\|/, "").replace(/\|$/, "").split("|").map((c) => c.trim())
+}
+
+function renderTable(lines: string[], start: number): { html: string; next: number } {
+  const head = tableCells(lines[start])
+  let i = start + 1
+  if (i < lines.length && /^\s*\|?[\s:|-]+\|?\s*$/.test(lines[i])) i++
+  const rows: string[][] = []
+  while (i < lines.length && isTableRow(lines[i])) {
+    rows.push(tableCells(lines[i]))
+    i++
+  }
+  const thead = `<thead><tr>${head.map((c) => `<th>${inlineMd(c)}</th>`).join("")}</tr></thead>`
+  const tbody = `<tbody>${rows.map((r) => `<tr>${r.map((c) => `<td>${inlineMd(c)}</td>`).join("")}</tr>`).join("")}</tbody>`
+  return { html: `<table>${thead}${tbody}</table>`, next: i }
+}
+
+/** Render a block of markdown (paragraphs, bullet lists, one table form) into HTML. */
+function renderMarkdown(lines: string[]): string {
+  const blocks: string[] = []
+  let i = 0
+  while (i < lines.length) {
+    const line = lines[i]
+    if (line.trim() === "" || line.trim() === "---") {
+      i++
+      continue
+    }
+    if (/^\s*-\s+/.test(line)) {
+      const { items, next } = parseList(lines, i)
+      blocks.push(itemsToHtml(items))
+      i = next
+      continue
+    }
+    if (isTableRow(line)) {
+      const { html, next } = renderTable(lines, i)
+      blocks.push(html)
+      i = next
+      continue
+    }
+    const para: string[] = []
+    while (i < lines.length && lines[i].trim() !== "" && !/^\s*-\s+/.test(lines[i]) && !isTableRow(lines[i])) {
+      para.push(lines[i].trim())
+      i++
+    }
+    blocks.push(`<p>${inlineMd(para.join(" "))}</p>`)
+  }
+  return blocks.join("\n")
+}
+
+const CHANGELOG_CATEGORY_META: Record<string, { icon: string; cssClass: string }> = {
+  Added: { icon: "fa-plus", cssClass: "added" },
+  Changed: { icon: "fa-arrows-rotate", cssClass: "changed" },
+  Fixed: { icon: "fa-bug", cssClass: "fixed" },
+  Removed: { icon: "fa-minus", cssClass: "removed" },
+  Enhanced: { icon: "fa-arrow-up", cssClass: "improved" },
+  Improved: { icon: "fa-arrow-up", cssClass: "improved" },
+  Summary: { icon: "fa-list", cssClass: "summary" },
+  Philosophy: { icon: "fa-lightbulb", cssClass: "philosophy" },
+  Contributors: { icon: "fa-users", cssClass: "contributors" },
+  Credits: { icon: "fa-award", cssClass: "credits" },
+  "Merged PRs": { icon: "fa-code-merge", cssClass: "merged-prs" },
+  "Preserved (no behavior change)": { icon: "fa-shield-halved", cssClass: "preserved" },
+}
+
+/** Split an entry's raw lines into a leading prose preamble plus `### Category` groups. */
+function splitByCategory(lines: string[]): { preamble: string[]; categories: { name: string; lines: string[] }[] } {
+  const categoryRe = /^### (.+)$/
+  const firstHeader = lines.findIndex((l) => categoryRe.test(l))
+  const preamble = firstHeader === -1 ? lines : lines.slice(0, firstHeader)
+  const categories: { name: string; lines: string[] }[] = []
+  if (firstHeader !== -1) {
+    let name = categoryRe.exec(lines[firstHeader])![1]
+    let body: string[] = []
+    for (let i = firstHeader + 1; i <= lines.length; i++) {
+      const line = lines[i]
+      const m = line !== undefined ? categoryRe.exec(line) : null
+      if (m || i === lines.length) {
+        categories.push({ name, lines: body })
+        if (m) {
+          name = m[1]
+          body = []
+        }
+        continue
+      }
+      body.push(line)
+    }
+  }
+  return { preamble, categories }
+}
+
+function renderChangelogEntry(entry: ChangelogEntry, isOldest: boolean): string {
+  const { preamble, categories } = splitByCategory(entry.lines)
+  const blocks: string[] = []
+  const preambleHtml = renderMarkdown(preamble)
+  if (preambleHtml) blocks.push(`<p class="version-description">${preambleHtml.replace(/^<p>|<\/p>$/g, "")}</p>`)
+  for (const g of categories) {
+    const meta = CHANGELOG_CATEGORY_META[g.name] ?? { icon: "fa-circle-dot", cssClass: slug(g.name) }
+    blocks.push(
+      `<div class="changelog-category ${meta.cssClass}">\n` +
+        `<h3><i class="fa-solid ${meta.icon}"></i> ${esc(g.name)}</h3>\n` +
+        `${renderMarkdown(g.lines)}\n` +
+        `</div>`,
+    )
+  }
+  const badge = isOldest
+    ? `<span class="version-badge">Initial Release</span>`
+    : /^\d+\.0\.0$/.test(entry.version)
+      ? `<span class="version-badge major">Major Release</span>`
+      : ""
+  return (
+    `<section id="v${entry.version}" class="version-section">\n` +
+    `  <div class="version-header">\n` +
+    `    <h2>v${esc(entry.version)}</h2>\n` +
+    `    <span class="version-date">${esc(entry.date)}</span>\n` +
+    (badge ? `    ${badge}\n` : "") +
+    `  </div>\n` +
+    `${blocks.join("\n")}\n` +
+    `</section>`
+  )
+}
+
+export function buildChangelog(entries: ChangelogEntry[]): { inner: string; nav: NavItem[] } {
+  const inner = entries.map((e, i) => renderChangelogEntry(e, i === entries.length - 1)).join("\n\n")
+  const nav = entries.map((e) => ({ href: `#v${e.version}`, label: `v${e.version}` }))
+  return { inner, nav }
 }
 
 // ---- html helpers ----------------------------------------------------------
@@ -251,11 +447,14 @@ export function buildUpdates(): FileUpdate[] {
   const read = (rel: string) => readFileSync(path.join(DOCS, rel), "utf8")
   const updates: FileUpdate[] = []
 
+  const changelog = parseChangelog(readFileSync(path.join(PLUGIN, "CHANGELOG.md"), "utf8"))
+
   const pages: Array<{ file: string; id: string; begin: string; end: string; built: { inner: string; nav: NavItem[] } }> = [
     { file: "pages/agents.html", id: "agents", begin: "<!-- Review Agents -->", end: "<!-- Navigation -->", built: buildAgents(agents) },
     { file: "pages/commands.html", id: "commands", begin: "<!-- Workflow Commands -->", end: "<!-- Navigation -->", built: buildCommands(commands) },
     { file: "pages/skills.html", id: "skills", begin: "<!-- Development Tools -->", end: "<!-- Navigation -->", built: buildSkills(skills) },
     { file: "pages/mcp-servers.html", id: "mcp", begin: "<!-- Playwright -->", end: "<!-- Manual Configuration -->", built: buildMcp(mcp) },
+    { file: "pages/changelog.html", id: "changelog", begin: "<!-- Versions -->", end: "</article>", built: buildChangelog(changelog) },
   ]
 
   for (const p of pages) {

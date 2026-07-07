@@ -5,6 +5,18 @@ All notable changes to the agentic-engineering plugin will be documented in this
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.5.5] - 2026-07-07
+
+### Added
+
+- **`docs/pages/changelog.html` is now generated from this file** (issue #78). The published docs-site changelog had silently diverged from `CHANGELOG.md`: hand-maintained from v1.0.0 → v2.6.0, it received two more hand-written entries at v2.32.1/v2.32.2 and was then untouched while ~30 releases (3.0.0 → 3.5.4) shipped — and nothing caught the drift, since `scripts/generate-docs.ts` deliberately left it as hand-written chrome. `scripts/generate-docs.ts` now parses this file (Keep a Changelog format: `## [x.y.z] - date` headers, `### Category` sections, single/nested bullet lists, inline bold/code/link spans, one summary table) with a small hand-rolled renderer — no new dependency; a markdown library was surveyed and rejected because the target page's per-category HTML/CSS wrapping (`.changelog-category.added/.changed/.fixed/…`, FA icons, version badges) needs bespoke mapping a generic renderer wouldn't produce anyway — and splices the result into `docs/pages/changelog.html` between the standard `<!-- GENERATED -->` markers, wired into the existing `bun run docs:build` / `docs:check` pipeline (`tests/docs-generated.test.ts` now covers the changelog page too, so drift is caught in CI like every other reference page).
+- **Backfilled v1.0.0 → v2.6.0 into `CHANGELOG.md`** — this file previously started at v2.15.0; those 13 earlier releases existed only in the hand-written HTML. Transcribed verbatim (all agents/commands/skills, the v2.0.0 summary table, nested Puppeteer→Playwright migration list) so the generated changelog page loses no history switching to `CHANGELOG.md` as its sole source of truth.
+- **Root `CLAUDE.md` "Keeping Docs Up-to-Date" section corrected** — no longer claims `changelog.html` "mirrors `CHANGELOG.md`" as a manual step; documents the generator relationship and warns against hand-editing the generated entries.
+
+### Fixed
+
+- **Orphan v2.32.1 / v2.32.2 HTML-only entries dropped, not migrated.** Both duplicated changes already recorded under `CHANGELOG.md`'s `[2.33.0]` entry (the `/release-docs` relocation and the `learnings-researcher` addition to `/workflows:review`) — hand-edited into the docs page as their own versions at some point but never given their own `CHANGELOG.md` entries. Generating from `CHANGELOG.md` naturally resolves the contradiction the issue flagged (HTML documented v2.32.1/v2.32.2 while `CHANGELOG.md` only had `[2.32.0]`) without double-recording the same change under two version numbers. No agent/command/skill/MCP changes — counts unchanged.
+
 ## [3.5.4] - 2026-07-07
 
 ### Added
@@ -775,3 +787,189 @@ These updates operationalize a key insight from building agent-native mobile app
 - **`/xcode-test` command** - Build and test iOS apps on simulator using XcodeBuildMCP. Automatically detects Xcode project, builds app, launches simulator, and runs test suite. Includes retries for flaky tests.
 
 - **`/playwright-test` command** - Run Playwright browser tests on pages affected by current PR or branch. Detects changed files, maps to affected routes, generates/runs targeted tests, and reports results with screenshots.
+
+## [2.6.0] - 2024-11-26
+
+### Removed
+
+- **`feedback-codifier` agent** — Removed from workflow agents. Agent count reduced from 24 to 23.
+
+## [2.5.0] - 2024-11-25
+
+### Added
+
+- **`/report-bug` command** — New slash command for reporting bugs in the agentic-engineering plugin. Provides a structured workflow that gathers bug information through guided questions, collects environment details automatically, and creates a GitHub issue in the aagnone3/agentic-engineering repository.
+
+## [2.4.1] - 2024-11-24
+
+### Changed
+
+- **`design-iterator` agent** — Added focused screenshot guidance: always capture only the target element/area instead of full page screenshots. Includes `browser_resize` recommendations, element-targeted screenshot workflow using `browser_snapshot` refs, and explicit instruction to never use fullPage mode.
+
+## [2.4.0] - 2024-11-24
+
+### Fixed
+
+- **MCP Configuration** — Moved MCP servers back to `plugin.json` following working examples from anthropics/life-sciences plugins.
+- **Context7 URL** — Updated to use HTTP type with correct endpoint URL.
+
+## [2.3.0] - 2024-11-24
+
+### Changed
+
+- **MCP Configuration** — Moved MCP servers from inline `plugin.json` to a separate `.mcp.json` file per Claude Code best practices.
+
+## [2.2.1] - 2024-11-24
+
+### Fixed
+
+- **Playwright MCP Server** — Added missing `"type": "stdio"` field required for MCP server configuration to load properly.
+
+## [2.2.0] - 2024-11-24
+
+### Added
+
+- **Context7 MCP Server** — Bundled Context7 for instant framework documentation lookup. Provides up-to-date docs for Rails, React, Next.js, and more than 100 other frameworks.
+
+## [2.1.0] - 2024-11-24
+
+### Added
+
+- **Playwright MCP Server** — Bundled `@playwright/mcp` for browser automation across all projects. Provides screenshot, navigation, click, fill, and evaluate tools.
+
+### Changed
+
+- **Replaced all Puppeteer references with Playwright** across agents and commands:
+  - `bug-reproduction-validator` agent
+  - `design-iterator` agent
+  - `design-implementation-reviewer` agent
+  - `figma-design-sync` agent
+  - `generate_command` command
+
+## [2.0.2] - 2024-11-24
+
+### Changed
+
+- **`design-iterator` agent** — Updated description to emphasize proactive usage when design work isn't coming together on first attempt.
+
+## [2.0.1] - 2024-11-24
+
+### Added
+
+- **`CLAUDE.md`** — Project instructions with versioning requirements.
+- **`docs/solutions/plugin-versioning-requirements.md`** — Workflow documentation.
+
+## [2.0.0] - 2024-11-24
+
+Major reorganization consolidating agents, commands, and skills from multiple sources into a single, well-organized plugin.
+
+### Added
+
+**New Agents (seven):**
+- `design-iterator` - Iteratively refine UI components through systematic design iterations
+- `design-implementation-reviewer` - Verify UI implementations match Figma design specifications
+- `figma-design-sync` - Synchronize web implementations with Figma designs
+- `bug-reproduction-validator` - Systematically reproduce and validate bug reports
+- `spec-flow-analyzer` - Analyze user flows and identify gaps in specifications
+- `lint` - Run linting and code quality checks on Ruby and ERB files
+- `ankane-readme-writer` - Create READMEs following Ankane-style template for Ruby gems
+
+**New Commands (nine):**
+- `/changelog` - Create engaging changelogs for recent merges
+- `/plan_review` - Multi-agent plan review in parallel
+- `/resolve_parallel` - Resolve TODO comments in parallel
+- `/resolve_pr_parallel` - Resolve PR comments in parallel
+- `/reproduce-bug` - Reproduce bugs using logs and console
+- `/prime` - Prime/setup command
+- `/create-agent-skill` - Create or edit Claude Code skills
+- `/heal-skill` - Fix skill documentation issues
+- `/codify` - Document solved problems for knowledge base
+
+**New Skills (10):**
+- `andrew-kane-gem-writer` - Write Ruby gems following Andrew Kane's patterns
+- `codify-docs` - Capture solved problems as categorized documentation
+- `create-agent-skills` - Expert guidance for creating Claude Code skills
+- `dhh-ruby-style` - Write Ruby/Rails code in DHH's 37signals style
+- `dspy-ruby` - Build type-safe LLM applications with DSPy.rb
+- `every-style-editor` - Review copy for Every's style guide compliance
+- `file-todos` - File-based todo tracking system
+- `frontend-design` - Create production-grade frontend interfaces
+- `git-worktree` - Manage Git worktrees for parallel development
+- `skill-creator` - Guide for creating effective Claude Code skills
+
+### Changed
+
+**Agents reorganized by category:**
+- `review/` (10 agents) - Code quality, security, performance reviewers
+- `research/` (four agents) - Documentation, patterns, history analysis
+- `design/` (three agents) - UI/design review and iteration
+- `workflow/` (six agents) - PR resolution, bug validation, linting
+- `docs/` (one agent) - README generation
+
+**Summary:**
+
+| Component | v1.1.0 | v2.0.0 | Change |
+| --- | --- | --- | --- |
+| Agents | 17 | 24 | +7 |
+| Commands | 6 | 15 | +9 |
+| Skills | 1 | 11 | +10 |
+
+## [1.1.0] - 2024-11-22
+
+### Added
+
+- **`gemini-imagegen` skill**
+  - Text-to-image generation with Google's Gemini API
+  - Image editing and manipulation
+  - Multi-turn refinement via chat interface
+  - Multiple reference image composition (up to 14 images)
+  - Model support: `gemini-2.5-flash-image` and `gemini-3-pro-image-preview`
+
+### Fixed
+
+- Corrected component counts in documentation (17 agents, not 15).
+
+## [1.0.0] - 2024-10-09
+
+Initial release of the agentic-engineering plugin.
+
+### Added
+
+**17 Specialized Agents**
+
+**Code Review (five):**
+- `kieran-rails-reviewer` - Rails code review with strict conventions
+- `kieran-python-reviewer` - Python code review with quality standards
+- `kieran-typescript-reviewer` - TypeScript code review
+- `dhh-rails-reviewer` - Rails review from DHH's perspective
+- `code-simplicity-reviewer` - Final pass for simplicity and minimalism
+
+**Analysis & Architecture (four):**
+- `architecture-strategist` - Architectural decisions and compliance
+- `pattern-recognition-specialist` - Design pattern analysis
+- `security-sentinel` - Security audits and vulnerability assessments
+- `performance-oracle` - Performance analysis and optimization
+
+**Research (four):**
+- `framework-docs-researcher` - Framework documentation research
+- `best-practices-researcher` - External best practices gathering
+- `git-history-analyzer` - Git history and code evolution analysis
+- `repo-research-analyst` - Repository structure and conventions
+
+**Workflow (three):**
+- `every-style-editor` - Every's style guide compliance
+- `pr-comment-resolver` - PR comment resolution
+- `feedback-codifier` - Feedback pattern codification
+
+**Six Slash Commands:**
+- `/plan` - Create implementation plans
+- `/review` - Comprehensive code reviews
+- `/work` - Execute work items systematically
+- `/triage` - Triage and prioritize issues
+- `/resolve_todo_parallel` - Resolve TODOs in parallel
+- `/generate_command` - Generate new slash commands
+
+**Infrastructure:**
+- MIT license
+- Plugin manifest (`plugin.json`)
+- Pre-configured permissions for Rails development
