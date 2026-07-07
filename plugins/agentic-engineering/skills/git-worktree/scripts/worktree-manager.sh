@@ -17,10 +17,13 @@ NC='\033[0m' # No Color
 GIT_ROOT=$(git rev-parse --show-toplevel)
 WORKTREE_DIR="$GIT_ROOT/.worktrees"
 
-# Ensure .worktrees is in .gitignore
+# Ensure .worktrees is ignored (any ignore source or pattern form counts).
+# --no-index: a tracked path is never reported ignored, which would re-append on every run.
 ensure_gitignore() {
-  if ! grep -q "^\.worktrees$" "$GIT_ROOT/.gitignore" 2>/dev/null; then
-    echo ".worktrees" >> "$GIT_ROOT/.gitignore"
+  if ! git -C "$GIT_ROOT" check-ignore -q --no-index .worktrees; then
+    # Repair a missing final newline so the append can't merge into the last pattern.
+    [ -s "$GIT_ROOT/.gitignore" ] && [ -n "$(tail -c1 "$GIT_ROOT/.gitignore")" ] && printf '\n' >> "$GIT_ROOT/.gitignore"
+    printf '.worktrees\n' >> "$GIT_ROOT/.gitignore"
   fi
 }
 
