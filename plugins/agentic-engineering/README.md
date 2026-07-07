@@ -96,7 +96,7 @@ The workflow commands resolve one of three modes (`github-project | github | non
 - **`github`** — plain GitHub Issues + file-todos, today's semantics, no stage machinery and no board writes. Used when `gh` is authenticated but no board config is committed.
 - **`none`** — no `gh` authentication; TodoWrite and the `file-todos` skill are used unchanged.
 
-Beads is **not** a tracker mode. It remains an opt-in, non-authoritative implementer scratchpad — `bd remember` still works for disposable working state, but no gate ever reads a bead and nothing syncs. To configure the board, run the `setup` skill (which writes the committed config) or run the bootstrap script; to pin plain mode, add `issue_tracker: github` (or `none`) to your project's `agentic-engineering.local.md`.
+Beads is **not** a tracker mode. It remains an opt-in, non-authoritative implementer scratchpad — `bd remember` still works for disposable working state, but no gate ever reads a bead and nothing syncs. To configure the board, run the `setup` skill (which writes the committed config) or run the bootstrap script; to pin plain mode, add `issue_tracker: github` (or `none`) to your project's `agentic-engineering.local.md` (setup gitignores this file — keep it untracked; the runtime ignores a tracked copy).
 
 #### Lifecycle
 
