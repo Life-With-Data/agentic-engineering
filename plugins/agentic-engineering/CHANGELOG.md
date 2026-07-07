@@ -5,6 +5,12 @@ All notable changes to the agentic-engineering plugin will be documented in this
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.4.0] - 2026-07-07
+
+### Added
+
+- **Bootstrap scaffolds the `actions/add-to-project` workflow when forward binding is `auto-add`** (issue #63) — the mechanism that makes #64's `auto-add` choice functional and flips `/lifecycle-doctor`'s `board_forward_binding` check from WARN to PASS. The built-in Projects v2 auto-add workflow has no create/enable API (`ProjectV2Workflow` is delete-only); the official `actions/add-to-project` Action reproduces it. When (and only when) the operator chooses `auto-add`, `bootstrap_lifecycle_board.py` writes `.github/workflows/add-to-project.yml` — **idempotent** (never clobbers an existing file) and **non-fatal** (a write failure degrades to a summary warning), mirroring the `link_repo` step. The scaffolded workflow is **hardened** per a security + framework-docs deepening pass: **SHA-pinned** `actions/add-to-project` (resolved live at scaffold time via `gh api repos/actions/add-to-project/commits/v2`, falling back to a known-good constant — a moving `@v2` tag would run with the `ADD_TO_PROJECT_PAT` secret in scope, the tj-actions/changed-files compromise class, amplified across every scaffolded repo; first-party `actions/*` is no exemption), `permissions: {}` at top **and** job level (the PAT does the Projects write, so `GITHUB_TOKEN` needs nothing — stricter than `contents: read`), `on: issues: [opened]` with no untrusted checkout and no `run:` steps, plus an inline comment forbidding future `run:` steps that interpolate `github.event.issue.*` (script-injection guardrail). Bootstrap also scaffolds `.github/dependabot.yml` (github-actions ecosystem) so the pin stays current — created only when absent; an existing dependabot config is never parsed/merged (a warning points the operator to add the ecosystem). The correct `users/` vs `orgs/` project-url segment is resolved via `gh api users/<owner> --jq .type`. The one remaining manual step — the `ADD_TO_PROJECT_PAT` secret — is documented least-privilege-first (fine-grained PAT with org Projects:R/W + repo Issues/PRs:read → GitHub App token → classic PAT fallback). No new agents/commands/skills — counts unchanged.
+
 ## [3.3.0] - 2026-07-06
 
 ### Added

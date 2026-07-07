@@ -592,6 +592,11 @@ class ForwardBindingBootstrapTest(unittest.TestCase):
             (["project", "field-list", "5", "--owner", "acme"], _ok(self._canonical_fields())),
             (["api", "graphql"], _ok(self._workflows())),
             (["api", "graphql"], _ok(self._linked(["acme/widget"]))),
+            # Consumed only when the resolved binding is auto-add (scaffold step);
+            # harmless leftovers otherwise.
+            (["api", "users/acme", "--jq", ".type"], _ok("User")),
+            (["api", "repos/actions/add-to-project/commits/v2", "--jq", ".sha"],
+             _ok("5afcf98fcd03f1c2f92c3c83f58ae24323cc57fd")),
         ])
         summary = bs.bootstrap(ctx, runner, probe=False, forward_binding=forward_binding, environ={})
         return ctx, summary
@@ -616,6 +621,18 @@ class ForwardBindingBootstrapTest(unittest.TestCase):
             ctx, _summary = self._run(tmp, self._CFG_BARE, forward_binding=None)
             self.assertEqual(lb.read_binding_config(ctx).forward_binding, "workflow-only")
 
+    def test_scaffolds_workflow_only_on_auto_add(self) -> None:
+        # auto-add → workflow file written + summary carries the scaffold record.
+        with tempfile.TemporaryDirectory() as tmp:
+            ctx, summary = self._run(tmp, self._CFG_BARE, forward_binding="auto-add")
+            self.assertTrue(summary["auto_add_scaffold"]["scaffolded"])
+            self.assertEqual(lb.find_auto_add_workflow(ctx), bs.WORKFLOW_FILENAME)
+        # workflow-only → nothing scaffolded.
+        with tempfile.TemporaryDirectory() as tmp:
+            ctx, summary = self._run(tmp, self._CFG_BARE, forward_binding="workflow-only")
+            self.assertIsNone(summary["auto_add_scaffold"])
+            self.assertIsNone(lb.find_auto_add_workflow(ctx))
+
     def test_rerun_preserves_a_malformed_recorded_binding_not_clobber(self) -> None:
         # A typo'd (invalid enum) recorded binding must be PRESERVED on re-run,
         # not silently reset to the default — the raw value rides through so the
@@ -626,6 +643,108 @@ class ForwardBindingBootstrapTest(unittest.TestCase):
             ctx, summary = self._run(tmp, cfg, forward_binding=None)
             self.assertEqual(summary["forward_binding"], "auto_add")  # preserved verbatim
             self.assertEqual(lb.read_binding_config(ctx).forward_raw, "auto_add")
+
+
+class ScaffoldAutoAddTest(unittest.TestCase):
+    """Issue #63: scaffold .github/workflows/add-to-project.yml (+ dependabot)
+    when forward_binding == auto-add. Idempotent + non-fatal, mirroring link_repo."""
+
+    def _ctx(self, owner="acme"):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        return lb.RepoContext(root=tmp.name, main_root=tmp.name, origin_owner=owner,
+                              origin_repo="widget", default_branch="main"), Path(tmp.name)
+
+    _SHA = "5afcf98fcd03f1c2f92c3c83f58ae24323cc57fd"
+
+    def _scaffold_runner(self, owner_type="User"):
+        return FakeRunner([
+            (["api", "users/acme", "--jq", ".type"], _ok(owner_type)),
+            (["api", "repos/actions/add-to-project/commits/v2", "--jq", ".sha"], _ok(self._SHA)),
+        ])
+
+    def test_render_is_hardened(self) -> None:
+        y = bs.render_add_to_project_workflow(
+            "https://github.com/users/acme/projects/5", self._SHA, "v2.0.0")
+        self.assertEqual(y.count("permissions: {}"), 2)          # top + job level
+        self.assertIn(f"actions/add-to-project@{self._SHA}", y)  # SHA-pinned
+        self.assertIn("${{ secrets.ADD_TO_PROJECT_PAT }}", y)
+        self.assertIn("project-url: https://github.com/users/acme/projects/5", y)
+        # No run: step (the only "run:" is inside the security comment).
+        self.assertNotIn("\n      - run:", y)
+        self.assertNotIn("\n        run:", y)
+
+    def test_scaffolds_user_url_when_absent(self) -> None:
+        ctx, root = self._ctx()
+        project = bs.Project(number=5, id="P", created=True)
+        result = bs.scaffold_add_to_project_workflow(project, ctx, self._scaffold_runner("User"))
+        self.assertTrue(result["scaffolded"])
+        text = (root / bs.WORKFLOW_FILENAME).read_text(encoding="utf-8")
+        self.assertIn("https://github.com/users/acme/projects/5", text)
+        # Cross-consistency: the doctor's detector must find what bootstrap wrote.
+        self.assertEqual(lb.find_auto_add_workflow(ctx), bs.WORKFLOW_FILENAME)
+
+    def test_scaffolds_org_url(self) -> None:
+        ctx, root = self._ctx()
+        project = bs.Project(number=5, id="P", created=True)
+        bs.scaffold_add_to_project_workflow(project, ctx, self._scaffold_runner("Organization"))
+        text = (root / bs.WORKFLOW_FILENAME).read_text(encoding="utf-8")
+        self.assertIn("https://github.com/orgs/acme/projects/5", text)
+
+    def test_idempotent_skips_existing_file(self) -> None:
+        ctx, root = self._ctx()
+        wf = root / bs.WORKFLOW_FILENAME
+        wf.parent.mkdir(parents=True)
+        wf.write_text("# user's own workflow\n", encoding="utf-8")
+        project = bs.Project(number=5, id="P", created=True)
+        # No gh calls expected — an empty runner raises if any are made.
+        result = bs.scaffold_add_to_project_workflow(project, ctx, FakeRunner([]))
+        self.assertTrue(result["already_exists"])
+        self.assertFalse(result["scaffolded"])
+        self.assertEqual(wf.read_text(encoding="utf-8"), "# user's own workflow\n")  # untouched
+
+    def test_action_ref_falls_back_when_resolve_fails(self) -> None:
+        runner = FakeRunner([
+            (["api", "repos/actions/add-to-project/commits/v2", "--jq", ".sha"], _fail("offline")),
+        ])
+        sha, ref = bs._resolve_action_ref(runner)
+        self.assertEqual(sha, bs.ADD_TO_PROJECT_PINNED_SHA)
+        self.assertEqual(ref, bs.ADD_TO_PROJECT_PINNED_REF)
+
+    def test_action_ref_rejects_non_sha_output(self) -> None:
+        # A garbled response must not become the pin — fall back to the constant.
+        runner = FakeRunner([
+            (["api", "repos/actions/add-to-project/commits/v2", "--jq", ".sha"], _ok("not-a-sha")),
+        ])
+        sha, _ref = bs._resolve_action_ref(runner)
+        self.assertEqual(sha, bs.ADD_TO_PROJECT_PINNED_SHA)
+
+    def test_dependabot_created_when_absent(self) -> None:
+        ctx, root = self._ctx()
+        result = bs._ensure_dependabot(ctx)
+        self.assertTrue(result["created"])
+        self.assertIn("github-actions", (root / bs.DEPENDABOT_FILENAME).read_text(encoding="utf-8"))
+
+    def test_dependabot_warns_when_present_without_actions(self) -> None:
+        ctx, root = self._ctx()
+        dep = root / bs.DEPENDABOT_FILENAME
+        dep.parent.mkdir(parents=True)
+        dep.write_text("version: 2\nupdates:\n  - package-ecosystem: npm\n", encoding="utf-8")
+        result = bs._ensure_dependabot(ctx)
+        self.assertFalse(result["created"])
+        self.assertIsNotNone(result["warning"])
+        self.assertNotIn("github-actions", dep.read_text(encoding="utf-8"))  # untouched
+
+    def test_dependabot_noop_when_already_covers_actions(self) -> None:
+        ctx, root = self._ctx()
+        dep = root / bs.DEPENDABOT_FILENAME
+        dep.parent.mkdir(parents=True)
+        dep.write_text("version: 2\nupdates:\n  - package-ecosystem: github-actions\n",
+                       encoding="utf-8")
+        result = bs._ensure_dependabot(ctx)
+        self.assertFalse(result["created"])
+        self.assertTrue(result["already_covers_actions"])
+        self.assertIsNone(result["warning"])
 
 
 class ProbeTest(unittest.TestCase):

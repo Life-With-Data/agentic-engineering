@@ -159,7 +159,7 @@ options:
   - label: "Workflow-only (recommended)"
     description: "The /workflows:* commands add items themselves as they plan/work. No auto-add, no standing token."
   - label: "Auto-add new issues"
-    description: "Scaffold an actions/add-to-project workflow (see #63) so every new issue auto-lands. Needs a PAT/App-token secret. Forward-only."
+    description: "Bootstrap scaffolds an actions/add-to-project workflow so every new issue auto-lands. Needs a PAT secret. Forward-only."
   - label: "None / manual"
     description: "Add issues to the board by hand."
 ```
@@ -183,9 +183,20 @@ the board on the repo's Projects tab, but note it does **not** auto-add issues),
 in one write. This file must be committed (not `.local`) — fresh clones and worktree-isolated
 subagents need to resolve the same board identity and binding.
 
-> If you chose **auto-add**, scaffold `.github/workflows/add-to-project.yml` (issue #63) and add its
-> PAT/App-token secret — the default `GITHUB_TOKEN` cannot write Projects v2. `/lifecycle-doctor`'s
-> `board_forward_binding` check WARNs until the workflow file is present.
+> **If you chose `auto-add`,** bootstrap **scaffolds** `.github/workflows/add-to-project.yml`
+> (SHA-pinned `actions/add-to-project`, `permissions: {}`) and a `.github/dependabot.yml` to keep the
+> pin fresh — commit both. The **one remaining manual step** is providing the workflow's token, which
+> `GITHUB_TOKEN` cannot be (it can't write user/org Projects v2). Add a repo Actions secret
+> **`ADD_TO_PROJECT_PAT`**, least-privilege first:
+> - **Fine-grained PAT (recommended):** org **Projects: Read & write** + repo **Issues: Read-only** +
+>   **Pull requests: Read-only** (for a user board, the account-level Projects R/W). Set an expiry and
+>   rotate (~90d) — an expired token surfaces as a failing `add-to-project` run, not a doctor WARN.
+> - **GitHub App installation token:** the hardened option for orgs (short-lived, revocable).
+> - **Classic PAT (fallback):** `project` scope (+ `repo` for private) — account-wide; avoid unless
+>   fine-grained PATs are unavailable.
+>
+> `/lifecycle-doctor`'s `board_forward_binding` check goes WARN→PASS once the workflow file exists
+> (the secret itself is write-only and unverifiable from the CLI).
 
 **(B) Backfill — put EXISTING issues on the board now.** This is **independent** of (A): auto-add
 never backfills, so even with auto-add a board is never guaranteed to reflect the full repo, and a

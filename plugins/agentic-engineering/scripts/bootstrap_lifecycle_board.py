@@ -124,6 +124,18 @@ PRIORITY_OPTIONS = ("p1", "p2", "p3")
 REOPENED_WORKFLOW = "Item reopened"
 CLOSED_WORKFLOW = "Item closed"
 
+# Auto-add scaffold (issue #63). When the forward binding is `auto-add`, write a
+# GitHub Actions workflow using the official actions/add-to-project so new issues
+# reach the board (the built-in auto-add has no create API). Pinned to a full
+# commit SHA (supply-chain: a moving @v2 tag runs with ADD_TO_PROJECT_PAT in
+# scope) — resolved live at scaffold time, falling back to this known-good SHA.
+ADD_TO_PROJECT_REPO = "actions/add-to-project"
+ADD_TO_PROJECT_PINNED_SHA = "5afcf98fcd03f1c2f92c3c83f58ae24323cc57fd"  # v2.0.0
+ADD_TO_PROJECT_PINNED_REF = "v2.0.0"
+ADD_TO_PROJECT_SECRET = "ADD_TO_PROJECT_PAT"
+WORKFLOW_FILENAME = ".github/workflows/add-to-project.yml"
+DEPENDABOT_FILENAME = ".github/dependabot.yml"
+
 PROBE_TITLE = "[lifecycle-bootstrap probe]"
 PROBE_POLL_SECONDS = 60
 PROBE_POLL_INTERVAL = 3
@@ -516,6 +528,134 @@ def link_repo(project: Project, ctx: "lb.RepoContext", runner: GhRunner) -> dict
 
 
 # --------------------------------------------------------------------------
+# 7.6 Auto-add scaffold (issue #63). Only runs when forward_binding == "auto-add".
+# The built-in auto-add workflow has no create API; actions/add-to-project
+# reproduces it. Mirrors link_repo: idempotent (never clobber an existing file)
+# and non-fatal (failures degrade to a summary warning). The scaffolded file is
+# what lifecycle_board.find_auto_add_workflow greps for, flipping the doctor's
+# board_forward_binding check WARN -> PASS.
+# --------------------------------------------------------------------------
+
+def _resolve_owner_url_segment(ctx: "lb.RepoContext", runner: GhRunner) -> str:
+    """`users` for a user-owned board, `orgs` for an org-owned one — the
+    add-to-project project-url segment must match the owner type exactly (the
+    action does not normalize). The /users/{login} REST endpoint resolves BOTH
+    account types and returns a `type` discriminator, so one call covers both;
+    default to `users` if the type can't be read."""
+    result = runner(["api", f"users/{ctx.origin_owner}", "--jq", ".type"])
+    if result.returncode == 0 and result.stdout.strip() == "Organization":
+        return "orgs"
+    return "users"
+
+
+def _resolve_action_ref(runner: GhRunner) -> "tuple[str, str]":
+    """(sha, human_ref) for the pinned action. Resolve the v2 tag to its commit
+    SHA live so scaffolds stay current across plugin releases; fall back to the
+    known-good constant when the call fails (offline/CI). Always a full SHA — a
+    moving tag would run with ADD_TO_PROJECT_PAT in scope."""
+    result = runner(["api", f"repos/{ADD_TO_PROJECT_REPO}/commits/v2", "--jq", ".sha"])
+    sha = result.stdout.strip() if result.returncode == 0 else ""
+    if re.fullmatch(r"[0-9a-f]{40}", sha):
+        return sha, "v2"
+    return ADD_TO_PROJECT_PINNED_SHA, ADD_TO_PROJECT_PINNED_REF
+
+
+def render_add_to_project_workflow(project_url: str, action_sha: str, action_ref: str) -> str:
+    """The hardened workflow YAML: permissions:{} at both levels (the PAT does
+    the write, GITHUB_TOKEN needs nothing), SHA-pinned action, and an inline
+    guardrail forbidding future run: steps that interpolate issue content."""
+    return f"""\
+# Auto-adds newly opened issues to the lifecycle Projects v2 board.
+# Scaffolded by agentic-engineering bootstrap (forward binding = auto-add).
+# One manual step: add a repo secret {ADD_TO_PROJECT_SECRET} (see the setup skill).
+# SECURITY: do NOT add `run:` steps that interpolate ${{{{ github.event.issue.* }}}}
+# — that reintroduces script injection. This job runs no untrusted code.
+name: Add issues to project
+on:
+  issues:
+    types: [opened]
+
+permissions: {{}}   # the PAT does the Projects write; GITHUB_TOKEN needs nothing
+
+jobs:
+  add-to-project:
+    runs-on: ubuntu-latest
+    permissions: {{}}
+    steps:
+      - uses: {ADD_TO_PROJECT_REPO}@{action_sha}  # {action_ref}
+        with:
+          project-url: {project_url}
+          github-token: ${{{{ secrets.{ADD_TO_PROJECT_SECRET} }}}}
+          # Optional filter: labeled: bug,needs-triage / label-operator: OR|AND|NOT
+"""
+
+
+DEPENDABOT_GITHUB_ACTIONS = """\
+version: 2
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+"""
+
+
+def _ensure_dependabot(ctx: "lb.RepoContext") -> dict:
+    """Create .github/dependabot.yml (github-actions ecosystem) if absent so the
+    pinned action SHA gets auto-bumped. If a dependabot config already exists,
+    never parse/merge arbitrary user YAML — return a warning to add the ecosystem
+    by hand. Non-fatal."""
+    path = pathlib.Path(ctx.root) / DEPENDABOT_FILENAME
+    if path.exists():
+        text = ""
+        try:
+            text = path.read_text(encoding="utf-8")
+        except OSError:
+            pass
+        if "github-actions" in text:
+            return {"created": False, "already_covers_actions": True, "warning": None}
+        return {"created": False, "already_covers_actions": False,
+                "warning": (f"{DEPENDABOT_FILENAME} exists but has no github-actions ecosystem — "
+                            "add one so the pinned add-to-project SHA stays current: "
+                            "a `- package-ecosystem: \"github-actions\"` update entry")}
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(DEPENDABOT_GITHUB_ACTIONS, encoding="utf-8")
+    except OSError as exc:
+        return {"created": False, "already_covers_actions": False,
+                "warning": f"could not write {DEPENDABOT_FILENAME}: {exc}"}
+    return {"created": True, "already_covers_actions": True, "warning": None}
+
+
+def scaffold_add_to_project_workflow(project: Project, ctx: "lb.RepoContext",
+                                     runner: GhRunner) -> dict:
+    """Write .github/workflows/add-to-project.yml (+ ensure dependabot) unless the
+    workflow already exists. Idempotent + non-fatal, mirroring link_repo."""
+    path = pathlib.Path(ctx.root) / WORKFLOW_FILENAME
+    if path.exists():
+        return {"scaffolded": False, "already_exists": True, "path": str(path),
+                "dependabot": {"created": False, "already_covers_actions": None, "warning": None},
+                "warning": None}
+
+    segment = _resolve_owner_url_segment(ctx, runner)
+    project_url = f"https://github.com/{segment}/{ctx.origin_owner}/projects/{project.number}"
+    action_sha, action_ref = _resolve_action_ref(runner)
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(render_add_to_project_workflow(project_url, action_sha, action_ref),
+                        encoding="utf-8")
+    except OSError as exc:
+        return {"scaffolded": False, "already_exists": False, "path": str(path),
+                "dependabot": {"created": False, "already_covers_actions": None, "warning": None},
+                "warning": (f"could not scaffold {WORKFLOW_FILENAME}: {exc} — add it by hand "
+                            f"(actions/add-to-project) and set the {ADD_TO_PROJECT_SECRET} secret")}
+    dependabot = _ensure_dependabot(ctx)
+    return {"scaffolded": True, "already_exists": False, "path": str(path),
+            "project_url": project_url, "action_ref": f"{action_sha} ({action_ref})",
+            "secret_name": ADD_TO_PROJECT_SECRET, "dependabot": dependabot, "warning": None}
+
+
+# --------------------------------------------------------------------------
 # 8. Committed config write (byte-for-byte preservation of unrelated content)
 # --------------------------------------------------------------------------
 
@@ -626,6 +766,13 @@ def bootstrap(ctx: "lb.RepoContext", runner: GhRunner, *, probe: bool = True,
     config_path = write_committed_config(ctx.main_root, ctx.origin_owner, project.number,
                                          forward_binding)
 
+    # Step 8b: scaffold the auto-add workflow ONLY when that forward binding was
+    # chosen — this is the mechanism (issue #63) that makes `auto-add` functional
+    # and flips the doctor's board_forward_binding check WARN -> PASS.
+    auto_add = None
+    if forward_binding == "auto-add":
+        auto_add = scaffold_add_to_project_workflow(project, ctx, runner)
+
     option_mapping = _summarize_mapping(status, options, kind)
 
     summary = {
@@ -641,10 +788,16 @@ def bootstrap(ctx: "lb.RepoContext", runner: GhRunner, *, probe: bool = True,
         "repo_link": repo_link,
         "config_path": config_path,
         "forward_binding": forward_binding,
+        "auto_add_scaffold": auto_add,
     }
     warnings = list(workflows.get("warnings") or [])
     if repo_link.get("warning"):
         warnings.append(repo_link["warning"])
+    if auto_add:
+        if auto_add.get("warning"):
+            warnings.append(auto_add["warning"])
+        if (auto_add.get("dependabot") or {}).get("warning"):
+            warnings.append(auto_add["dependabot"]["warning"])
     if warnings:
         summary["warnings"] = warnings
     if probe:
