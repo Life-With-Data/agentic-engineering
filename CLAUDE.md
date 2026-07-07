@@ -231,8 +231,9 @@ This deterministic generator (`scripts/generate-docs.ts`):
 2. Regenerates the card sections of each reference page (between `<!-- GENERATED -->` markers)
 3. Regenerates each page's "On This Page" sidebar
 4. Updates the landing-page stat numbers
+5. Parses `plugins/agentic-engineering/CHANGELOG.md` (Keep a Changelog format) and renders it into `docs/pages/changelog.html` between the same GENERATED markers
 
-`bun run docs:check` (run in CI via `bun test`) fails if the committed pages are out of sync, so drift is impossible. Hand-written chrome (intros, manual-config, changelog.html) is preserved — edit it directly.
+`bun run docs:check` (run in CI via `bun test`) fails if the committed pages are out of sync, so drift is impossible — including changelog drift. Hand-written chrome (intros, manual-config) is preserved — edit it directly. **Never hand-edit the version entries in `docs/pages/changelog.html`** — they are generated from `CHANGELOG.md` and any manual edit is overwritten (and caught by `docs:check`) on the next build. To add a changelog entry, edit `plugins/agentic-engineering/CHANGELOG.md` and run `bun run docs:build`.
 
 ### Manual Updates
 
@@ -244,8 +245,6 @@ If you need to update docs manually:
    ```
 
 2. **Reference pages** - Each page in `docs/pages/` documents all components in that category
-
-3. **Changelog** - `docs/pages/changelog.html` mirrors `CHANGELOG.md` in HTML format
 
 ### Viewing Docs Locally
 
