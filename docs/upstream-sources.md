@@ -25,6 +25,14 @@ end of the line — no inline comments):
   - adopted:     list (possibly empty) of adopted components
   - deferred:    list (possibly empty) of reviewed-and-not-adopted components
 
+Optional depend-track field (see docs/dependency-policy.md; linted by
+tests/dependency-policy.test.ts). One line per upstream plugin we formally
+depend on via a local plugin.json `dependencies` array:
+  - dependency: <plugin-name> (<upstream-dir>) @ <marketplace-name>, unversioned|<semver-range> — PR <url-or-#NN> — @who YYYY-MM-DD
+A source with a `dependency:` line for plugin P must not have `adopted:`
+entries whose upstream path is under P's <upstream-dir> (mutual exclusion),
+and an unversioned dependency forces `scan: auto`.
+
 Entry grammar — ` — ` (space-emdash-space) is the field delimiter; free-text
 fields must not contain it. Candidate IDs are `<type>/<name>` in the SOURCE repo
 (rename-tolerant; the upstream path is supplementary):

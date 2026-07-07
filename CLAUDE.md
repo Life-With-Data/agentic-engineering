@@ -128,6 +128,23 @@ grep -o "Includes [0-9]* specialized agents" plugins/agentic-engineering/.claude
 ls plugins/agentic-engineering/agents/*.md | wc -l
 ```
 
+### External Dependencies (two tracks)
+
+Work from other repos enters this marketplace via exactly one of two tracks per
+upstream plugin — see `docs/dependency-policy.md` (enforced by
+`tests/dependency-policy.test.ts`):
+
+- **Adopt** — import individual components through the `/upstream-scan` triage
+  pipeline (`docs/upstream-sources.md`), adapted and provenance-pinned.
+- **Depend** — declare a whole plugin in a local plugin's `plugin.json`
+  `dependencies` array. Cross-marketplace deps require the marketplace in
+  `allowCrossMarketplaceDependenciesOn` AND a `dependency:` line in the
+  registry. Unversioned deps force `scan: auto` (drift monitoring replaces the
+  version pin).
+
+The core `agentic-engineering` plugin stays dependency-free; formal
+dependencies live only in thin domain plugins.
+
 ### Marketplace.json Structure
 
 The marketplace.json follows the official Claude Code spec:
