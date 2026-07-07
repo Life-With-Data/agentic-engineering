@@ -144,10 +144,31 @@ options:
     description: "Stay on plain github/none tracker mode for now — can be run later."
 ```
 
-If yes, run the bootstrap script:
+If yes, first decide **how new issues should reach the board** — a real choice, not a formality.
+Projects v2 boards are *materialized collections, not live queries*: creating an issue does **not**
+put it on any board, and GitHub's auto-add workflow is **forward-only** (it never backfills). So the
+setup records **two orthogonal decisions** (backfill is relevant under *any* forward choice — never
+gate it behind auto-add).
+
+**(A) Forward binding — how NEW issues reach the board.** Ask with AskUserQuestion:
+
+```
+question: "How should new issues reach the lifecycle board?"
+header: "Forward binding"
+options:
+  - label: "Workflow-only (recommended)"
+    description: "The /workflows:* commands add items themselves as they plan/work. No auto-add, no standing token."
+  - label: "Auto-add new issues"
+    description: "Scaffold an actions/add-to-project workflow (see #63) so every new issue auto-lands. Needs a PAT/App-token secret. Forward-only."
+  - label: "None / manual"
+    description: "Add issues to the board by hand."
+```
+
+Run the bootstrap with the chosen binding (map the answer to `workflow-only` | `auto-add` | `none`;
+omit the flag to accept the default or preserve a prior choice on re-run):
 
 ```bash
-python3 "${CLAUDE_PLUGIN_ROOT}/scripts/bootstrap_lifecycle_board.py"
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/bootstrap_lifecycle_board.py" --forward-binding <workflow-only|auto-add|none>
 ```
 
 The script creates the project, rewrites the built-in Status field's options **ID-preservingly**
@@ -156,21 +177,49 @@ The script creates the project, rewrites the built-in Status field's options **I
 re-checks — where present it would otherwise stamp a reopened issue back to `stub`, erasing its
 lifecycle position), **links the board to the origin repo** (idempotent and non-fatal — Projects v2
 boards are owned by a user/org, so linking is the only repo-level association there is; it surfaces
-the board on the repo's Projects tab and enables auto-add), and writes the **committed** config file
-`agentic-engineering.md` at the repo root with `github_project_owner` and `github_project_number`.
-This file must be committed (not `.local`) — fresh clones and worktree-isolated subagents need to
-resolve the same board identity.
+the board on the repo's Projects tab, but note it does **not** auto-add issues), and writes the
+**committed** config file `agentic-engineering.md` at the repo root with `github_project_owner`,
+`github_project_number`, and the recorded **`github_project_forward_binding`** — identity and policy
+in one write. This file must be committed (not `.local`) — fresh clones and worktree-isolated
+subagents need to resolve the same board identity and binding.
 
-Two steps have no API and stay manual:
+> If you chose **auto-add**, scaffold `.github/workflows/add-to-project.yml` (issue #63) and add its
+> PAT/App-token secret — the default `GITHUB_TOKEN` cannot write Projects v2. `/lifecycle-doctor`'s
+> `board_forward_binding` check WARNs until the workflow file is present.
 
-1. **Auto-add-from-repo** — configure the board's auto-add workflow in the GitHub UI so new issues
-   land on the board at the `stub` column.
-2. **Ready-work saved view** — create a saved view filtered to `status:planned no:assignee`, sorted
-   by Priority. Note it over-shows blocked items (the view has no way to filter on blocked-by), so
-   check an item's Blocked-by field before starting work on it.
+**(B) Backfill — put EXISTING issues on the board now.** This is **independent** of (A): auto-add
+never backfills, so even with auto-add a board is never guaranteed to reflect the full repo, and a
+workflow-only/manual repo may still have a pile of pre-existing issues to track. Offer it regardless
+of the (A) choice:
 
-After bootstrapping (and after the two manual steps), run `/lifecycle-doctor` to verify the board
-schema, automations, and config all resolve correctly before relying on it.
+```
+question: "Add the repo's existing open issues to the board now? (one-time, idempotent)"
+header: "Backfill"
+options:
+  - label: "Yes, backfill now"
+    description: "Adds every open issue not already on the board. Safe to re-run."
+  - label: "Skip"
+    description: "Leave existing issues off the board; re-run later when new un-added issues exist."
+```
+
+If yes:
+
+```bash
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/lifecycle_board.py" --backfill
+```
+
+It reports `{added, already_present, failed}` counts and records a high-water mark
+(`github_project_backfilled_through`), so a re-run adds only what a partial run missed. Enumerates
+open issues only (closed issues and PRs are excluded), paginated — no silent cap.
+
+One step still has no API and stays manual:
+
+- **Ready-work saved view** — create a saved view filtered to `status:planned no:assignee`, sorted
+  by Priority. Note it over-shows blocked items (the view has no way to filter on blocked-by), so
+  check an item's Blocked-by field before starting work on it.
+
+After bootstrapping, run `/lifecycle-doctor` to verify the board schema, automations, forward
+binding, and config all resolve correctly before relying on it.
 
 ### Forking or cloning under a different owner — re-bootstrap
 
@@ -187,10 +236,12 @@ python3 "${CLAUDE_PLUGIN_ROOT}/scripts/bootstrap_lifecycle_board.py"
 ```
 
 Because no board yet exists under the new origin owner, the script creates a fresh one, links it to
-your repo, and rewrites the two `github_project_*` keys in place (preserving all other file
-content) — commit that change. `/lifecycle-doctor` confirms it: the `board_repo_link` check WARNs
-when the configured board is not linked to your origin repo, which is the tell that the committed
-config still points upstream.
+your repo, and rewrites the `github_project_*` keys in place — preserving all other file content
+**and your recorded `github_project_forward_binding`** (omit `--forward-binding` on the re-run to
+keep it; pass it to change). Commit that change. `/lifecycle-doctor` confirms it: the
+`board_repo_link` check WARNs when the configured board is not linked to your origin repo, and the
+`board_forward_binding` check verifies the recorded forward choice, which together are the tell that
+the committed config still points upstream.
 
 ## Step 3.7: Install the operating-principles always-on layer
 

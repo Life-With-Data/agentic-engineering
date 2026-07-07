@@ -535,6 +535,87 @@ class ConfigWriteTest(unittest.TestCase):
             board = lb.read_board_config(ctx)
             self.assertEqual((board.owner, board.number), ("acme", 15))
 
+    def test_records_forward_binding_in_same_write_as_identity(self) -> None:
+        # Issue #64: identity + forward binding land in ONE write (atomicity).
+        with tempfile.TemporaryDirectory() as tmp:
+            bs.write_committed_config(tmp, "acme", 5, "auto-add")
+            ctx = lb.RepoContext(root=tmp, main_root=tmp, origin_owner="acme",
+                                 origin_repo="widget", default_branch="main")
+            board = lb.read_board_config(ctx)
+            binding = lb.read_binding_config(ctx)
+            self.assertEqual((board.owner, board.number), ("acme", 5))
+            self.assertEqual(binding.forward_binding, "auto-add")
+
+    def test_omits_forward_binding_key_when_not_supplied(self) -> None:
+        # The 3-arg form (identity only) must not write a binding key.
+        with tempfile.TemporaryDirectory() as tmp:
+            path = bs.write_committed_config(tmp, "acme", 5)
+            meta = lb.parse_frontmatter(Path(path).read_text(encoding="utf-8"))
+            self.assertNotIn(lb.CONFIG_KEY_FORWARD_BINDING, meta)
+
+
+class ForwardBindingBootstrapTest(unittest.TestCase):
+    """Issue #64: bootstrap records the forward binding, preserves a prior
+    choice on re-run when --forward-binding is omitted, and defaults to
+    workflow-only on a first run. Full happy-path flow over a canonical board."""
+
+    def _canonical_fields(self):
+        return json.dumps({"fields": [
+            {"name": "Status", "id": "F", "projectId": "P",
+             "options": [{"id": f"o_{s}", "name": s} for s in bs.STAGES]},
+            {"name": "Priority", "id": "PRI",
+             "options": [{"id": f"p_{p}", "name": p} for p in ("p1", "p2", "p3")]},
+        ]})
+
+    def _workflows(self):
+        nodes = [{"id": "wf_r", "name": "Item reopened", "enabled": False},
+                 {"id": "wf_c", "name": "Item closed", "enabled": True}]
+        return json.dumps({"data": {"repositoryOwner": {"projectV2": {
+            "workflows": {"nodes": nodes}}}}})
+
+    def _linked(self, slugs):
+        nodes = [{"nameWithOwner": s} for s in slugs]
+        return json.dumps({"data": {"repositoryOwner": {"projectV2": {
+            "repositories": {"nodes": nodes}}}}})
+
+    def _run(self, tmp, existing_config, forward_binding):
+        (Path(tmp) / bs.COMMITTED_CONFIG).write_text(existing_config, encoding="utf-8")
+        ctx = lb.RepoContext(root=tmp, main_root=tmp, origin_owner="acme",
+                             origin_repo="widget", default_branch="main")
+        runner = FakeRunner([
+            (["--version"], _ok("gh version 2.96.0 (2026-07-02)")),
+            (["auth", "status"], _ok("Logged in to github.com")),
+            (["project", "view", "5", "--owner", "acme"], _ok(json.dumps({"number": 5, "id": "P"}))),
+            (["project", "field-list", "5", "--owner", "acme"], _ok(self._canonical_fields())),
+            (["api", "graphql"], _ok(json.dumps({"data": {"updateProjectV2Field": {
+                "projectV2Field": {"id": "F", "options": []}}}}))),
+            (["project", "field-list", "5", "--owner", "acme"], _ok(self._canonical_fields())),
+            (["api", "graphql"], _ok(self._workflows())),
+            (["api", "graphql"], _ok(self._linked(["acme/widget"]))),
+        ])
+        summary = bs.bootstrap(ctx, runner, probe=False, forward_binding=forward_binding, environ={})
+        return ctx, summary
+
+    _CFG_AUTO = ("---\ngithub_project_owner: acme\ngithub_project_number: 5\n"
+                 "github_project_forward_binding: auto-add\n---\n")
+    _CFG_BARE = "---\ngithub_project_owner: acme\ngithub_project_number: 5\n---\n"
+
+    def test_preserves_recorded_auto_add_on_rerun_without_flag(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            ctx, summary = self._run(tmp, self._CFG_AUTO, forward_binding=None)
+            self.assertEqual(summary["forward_binding"], "auto-add")
+            self.assertEqual(lb.read_binding_config(ctx).forward_binding, "auto-add")
+
+    def test_explicit_flag_overrides_recorded_choice(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            ctx, _summary = self._run(tmp, self._CFG_AUTO, forward_binding="none")
+            self.assertEqual(lb.read_binding_config(ctx).forward_binding, "none")
+
+    def test_first_run_defaults_to_workflow_only(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            ctx, _summary = self._run(tmp, self._CFG_BARE, forward_binding=None)
+            self.assertEqual(lb.read_binding_config(ctx).forward_binding, "workflow-only")
+
 
 class ProbeTest(unittest.TestCase):
     """run_probe calls lifecycle_board.verb_set_status, which reads the

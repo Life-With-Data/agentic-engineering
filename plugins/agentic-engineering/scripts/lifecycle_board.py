@@ -28,6 +28,8 @@ CLI verbs (used by workflow commands; humans/CI may call them directly):
                                  sorted, <= 2 API calls at any board size
   --reconcile [--issue N] [--force]  scoped drift repair (TTL-cached)
   --doctor                       all A/B-class checks, report-everything mode
+  --backfill                     one-time idempotent add of every open repo
+                                 issue not yet on the board (decision B, #64)
 """
 from __future__ import annotations
 
@@ -97,6 +99,24 @@ MIN_GH_VERSION = (2, 94, 0)
 COMMITTED_CONFIG = "agentic-engineering.md"
 LOCAL_CONFIG = "agentic-engineering.local.md"
 CACHE_FILENAME = "agentic_engineering_cache.json"
+
+# Repo->board binding, recorded in the committed config as two orthogonal
+# decisions (see issue #64): (A) how NEW issues reach the board going forward,
+# and (B) a high-water mark of the last one-time backfill of EXISTING issues.
+# Both are flat scalars (parse_frontmatter reads nothing else). Backfill is
+# offered under ANY forward binding — the two are independent.
+CONFIG_KEY_FORWARD_BINDING = "github_project_forward_binding"
+CONFIG_KEY_BACKFILLED_THROUGH = "github_project_backfilled_through"
+FORWARD_BINDINGS = ("workflow-only", "auto-add", "none")
+DEFAULT_FORWARD_BINDING = "workflow-only"
+
+# Backfill enumeration caps. These are deliberately NOT READY_WORK_LIMIT (50) —
+# that cap is a ready-work UX bound; a backfill that silently dropped issues
+# past 50 would leave the board permanently short. gh paginates internally up
+# to --limit, so these are the true ceilings (truncation is flagged, never
+# silent).
+BACKFILL_ISSUE_LIMIT = 1000
+BACKFILL_BOARD_LIMIT = 1000
 
 _OWNER_RE = re.compile(r"^[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?$")
 _JOIN_KEY_RE = re.compile(r"^(?:(?P<owner>[\w.-]+)/(?P<repo>[\w.-]+)#)?(?P<number>\d+)$")
@@ -239,6 +259,67 @@ def parse_frontmatter(text: str) -> "dict[str, str]":
     return out
 
 
+def upsert_frontmatter_keys(text: str, keys: "dict[str, str]") -> str:
+    """Update the given keys inside a leading --- fenced frontmatter block,
+    preserving all other content byte-for-byte. If a key is absent it is
+    appended just before the closing fence; if the file has no frontmatter, one
+    is prepended. The single writer for committed-config keys — the bootstrap
+    (board identity + forward binding) and the backfill verb (its high-water
+    mark) both go through it, so a crash between writes can never leave the file
+    half-formed."""
+    # Empty frontmatter (`---\n---\n`) has no inner content, so the general
+    # regex below (which requires a `\n---` before the closing fence) misses it.
+    # Insert the keys between the two fences rather than prepending a 2nd block.
+    empty = re.match(r"^(---[ \t]*\n)(---[ \t]*(?:\n|$))", text)
+    if empty:
+        block = empty.group(1) + "".join(f"{k}: {v}\n" for k, v in keys.items()) + empty.group(2)
+        return block + text[empty.end():]
+
+    m = re.match(r"^(---\s*\n)(.*?)(\n---\s*(?:\n|$))", text, re.DOTALL)
+    if not m:
+        block = "---\n" + "".join(f"{k}: {v}\n" for k, v in keys.items()) + "---\n"
+        return block + text
+
+    open_fence, inner, close_fence = m.group(1), m.group(2), m.group(3)
+    lines = inner.split("\n")
+    remaining = dict(keys)
+    key_line = re.compile(r"^(\s*)([A-Za-z_][\w-]*)(\s*:\s*).*$")
+
+    out_lines: "list[str]" = []
+    for line in lines:
+        km = key_line.match(line)
+        if km and km.group(2) in remaining:
+            indent, key, sep = km.group(1), km.group(2), km.group(3)
+            out_lines.append(f"{indent}{key}{sep}{remaining.pop(key)}")
+        else:
+            out_lines.append(line)
+
+    appended = [f"{k}: {v}" for k, v in remaining.items()]
+    if appended:
+        # Insert appended keys after the last non-empty inner line to avoid a
+        # blank gap, preserving trailing blank lines the author had.
+        insert_at = len(out_lines)
+        while insert_at > 0 and out_lines[insert_at - 1].strip() == "":
+            insert_at -= 1
+        out_lines[insert_at:insert_at] = appended
+
+    return open_fence + "\n".join(out_lines) + close_fence + text[m.end():]
+
+
+def write_config_keys(main_root: str, keys: "dict[str, str]") -> str:
+    """Create COMMITTED_CONFIG with `keys` if it is missing; otherwise upsert
+    only those keys inside the frontmatter, preserving every other byte. The
+    single write path for the committed board config. Returns the path."""
+    path = pathlib.Path(main_root) / COMMITTED_CONFIG
+    if not path.exists():
+        body = "---\n" + "".join(f"{k}: {v}\n" for k, v in keys.items()) + "---\n"
+        path.write_text(body, encoding="utf-8")
+        return str(path)
+    text = path.read_text(encoding="utf-8")
+    path.write_text(upsert_frontmatter_keys(text, keys), encoding="utf-8")
+    return str(path)
+
+
 def _is_tracked(ctx: RepoContext, name: str) -> bool:
     """True if `name` at ctx.root is tracked in git (would ride a PR)."""
     result = subprocess.run(
@@ -298,6 +379,48 @@ def read_board_config(ctx: RepoContext) -> Optional[BoardConfig]:
             )
         return BoardConfig(owner=owner, number=int(number), source=source)
     return None
+
+
+@dataclass
+class BindingConfig:
+    """The recorded repo->board binding decisions (issue #64). `forward_binding`
+    is the validated enum (or None when unset / unrecognized); `forward_raw` is
+    the value as written, so the doctor can WARN on an unrecognized string
+    instead of silently treating it as unset. `backfilled_through` is the
+    high-water issue number of the last one-time backfill (None when never run)."""
+    forward_binding: Optional[str]
+    forward_raw: str
+    backfilled_through: Optional[int]
+    source: Optional[str]  # local | committed | None (unset)
+
+
+def read_binding_config(ctx: RepoContext) -> BindingConfig:
+    """Read (A) forward binding + (B) backfill high-water from the committed
+    config (a .local override is honored for testing, same precedence as
+    read_board_config, and ignored when tracked). Never raises: an unset or
+    unrecognized value degrades to None so the caller supplies the default."""
+    for name, source_root, source in (
+        (LOCAL_CONFIG, ctx.root, "local"),
+        (COMMITTED_CONFIG, ctx.main_root, "committed"),
+    ):
+        path = pathlib.Path(source_root) / name
+        if not path.is_file():
+            continue
+        if name == LOCAL_CONFIG and _is_tracked(ctx, name):
+            continue
+        meta = parse_frontmatter(path.read_text(encoding="utf-8"))
+        raw = meta.get(CONFIG_KEY_FORWARD_BINDING, "")
+        through = meta.get(CONFIG_KEY_BACKFILLED_THROUGH, "")
+        if not raw and not through:
+            continue
+        return BindingConfig(
+            forward_binding=raw if raw in FORWARD_BINDINGS else None,
+            forward_raw=raw,
+            backfilled_through=int(through) if through.isdigit() else None,
+            source=source,
+        )
+    return BindingConfig(forward_binding=None, forward_raw="",
+                         backfilled_through=None, source=None)
 
 
 def resolve_mode(board: Optional[BoardConfig], gh_authenticated: bool) -> str:
@@ -1041,6 +1164,120 @@ def verb_reconcile(ctx: RepoContext, runner: GhRunner, issue: Optional[int] = No
 
 
 # --------------------------------------------------------------------------
+# Backfill (issue #64, decision B). Auto-add is forward-only — it never places
+# pre-existing issues on the board. Backfill is the one-time, idempotent loop
+# that does. It is independent of the forward binding (A): a repo on
+# workflow-only or manual may still have a pile of open issues to track.
+#
+# Correctness rules baked in here (the SpecFlow surfaced each):
+#   - Enumerate REPO issues via `gh issue list` (issues only — PRs excluded for
+#     free; NEVER `_item_list`, whose 50-cap would silently drop issues 51+).
+#   - Open issues only: a long-closed issue added at stub would contradict the
+#     "Item closed -> shipped" automation, so closed issues are skipped.
+#   - Idempotent via ONE board-membership read (a set of issue numbers already
+#     on the board), not an N+1 per-issue read; `item-add` is itself idempotent
+#     server-side, so a stale membership read at worst re-adds harmlessly.
+#   - Partial-failure-tolerant: one failed add never aborts the loop (mirrors
+#     verb_reconcile). Issues are processed in ascending number order and the
+#     recorded high-water mark advances only over a CONTIGUOUS prefix of
+#     board-present issues, so "everything <= mark is on the board" always holds
+#     and a re-run resumes at the first gap.
+# --------------------------------------------------------------------------
+
+def _board_issue_numbers(board: BoardConfig, ctx: RepoContext,
+                         runner: GhRunner) -> "tuple[set[int], bool]":
+    """The set of origin-repo issue numbers already on the board, plus a
+    truncation flag. Repo-scoped and PR-dropped via _origin_issue_number — a
+    foreign or PR item never counts as 'already present'."""
+    result = _run_gh_retry(runner, ["project", "item-list", str(board.number),
+                                    "--owner", board.owner, "--format", "json",
+                                    "--limit", str(BACKFILL_BOARD_LIMIT)])
+    if result.returncode != 0:
+        raise BoardError("backfill_failed",
+                         f"reading board membership failed: {result.stderr.strip()[:200]}",
+                         "Verify gh >= 2.94.0, the `project` scope, and that the board exists")
+    items = json.loads(result.stdout or "{}").get("items", [])
+    numbers = {n for n in (_origin_issue_number(i, ctx.slug) for i in items) if n is not None}
+    return numbers, len(items) >= BACKFILL_BOARD_LIMIT
+
+
+def _repo_open_issues(ctx: RepoContext, runner: GhRunner) -> "tuple[list[dict], bool]":
+    """Open origin-repo issues as [{number, url}], plus a truncation flag.
+    `gh issue list` returns issues only — PRs are excluded for free."""
+    result = _run_gh_retry(runner, ["issue", "list", "--repo", ctx.slug,
+                                    "--state", "open", "--limit", str(BACKFILL_ISSUE_LIMIT),
+                                    "--json", "number,url"])
+    if result.returncode != 0:
+        raise BoardError("backfill_failed",
+                         f"listing repo issues failed: {result.stderr.strip()[:200]}",
+                         "Verify gh auth and that Issues are enabled on the repo")
+    issues = json.loads(result.stdout or "[]")
+    return issues, len(issues) >= BACKFILL_ISSUE_LIMIT
+
+
+def verb_backfill(ctx: RepoContext, runner: GhRunner) -> dict:
+    """Add every open origin-repo issue not already on the board, idempotently,
+    then record a contiguous high-water mark. Reports added / already-present /
+    failed counts. Safe to re-run: a second pass adds only what a partial first
+    pass missed."""
+    board = _require_board(ctx)
+    existing, board_truncated = _board_issue_numbers(board, ctx, runner)
+    issues, issues_truncated = _repo_open_issues(ctx, runner)
+
+    added: "list[int]" = []
+    already_present: "list[int]" = []
+    failed: "list[dict]" = []
+    high_water = 0
+    contiguous = True  # cleared at the first gap so the mark stays truthful
+
+    for issue in sorted(issues, key=lambda i: i.get("number", 0)):
+        number = issue.get("number")
+        if not isinstance(number, int):
+            continue
+        if number in existing:
+            already_present.append(number)
+            if contiguous:
+                high_water = number
+            continue
+        add = _run_gh_retry(runner, ["project", "item-add", str(board.number),
+                                     "--owner", board.owner, "--url", issue.get("url", ""),
+                                     "--format", "json"])
+        if add.returncode != 0:
+            failed.append({"issue": number, "error": add.stderr.strip()[:200]})
+            contiguous = False
+            continue
+        added.append(number)
+        if contiguous:
+            high_water = number
+
+    # Persist the high-water mark only when it advances and enumeration was
+    # complete — a truncated read means an unseen lower-numbered issue could be
+    # missing, so the "everything <= mark is present" invariant would not hold.
+    marker_written = False
+    prior = read_binding_config(ctx).backfilled_through or 0
+    if high_water > prior and not issues_truncated and not board_truncated:
+        write_config_keys(ctx.main_root, {CONFIG_KEY_BACKFILLED_THROUGH: str(high_water)})
+        marker_written = True
+
+    flags: "list[dict]" = []
+    if issues_truncated or board_truncated:
+        flags.append({"flag": "backfill_truncated",
+                      "comment": f"enumeration hit a {BACKFILL_ISSUE_LIMIT}-item cap "
+                                 "(issues and/or board) — re-run to continue; the high-water "
+                                 "mark was not advanced past the truncation point"})
+    return {
+        "added": added,
+        "already_present": already_present,
+        "failed": failed,
+        "counts": {"added": len(added), "already_present": len(already_present),
+                   "failed": len(failed)},
+        "high_water": high_water,
+        "marker_written": marker_written,
+        "flags": flags,
+    }
+
+
+# --------------------------------------------------------------------------
 # Board <-> repo link. Projects v2 boards are owned by a user/org and *linked*
 # to repos — the link is what surfaces the board on the repo's Projects tab and
 # enables repo-scoped features (auto-add-from-repo). Board *resolution* only
@@ -1075,6 +1312,77 @@ def project_linked_repos(owner: str, number: int, runner: GhRunner) -> "Optional
     node = ((payload.get("data") or {}).get("repositoryOwner") or {}).get("projectV2") or {}
     nodes = (node.get("repositories") or {}).get("nodes") or []
     return [n.get("nameWithOwner", "") for n in nodes if n.get("nameWithOwner")]
+
+
+# --------------------------------------------------------------------------
+# Auto-add workflow detection (for the forward-binding doctor check). The
+# built-in auto-add workflow has no API, but the `actions/add-to-project`
+# alternative (issue #63) is a committed file we CAN see — so the doctor
+# verifies the recorded auto-add decision against the file's presence instead
+# of printing an uncheckable "verify by hand" line.
+# --------------------------------------------------------------------------
+
+def find_auto_add_workflow(ctx: RepoContext) -> Optional[str]:
+    """Repo-relative path of the first .github/workflows/*.y{a,}ml that wires
+    `actions/add-to-project`, or None. Purely local (no gh) — deterministic and
+    unit-testable."""
+    wf_dir = pathlib.Path(ctx.root) / ".github" / "workflows"
+    if not wf_dir.is_dir():
+        return None
+    for path in sorted(wf_dir.glob("*.y*ml")):
+        try:
+            if "actions/add-to-project" in path.read_text(encoding="utf-8"):
+                return str(path.relative_to(ctx.root))
+        except OSError:
+            continue
+    return None
+
+
+def evaluate_forward_binding_check(binding: BindingConfig,
+                                   auto_add_workflow: Optional[str]) -> "tuple[str, str, str]":
+    """Pure per-branch verdict for the forward-binding doctor check: returns
+    (status, detail, fix). What "verify concretely" means differs per branch —
+    workflow-only asserts NO orphaned auto-add file; auto-add asserts the file
+    IS present (its token secret is write-only, hence unverifiable and called
+    out); none/unset are informational. Kept pure (no gh, no fs) so every branch
+    is unit-tested; verb_doctor supplies auto_add_workflow via
+    find_auto_add_workflow."""
+    fb = binding.forward_binding
+    if binding.forward_raw and fb is None:
+        return ("WARN",
+                f"recorded forward binding {binding.forward_raw!r} is not one of "
+                f"{', '.join(FORWARD_BINDINGS)}",
+                f"Set {CONFIG_KEY_FORWARD_BINDING} to one of "
+                f"{', '.join(FORWARD_BINDINGS)} in {COMMITTED_CONFIG}")
+    if fb is None:
+        return ("WARN",
+                f"no forward binding recorded in {COMMITTED_CONFIG} — how new issues reach "
+                "the board is undecided",
+                "Re-run the setup bootstrap to record it, or set "
+                f"{CONFIG_KEY_FORWARD_BINDING}: {DEFAULT_FORWARD_BINDING} in {COMMITTED_CONFIG}")
+    if fb == "workflow-only":
+        if auto_add_workflow is not None:
+            return ("WARN",
+                    f"forward binding is workflow-only but an auto-add workflow exists "
+                    f"({auto_add_workflow})",
+                    f"Remove {auto_add_workflow}, or set {CONFIG_KEY_FORWARD_BINDING}: auto-add "
+                    f"in {COMMITTED_CONFIG} if you do want auto-add")
+        return ("PASS",
+                "workflow-only — the /workflows:* commands add items themselves; no auto-add", "")
+    if fb == "auto-add":
+        if auto_add_workflow is None:
+            return ("WARN",
+                    "forward binding is auto-add but no actions/add-to-project workflow is present "
+                    "— new issues will NOT auto-reach the board",
+                    "Scaffold .github/workflows/add-to-project.yml (see issue #63) and add its "
+                    f"PAT/App-token secret, or set {CONFIG_KEY_FORWARD_BINDING}: workflow-only "
+                    f"in {COMMITTED_CONFIG}")
+        return ("PASS",
+                f"auto-add workflow present ({auto_add_workflow}) — note: its token secret is "
+                "write-only and cannot be verified from here; send a test issue to confirm", "")
+    # none
+    return ("PASS",
+            "manual — issues are added to the board by hand (and via one-time backfill)", "")
 
 
 # --------------------------------------------------------------------------
@@ -1167,6 +1475,13 @@ def verb_doctor(ctx: RepoContext, runner: GhRunner) -> dict:
                       f"board is not linked to {ctx.slug} — it won't appear on the repo's Projects tab",
                       f"gh project link {board.number} --owner {board.owner} --repo {ctx.slug}")
 
+        # Forward binding (issue #64, decision A): verify the RECORDED choice
+        # concretely, per branch — not a generic "verify by hand" line. Purely
+        # local (config + workflow file), so it runs regardless of auth.
+        fb_status, fb_detail, fb_fix = evaluate_forward_binding_check(
+            read_binding_config(ctx), find_auto_add_workflow(ctx))
+        check("board_forward_binding", fb_status, fb_detail, fb_fix)
+
     # Delivery topology (detection, not enforcement)
     if authed and ctx.origin_owner:
         merged = runner(["pr", "list", "--repo", ctx.slug, "--state", "merged",
@@ -1207,6 +1522,7 @@ def main(argv: "list[str]") -> int:
     group.add_argument("--ready-work", action="store_true")
     group.add_argument("--reconcile", action="store_true")
     group.add_argument("--doctor", action="store_true")
+    group.add_argument("--backfill", action="store_true")
     parser.add_argument("--issue", type=int, default=None)
     parser.add_argument("--force", action="store_true")
     args = parser.parse_args(argv)
@@ -1226,6 +1542,8 @@ def main(argv: "list[str]") -> int:
             return _emit(verb_reconcile(ctx, run_gh, issue=args.issue, force=args.force))
         if args.doctor:
             return _emit(verb_doctor(ctx, run_gh))
+        if args.backfill:
+            return _emit(verb_backfill(ctx, run_gh))
     except BoardError as err:
         return _emit_error(err)
     except Exception as exc:  # noqa: BLE001 — edge-of-CLI belt-and-braces
