@@ -1,1 +1,44 @@
-{"items":[],"totalCount":0}
+{
+  "items": [
+    {
+      "id": "PVTI_lAHOAKOGw84Bckuezgx53v4",
+      "title": "fix: work gate reason text misstates the stage when plan doc is missing",
+      "status": "compounded",
+      "repository": "https://github.com/aagnone3/agentic-engineering",
+      "content": {
+        "number": 46,
+        "repository": "aagnone3/agentic-engineering",
+        "title": "fix: work gate reason text misstates the stage when plan doc is missing",
+        "type": "Issue",
+        "url": "https://github.com/aagnone3/agentic-engineering/issues/46"
+      }
+    },
+    {
+      "id": "PVTI_lAHOAKOGw84Bckuezgx6q4c",
+      "title": "[upstream-scan] affaan-m/ECC",
+      "status": "stub",
+      "repository": "https://github.com/aagnone3/agentic-engineering",
+      "content": {
+        "number": 32,
+        "repository": "aagnone3/agentic-engineering",
+        "title": "[upstream-scan] affaan-m/ECC",
+        "type": "Issue",
+        "url": "https://github.com/aagnone3/agentic-engineering/issues/32"
+      }
+    },
+    {
+      "id": "PVTI_lAHOAKOGw84Bckuezgx6q54",
+      "title": "feat: Upstream source adoption tracking (registry + /upstream-scan + biweekly schedule)",
+      "status": "planned",
+      "repository": "https://github.com/aagnone3/agentic-engineering",
+      "content": {
+        "number": 28,
+        "repository": "aagnone3/agentic-engineering",
+        "title": "feat: Upstream source adoption tracking (registry + /upstream-scan + biweekly schedule)",
+        "type": "Issue",
+        "url": "https://github.com/aagnone3/agentic-engineering/issues/28"
+      }
+    }
+  ],
+  "totalCount": 8
+}

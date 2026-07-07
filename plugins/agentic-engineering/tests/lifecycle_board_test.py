@@ -564,6 +564,24 @@ class ConfigKeysWriteTest(unittest.TestCase):
         self.assertIn("# Notes", out)
         self.assertIn("body", out)
 
+    def test_updates_every_occurrence_of_a_duplicate_key(self) -> None:
+        # parse_frontmatter is last-wins: a duplicate key left un-updated would
+        # make the write a silent no-op. Both occurrences must become the new value.
+        text = ("---\ngithub_project_owner: old\ngithub_project_number: 1\n"
+                "github_project_owner: older\n---\nbody\n")
+        out = lb.upsert_frontmatter_keys(text, {"github_project_owner": "new"})
+        self.assertEqual(lb.parse_frontmatter(out)["github_project_owner"], "new")
+        self.assertNotIn("older", out)
+
+    def test_crlf_file_keeps_crlf_on_rewritten_lines(self) -> None:
+        # Byte-preservation: a rewritten line must not flip \r\n to bare \n.
+        text = "---\r\ngithub_project_owner: old\r\ngithub_project_number: 1\r\n---\r\nbody\r\n"
+        out = lb.upsert_frontmatter_keys(text, {"github_project_owner": "new"})
+        self.assertIn("github_project_owner: new\r\n", out)
+        self.assertNotIn("github_project_owner: new\n", out.replace("\r\n", "\r\r"))  # no bare LF
+        self.assertEqual(lb.parse_frontmatter(out)["github_project_owner"], "new")
+        self.assertIn("body", out)
+
     def test_marker_write_only_touches_its_key(self) -> None:
         # A backfill marker write must not disturb identity or forward binding.
         root = self._tmp()
@@ -863,6 +881,21 @@ class FixtureReplayTest(unittest.TestCase):
         data = self._load("pr_view_merged.json")
         self.assertEqual(data["state"], "MERGED")
         self.assertIsNotNone(data["mergedAt"])
+
+    def test_project_item_list_issue_numbers_parse_from_recorded_shape(self) -> None:
+        # Load-bearing: the recorded item-list is fed through _origin_issue_number
+        # (the exact consumer verb_backfill's _board_issue_numbers uses). A future
+        # re-record where content.repository stops being a plain string, or type
+        # is renamed, breaks THIS test — not a live backfill. The fixture must be
+        # non-empty for this to pin anything.
+        payload = self._load("project_item_list.json")
+        items = payload["items"]
+        self.assertGreater(len(items), 0, "fixture must be non-empty to pin the shape")
+        numbers = [lb._origin_issue_number(i, "aagnone3/agentic-engineering") for i in items]
+        self.assertTrue(all(isinstance(n, int) for n in numbers),
+                        "every recorded Issue item must resolve to an int number")
+        # content.repository is a plain string in item-list output (not {nameWithOwner}).
+        self.assertIsInstance(items[0]["content"]["repository"], str)
 
 
 if __name__ == "__main__":

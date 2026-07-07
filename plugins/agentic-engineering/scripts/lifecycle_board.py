@@ -267,34 +267,42 @@ def upsert_frontmatter_keys(text: str, keys: "dict[str, str]") -> str:
     (board identity + forward binding) and the backfill verb (its high-water
     mark) both go through it, so a crash between writes can never leave the file
     half-formed."""
+    # Match the file's prevailing newline so rewritten lines don't flip a CRLF
+    # file to mixed endings (byte-preservation).
+    nl = "\r\n" if "\r\n" in text else "\n"
+
+    def render(pairs: "list[tuple[str, str]]") -> str:
+        return "".join(f"{k}: {v}{nl}" for k, v in pairs)
+
     # Empty frontmatter (`---\n---\n`) has no inner content, so the general
     # regex below (which requires a `\n---` before the closing fence) misses it.
     # Insert the keys between the two fences rather than prepending a 2nd block.
-    empty = re.match(r"^(---[ \t]*\n)(---[ \t]*(?:\n|$))", text)
+    empty = re.match(r"^(---[ \t]*\r?\n)(---[ \t]*(?:\r?\n|$))", text)
     if empty:
-        block = empty.group(1) + "".join(f"{k}: {v}\n" for k, v in keys.items()) + empty.group(2)
-        return block + text[empty.end():]
+        return empty.group(1) + render(list(keys.items())) + empty.group(2) + text[empty.end():]
 
-    m = re.match(r"^(---\s*\n)(.*?)(\n---\s*(?:\n|$))", text, re.DOTALL)
+    m = re.match(r"^(---[ \t]*\r?\n)(.*?)(\r?\n---[ \t]*(?:\r?\n|$))", text, re.DOTALL)
     if not m:
-        block = "---\n" + "".join(f"{k}: {v}\n" for k, v in keys.items()) + "---\n"
-        return block + text
+        return "---" + nl + render(list(keys.items())) + "---" + nl + text
 
     open_fence, inner, close_fence = m.group(1), m.group(2), m.group(3)
-    lines = inner.split("\n")
-    remaining = dict(keys)
-    key_line = re.compile(r"^(\s*)([A-Za-z_][\w-]*)(\s*:\s*).*$")
+    key_line = re.compile(r"^([ \t]*)([A-Za-z_][\w-]*)([ \t]*:[ \t]*).*$")
 
+    seen: "set[str]" = set()
     out_lines: "list[str]" = []
-    for line in lines:
+    for line in inner.split("\n"):
+        line = line[:-1] if line.endswith("\r") else line  # nl re-added on join
         km = key_line.match(line)
-        if km and km.group(2) in remaining:
-            indent, key, sep = km.group(1), km.group(2), km.group(3)
-            out_lines.append(f"{indent}{key}{sep}{remaining.pop(key)}")
+        if km and km.group(2) in keys:
+            # Update EVERY occurrence, not just the first: parse_frontmatter is
+            # last-wins, so leaving a later duplicate would make the write a
+            # silent no-op for that key.
+            out_lines.append(f"{km.group(1)}{km.group(2)}{km.group(3)}{keys[km.group(2)]}")
+            seen.add(km.group(2))
         else:
             out_lines.append(line)
 
-    appended = [f"{k}: {v}" for k, v in remaining.items()]
+    appended = [f"{k}: {v}" for k, v in keys.items() if k not in seen]
     if appended:
         # Insert appended keys after the last non-empty inner line to avoid a
         # blank gap, preserving trailing blank lines the author had.
@@ -303,7 +311,7 @@ def upsert_frontmatter_keys(text: str, keys: "dict[str, str]") -> str:
             insert_at -= 1
         out_lines[insert_at:insert_at] = appended
 
-    return open_fence + "\n".join(out_lines) + close_fence + text[m.end():]
+    return open_fence + nl.join(out_lines) + close_fence + text[m.end():]
 
 
 def _atomic_write(path: pathlib.Path, text: str) -> None:
@@ -1199,9 +1207,16 @@ def verb_reconcile(ctx: RepoContext, runner: GhRunner, issue: Optional[int] = No
 #     server-side, so a stale membership read at worst re-adds harmlessly.
 #   - Partial-failure-tolerant: one failed add never aborts the loop (mirrors
 #     verb_reconcile). Issues are processed in ascending number order and the
-#     recorded high-water mark advances only over a CONTIGUOUS prefix of
-#     board-present issues, so "everything <= mark is on the board" always holds
-#     and a re-run resumes at the first gap.
+#     recorded high-water mark advances only over a failure-free prefix.
+#
+# The high-water mark is an ADVISORY watermark, not a completeness guarantee:
+# it is never read to skip work (verb_backfill always re-enumerates the full
+# open-vs-board difference, so running it is always complete and idempotent).
+# It exists only to let setup decide whether to *re-offer* the backfill prompt.
+# Do NOT build gap-skipping logic on it — issue numbers are inherently gappy
+# (PRs and closed issues consume numbers), so "everything <= mark is present"
+# does not hold; a reopened lower-numbered issue is picked up by the next full
+# --backfill run, not by trusting the mark.
 # --------------------------------------------------------------------------
 
 def _board_issue_numbers(board: BoardConfig, ctx: RepoContext,
@@ -1237,9 +1252,10 @@ def _repo_open_issues(ctx: RepoContext, runner: GhRunner) -> "tuple[list[dict], 
 
 def verb_backfill(ctx: RepoContext, runner: GhRunner) -> dict:
     """Add every open origin-repo issue not already on the board, idempotently,
-    then record a contiguous high-water mark. Reports added / already-present /
-    failed counts. Safe to re-run: a second pass adds only what a partial first
-    pass missed."""
+    then record an advisory high-water mark (see the section comment — it gates
+    re-offer only, never skips work). Reports added / already-present / failed
+    counts. Safe to re-run: a second pass adds only what a partial first pass
+    missed, recomputing the full difference each time."""
     board = _require_board(ctx)
     existing, board_truncated = _board_issue_numbers(board, ctx, runner)
     issues, issues_truncated = _repo_open_issues(ctx, runner)
@@ -1248,19 +1264,26 @@ def verb_backfill(ctx: RepoContext, runner: GhRunner) -> dict:
     already_present: "list[int]" = []
     failed: "list[dict]" = []
     high_water = 0
-    contiguous = True  # cleared at the first gap so the mark stays truthful
+    contiguous = True  # cleared at the first failure so the mark stays truthful
 
-    for issue in sorted(issues, key=lambda i: i.get("number", 0)):
-        number = issue.get("number")
-        if not isinstance(number, int):
-            continue
+    # Drop malformed rows (missing/typed-wrong number) before ordering.
+    valid = [i for i in issues if isinstance(i.get("number"), int)]
+    for issue in sorted(valid, key=lambda i: i["number"]):
+        number = issue["number"]
         if number in existing:
             already_present.append(number)
             if contiguous:
                 high_water = number
             continue
+        url = issue.get("url") or ""
+        if not url:
+            # A number-known / url-missing row is a data anomaly — record it and
+            # break the prefix rather than shell out `item-add --url ""`.
+            failed.append({"issue": number, "error": "issue has no url — cannot add to board"})
+            contiguous = False
+            continue
         add = _run_gh_retry(runner, ["project", "item-add", str(board.number),
-                                     "--owner", board.owner, "--url", issue.get("url", ""),
+                                     "--owner", board.owner, "--url", url,
                                      "--format", "json"])
         if add.returncode != 0:
             failed.append({"issue": number, "error": add.stderr.strip()[:200]})
@@ -1271,8 +1294,8 @@ def verb_backfill(ctx: RepoContext, runner: GhRunner) -> dict:
             high_water = number
 
     # Persist the high-water mark only when it advances and enumeration was
-    # complete — a truncated read means an unseen lower-numbered issue could be
-    # missing, so the "everything <= mark is present" invariant would not hold.
+    # complete — a truncated read means the sweep was partial, so the watermark
+    # would overstate how far the backfill actually reached.
     marker_written = False
     prior = read_binding_config(ctx).backfilled_through or 0
     if high_water > prior and not issues_truncated and not board_truncated:
@@ -1349,7 +1372,8 @@ def find_auto_add_workflow(ctx: RepoContext) -> Optional[str]:
     wf_dir = pathlib.Path(ctx.root) / ".github" / "workflows"
     if not wf_dir.is_dir():
         return None
-    for path in sorted(wf_dir.glob("*.y*ml")):
+    paths = sorted({p for pat in ("*.yml", "*.yaml") for p in wf_dir.glob(pat)})
+    for path in paths:
         try:
             if "actions/add-to-project" in path.read_text(encoding="utf-8"):
                 return str(path.relative_to(ctx.root))
