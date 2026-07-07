@@ -616,6 +616,17 @@ class ForwardBindingBootstrapTest(unittest.TestCase):
             ctx, _summary = self._run(tmp, self._CFG_BARE, forward_binding=None)
             self.assertEqual(lb.read_binding_config(ctx).forward_binding, "workflow-only")
 
+    def test_rerun_preserves_a_malformed_recorded_binding_not_clobber(self) -> None:
+        # A typo'd (invalid enum) recorded binding must be PRESERVED on re-run,
+        # not silently reset to the default — the raw value rides through so the
+        # doctor can WARN on it rather than the operator's decision vanishing.
+        cfg = ("---\ngithub_project_owner: acme\ngithub_project_number: 5\n"
+               "github_project_forward_binding: auto_add\n---\n")  # underscore typo
+        with tempfile.TemporaryDirectory() as tmp:
+            ctx, summary = self._run(tmp, cfg, forward_binding=None)
+            self.assertEqual(summary["forward_binding"], "auto_add")  # preserved verbatim
+            self.assertEqual(lb.read_binding_config(ctx).forward_raw, "auto_add")
+
 
 class ProbeTest(unittest.TestCase):
     """run_probe calls lifecycle_board.verb_set_status, which reads the

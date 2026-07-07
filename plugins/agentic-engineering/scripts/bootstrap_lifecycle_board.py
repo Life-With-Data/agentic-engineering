@@ -602,10 +602,14 @@ def bootstrap(ctx: "lb.RepoContext", runner: GhRunner, *, probe: bool = True,
 
     # Preserve a previously-recorded forward binding on re-bootstrap: only
     # overwrite it when the caller passed --forward-binding explicitly. First
-    # run with nothing recorded falls back to the workflow-only default. This
-    # keeps a re-run from silently resetting an auto-add repo to workflow-only.
+    # run with nothing recorded falls back to the workflow-only default. Key off
+    # the RAW recorded value, not the validated enum — a typo'd binding
+    # (`auto_add`) reads back as an invalid enum, and defaulting on it would
+    # silently erase the operator's (malformed but intentional) decision, the
+    # exact thing this preservation exists to prevent. The doctor WARNs on the
+    # malformed value instead.
     if forward_binding is None:
-        forward_binding = lb.read_binding_config(ctx).forward_binding or lb.DEFAULT_FORWARD_BINDING
+        forward_binding = lb.read_binding_config(ctx).forward_raw or lb.DEFAULT_FORWARD_BINDING
 
     project = resolve_or_create_project(ctx, runner)
     status = read_status_field(project, ctx, runner)

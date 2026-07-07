@@ -306,17 +306,28 @@ def upsert_frontmatter_keys(text: str, keys: "dict[str, str]") -> str:
     return open_fence + "\n".join(out_lines) + close_fence + text[m.end():]
 
 
+def _atomic_write(path: pathlib.Path, text: str) -> None:
+    """Write `text` to `path` atomically (tmp + os.replace), so a crash or
+    ENOSPC mid-write can never truncate the target. Unlike save_cache, OSError
+    is NOT swallowed — the committed board config is load-bearing (losing it
+    breaks all lifecycle resolution), so a write failure must surface."""
+    tmp = path.with_name(path.name + f".{os.getpid()}.tmp")
+    tmp.write_text(text, encoding="utf-8")
+    os.replace(tmp, path)  # atomic on POSIX/NTFS: no partial/truncated config
+
+
 def write_config_keys(main_root: str, keys: "dict[str, str]") -> str:
     """Create COMMITTED_CONFIG with `keys` if it is missing; otherwise upsert
     only those keys inside the frontmatter, preserving every other byte. The
-    single write path for the committed board config. Returns the path."""
+    single write path for the committed board config — atomic so identity is
+    never half-written. Returns the path."""
     path = pathlib.Path(main_root) / COMMITTED_CONFIG
     if not path.exists():
         body = "---\n" + "".join(f"{k}: {v}\n" for k, v in keys.items()) + "---\n"
-        path.write_text(body, encoding="utf-8")
+        _atomic_write(path, body)
         return str(path)
     text = path.read_text(encoding="utf-8")
-    path.write_text(upsert_frontmatter_keys(text, keys), encoding="utf-8")
+    _atomic_write(path, upsert_frontmatter_keys(text, keys))
     return str(path)
 
 
@@ -398,8 +409,14 @@ def read_binding_config(ctx: RepoContext) -> BindingConfig:
     """Read (A) forward binding + (B) backfill high-water from the committed
     config (a .local override is honored for testing, same precedence as
     read_board_config, and ignored when tracked). Never raises: an unset or
-    unrecognized value degrades to None so the caller supplies the default."""
-    for name, source_root, source in (
+    unrecognized value degrades to None so the caller supplies the default.
+
+    The two decisions are orthogonal, so each key is resolved independently:
+    a .local override that sets only one of them must not mask the other in the
+    committed file (a single first-hit-wins scan would, and would then make
+    `verb_backfill` misread `prior` and spuriously re-write the marker)."""
+    layers: "list[tuple[str, dict[str, str]]]" = []
+    for name, source_root, source_label in (
         (LOCAL_CONFIG, ctx.root, "local"),
         (COMMITTED_CONFIG, ctx.main_root, "committed"),
     ):
@@ -408,19 +425,22 @@ def read_binding_config(ctx: RepoContext) -> BindingConfig:
             continue
         if name == LOCAL_CONFIG and _is_tracked(ctx, name):
             continue
-        meta = parse_frontmatter(path.read_text(encoding="utf-8"))
-        raw = meta.get(CONFIG_KEY_FORWARD_BINDING, "")
-        through = meta.get(CONFIG_KEY_BACKFILLED_THROUGH, "")
-        if not raw and not through:
-            continue
-        return BindingConfig(
-            forward_binding=raw if raw in FORWARD_BINDINGS else None,
-            forward_raw=raw,
-            backfilled_through=int(through) if through.isdigit() else None,
-            source=source,
-        )
-    return BindingConfig(forward_binding=None, forward_raw="",
-                         backfilled_through=None, source=None)
+        layers.append((source_label, parse_frontmatter(path.read_text(encoding="utf-8"))))
+
+    def first(key: str) -> "tuple[Optional[str], str]":
+        for source_label, meta in layers:  # local before committed
+            if meta.get(key, ""):
+                return source_label, meta[key]
+        return None, ""
+
+    fb_source, raw = first(CONFIG_KEY_FORWARD_BINDING)
+    bt_source, through = first(CONFIG_KEY_BACKFILLED_THROUGH)
+    return BindingConfig(
+        forward_binding=raw if raw in FORWARD_BINDINGS else None,
+        forward_raw=raw,
+        backfilled_through=int(through) if through.isdigit() else None,
+        source=fb_source or bt_source,
+    )
 
 
 def resolve_mode(board: Optional[BoardConfig], gh_authenticated: bool) -> str:

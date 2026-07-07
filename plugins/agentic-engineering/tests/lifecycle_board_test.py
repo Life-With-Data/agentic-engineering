@@ -615,6 +615,25 @@ class BindingConfigTest(unittest.TestCase):
         self.assertEqual(b.forward_raw, "")
         self.assertIsNone(b.backfilled_through)
 
+    def test_local_override_of_one_key_does_not_mask_the_other(self) -> None:
+        # Orthogonal keys resolve independently: a .local that sets only the
+        # forward binding must NOT hide the committed backfill marker (a single
+        # first-hit-wins scan would, breaking verb_backfill's `prior` read).
+        import tempfile
+        d = tempfile.TemporaryDirectory()
+        self.addCleanup(d.cleanup)
+        root = d.name
+        (Path(root) / lb.COMMITTED_CONFIG).write_text(
+            "---\ngithub_project_owner: acme\ngithub_project_number: 5\n"
+            "github_project_backfilled_through: 40\n---\n", encoding="utf-8")
+        (Path(root) / lb.LOCAL_CONFIG).write_text(
+            "---\ngithub_project_forward_binding: auto-add\n---\n", encoding="utf-8")
+        ctx = lb.RepoContext(root=root, main_root=root, origin_owner="acme",
+                             origin_repo="widget", default_branch="main")
+        b = lb.read_binding_config(ctx)
+        self.assertEqual(b.forward_binding, "auto-add")   # from .local
+        self.assertEqual(b.backfilled_through, 40)         # still seen from committed
+
 
 class AutoAddWorkflowTest(unittest.TestCase):
     def _ctx(self):
