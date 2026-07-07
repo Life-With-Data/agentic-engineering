@@ -5,7 +5,7 @@
 
 A Claude Code plugin built on one idea: **each unit of engineering work should make the next one easier — not harder.**
 
-Most codebases drift the other way. Every feature adds complexity, every shortcut adds debt, and the work gets slower over time. This plugin inverts that by turning a deliberate loop — explore, plan, build, review, and *capture what you learned* — into first-class tooling: **30 agents, 28 commands, and 24 skills** that compound on each other.
+Most codebases drift the other way. Every feature adds complexity, every shortcut adds debt, and the work gets slower over time. This plugin inverts that by turning a deliberate loop — explore, plan, build, review, and *capture what you learned* — into first-class tooling: **30 agents, 26 commands, and 25 skills** that compound on each other.
 
 It works in Claude Code first, and converts to a dozen other AI coding tools (OpenCode, Codex, Cursor, Droid, Gemini, Copilot, and more).
 
@@ -27,10 +27,10 @@ brainstorm → plan → [deepen] → work → review → compound → repeat
 | `/workflows:review` | Multi-agent review before merge; findings become tracked todos |
 | `/workflows:compound` | Capture the solution so the next occurrence is a lookup, not a re-investigation |
 
-Two ways to run the loop without babysitting it:
+Run the loop without babysitting it:
 
-- **`/workflows:orchestrate`** — drives the entire pipeline for you, handling the menial transitions automatically and pausing *only* at the decisions that actually need you (which approach, plan approval, which findings to fix). Think `/goal` for the whole workflow.
-- **`/lfg`** (and **`/slfg`** for swarm parallelism) — runs the loop fully autonomously, end to end, no human in the loop.
+- **`/workflows:orchestrate`** — fully autonomous by default: drives the entire pipeline, delegates implementation to sub-agents and reviews their work, merges once the PR is landable, and surfaces *only* genuine blockers (a material scope change, or something branch protection requires). Built for unattended runs — cron routines, overnight loops.
+- **`/workflows:orchestrate --final-review`** — the same hands-off run, but it pauses once before the merge and presents a review packet for your go. Add `--steer` instead for the classic checkpoint cadence (approach, plan approval, findings triage, merge).
 
 📊 **[See FLOWS.md](plugins/agentic-engineering/FLOWS.md)** for mermaid diagrams of every flow and where the orchestrator pauses for you.
 
@@ -108,7 +108,7 @@ Syncs personal skills from `~/.claude/skills/` (as symlinks, so edits reflect im
 | Component | Count |
 |-----------|-------|
 | Specialized agents | 30 |
-| Commands | 28 |
+| Commands | 26 |
 | Skills | 25 |
 | MCP servers | 1 |
 

@@ -604,11 +604,11 @@ Before finalizing, re-read the brainstorm document and verify:
 mkdir -p docs/plans/
 ```
 
-Use the Write tool to save the complete plan to `docs/plans/YYYY-MM-DD-<type>-<descriptive-name>-plan.md`. This step is mandatory and cannot be skipped — even when running as part of LFG/SLFG or other automated pipelines.
+Use the Write tool to save the complete plan to `docs/plans/YYYY-MM-DD-<type>-<descriptive-name>-plan.md`. This step is mandatory and cannot be skipped — even when running as part of `/workflows:orchestrate` or other automated pipelines.
 
 Confirm: "Plan written to docs/plans/[filename]"
 
-**Pipeline mode:** If invoked from an automated workflow (LFG, SLFG, or any `disable-model-invocation` context), skip all AskUserQuestion calls. Make decisions automatically and proceed to writing the plan without interactive prompts.
+**Pipeline mode:** If invoked from an automated workflow (`/workflows:orchestrate`, or any `disable-model-invocation` context), skip all AskUserQuestion calls. Make decisions automatically and proceed to writing the plan without interactive prompts.
 
 ## Output Format
 
@@ -629,7 +629,7 @@ Examples:
 
 ## Step 7. Create Tracker Issue (MANDATORY)
 
-**This step is a gate, not an option.** Every plan that exits `/workflows:plan` must have `github_issue` recorded in its frontmatter (or the explicit `issue_tracker: none` carve-out). This step runs unconditionally — including in LFG/SLFG/`disable-model-invocation` pipeline mode. Only `AskUserQuestion` calls are skipped in pipeline mode; tracker creation itself still executes.
+**This step is a gate, not an option.** Every plan that exits `/workflows:plan` must have `github_issue` recorded in its frontmatter (or the explicit `issue_tracker: none` carve-out). This step runs unconditionally — including in `/workflows:orchestrate` / `disable-model-invocation` pipeline mode. Only `AskUserQuestion` calls are skipped in pipeline mode; tracker creation itself still executes.
 
 **Resolve the mode first** — run the preflight script and read `integrations.issue_tracker_resolved`:
 

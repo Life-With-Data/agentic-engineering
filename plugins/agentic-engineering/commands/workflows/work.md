@@ -162,7 +162,7 @@ When `verdict == no_board`, the repo has no configured Projects board. Behave as
 | **Orchestrated** ([section](#orchestrated-execution-board-driven)) | Work backed by tracked sub-issues — one or many | You own the board/sub-issue state and drive one subagent per sub-issue, looping each to a terminal state before returning. |
 | **Swarm** ([section](#swarm-mode-optional)) | 5+ independent workstreams needing maximum parallelism | Long-lived teammates self-claim from a shared queue. |
 
-Even a **single** tracked item benefits from Orchestrated Execution — the orchestrator absorbs the retry/verify/unblock loop and returns a finished or verifiably-blocked result, not a half-step. The Inline loop below is the default for plan/spec files — **except when this command runs under `/workflows:orchestrate` in delegate mode (the default; the `--auto` modifier changes only the merge gate)**, where Orchestrated is the default for all inputs: the orchestrator is a reviewer, not an implementer, and delegates every work item to a sub-agent whose diff it verifies before accepting.
+Even a **single** tracked item benefits from Orchestrated Execution — the orchestrator absorbs the retry/verify/unblock loop and returns a finished or verifiably-blocked result, not a half-step. The Inline loop below is the default for plan/spec files — **except when this command runs under `/workflows:orchestrate` in an autonomous mode (its fully-autonomous default, or `--final-review`)**, where Orchestrated is the default for all inputs: the orchestrator is a reviewer, not an implementer, and delegates every work item to a sub-agent whose diff it verifies before accepting.
 
 1. **Task Execution Loop** (board mode — iterate open sub-issues)
 
@@ -313,11 +313,13 @@ Even a **single** tracked item benefits from Orchestrated Execution — the orch
 
    d. **Smoke test before committing**: If the feature has a UI or API endpoint, hit it once manually or via curl to verify it works end-to-end, not just in unit tests.
 
-4. **Consider Reviewer Agents** (Optional)
+4. **Consider Reviewer Agents** (Optional — an *in-session* pre-check, not the review stage)
 
    Use for complex, risky, or large changes. Read agents from `agentic-engineering.local.md` frontmatter (`review_agents`). If no settings file, invoke the `setup` skill to create one.
 
    Run configured agents in parallel with Task tool. Present findings and address critical issues.
+
+   **This is distinct from — and never a substitute for — the mandatory independent `/workflows:review` stage.** These inline agents run in the implementer's own session as an early smell-test. The pipeline's real verification is the separate `/workflows:review` pass that runs on the open PR with *fresh* reviewer sub-agents (not the implementer); that stage is non-optional in every mode, and `land-pr` will not merge a PR it has not seen (land-pr condition 3). Skipping these optional inline agents is fine; skipping the `/workflows:review` stage is not.
 
 5. **Final Validation**
    - No open sub-issues on the parent (board mode), or all TodoWrite items checked (legacy)
@@ -582,7 +584,7 @@ REPORT BACK (your final message = structured result, not prose to a human):
 - Parallelize only file-disjoint sub-issues; otherwise serialize or isolate with the `git-worktree` skill.
 - One sub-issue = one subagent, tightly scoped; subagents never run board/tracker state changes.
 - Discovered work becomes a follow-on sub-issue that gates its parent — never a silent extra.
-- Bound retries (~2), then block and escalate — don't loop forever.
+- Bound retries (~2), then block and escalate — don't loop forever. A retry that makes no strictly-measurable progress (gates still fail the same way, no criterion newly satisfied) is a dry attempt; two dry attempts is the stall bound — the same uniform no-progress rule `/workflows:orchestrate` applies run-wide.
 - Quality gates are mandatory before any sub-issue is closed; the parent's `shipped` comes from the merge.
 
 ---

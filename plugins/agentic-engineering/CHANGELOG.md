@@ -5,6 +5,21 @@ All notable changes to the agentic-engineering plugin will be documented in this
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.2.0] - 2026-07-06
+
+### Removed
+
+- **`/lfg` and `/slfg` commands, and every reference to the optional `ralph-wiggum` continuation loop.** The two straight-line "run these commands in order, don't stop" chains duplicated what `/workflows:orchestrate` already does as a proper reviewer-driven loop, and `ralph-wiggum` was an unbundled external dependency the pipeline leaned on for don't-stop-early behavior. Doubling down on the `/workflows:*` commands as the single autonomy surface: `/workflows:orchestrate --auto` is now the fully-autonomous entry point. Purged the references from `orchestrate.md`, `land-pr`, `merge.md`, `plan.md`, `FLOWS.md`, and both READMEs. Counts: 28→26 commands.
+
+### Changed
+
+- **`/workflows:orchestrate` is now fully autonomous by default.** The default runs the whole pipeline to a merge with **no approval prompts of any kind** — self-answering every intermediate judgment call, merging once the PR is landable, and surfacing *only* genuine blockers (material scope change, branch protection, unresolvable ambiguity). Material scope expansion (redefining WHAT is built) is treated as a genuine blocker, so it still stops the run — that blocker-only floor holds identically in every mode. Added a new **`--final-review`** flag for the same hands-off run with one reinstated pre-merge gate (presents the review packet and waits for your go). The old "delegate pauses once at Final-Review" behavior is now `--final-review`; the old `--auto` is folded into the default (and accepted as an explicit alias). The autonomy dial reads `--careful` > `--steer` > `--final-review` > default (fully autonomous).
+- **The independent `/workflows:review` stage is now explicitly non-skippable in every mode**, including `--auto`. Hardened `land-pr` condition 3 from "the caller's responsibility" to a self-satisfying gate: `land-pr` confirms a review ran this cycle and, if it cannot, runs `/workflows:review` (with fresh reviewer sub-agents) and resolves P1s **before** any merge — a PR is never merged unreviewed. Clarified in `/workflows:work` that its optional inline reviewer agents are an in-session pre-check, never a substitute for that stage.
+
+### Added
+
+- **Uniform run-level no-progress stop.** Replaced the scattered per-stage "~2 attempts" prose with one stagnation mechanism at the orchestrate loop level: a pass makes *progress* only if the board stage advanced or one of {open sub-issues, unresolved review threads, failing required CI checks, open P1 findings} strictly decreased; two consecutive no-progress passes at a stage enters a new `stalled` terminal state and escalates with evidence. Evidence-based, not a clock/iteration/token cap. The existing `land-pr` and `/workflows:work` retries are now documented as instances of this one rule (a retry that shrinks nothing counts toward the bound).
+
 ## [3.1.0] - 2026-07-06
 
 ### Added

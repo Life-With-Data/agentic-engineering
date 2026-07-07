@@ -7,7 +7,7 @@ AI-powered development tools that get smarter with every use. Make each unit of 
 | Component | Count |
 |-----------|-------|
 | Agents | 30 |
-| Commands | 28 |
+| Commands | 26 |
 | Skills | 25 |
 | MCP Servers | 1 |
 
@@ -114,8 +114,6 @@ stub → brainstormed → planned → in_progress → in_review → shipped
 
 | Command | Description |
 |---------|-------------|
-| `/lfg` | Full autonomous engineering workflow |
-| `/slfg` | Full autonomous workflow with swarm mode for parallel execution |
 | `/deepen-plan` | Enhance plans with parallel research agents for each section |
 | `/changelog` | Create engaging changelogs for recent merges |
 | `/create-agent-skill` | Create or edit Claude Code skills |
