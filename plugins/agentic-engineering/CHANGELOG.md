@@ -5,6 +5,12 @@ All notable changes to the agentic-engineering plugin will be documented in this
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.5.4] - 2026-07-07
+
+### Added
+
+- **`tests/setup-recipe.test.ts` — the setup skill's Step 4.5 gitignore recipe is now executed in CI, not just published** (todo 004 from the PR #72 review synthesis; the durability follow-up that PR deferred). The recipe's flags are load-bearing and lived only in markdown, unguarded by the count/frontmatter tests — the exact false-confidence shape docs/solutions/testing-patterns/recorded-fixtures-must-be-load-bearing.md warns about. The test extracts the first fenced bash block after the `## Step 4.5` heading **verbatim** (failing if the heading or block is missing, so doc and test cannot drift — a "simplified" recipe runs as simplified and fails on behavior) and executes it via `bash` in hermetic temp git repos (isolated `GIT_CONFIG_GLOBAL`/`GIT_CONFIG_NOSYSTEM`/`GIT_CEILING_DIRECTORIES`, so a developer's own excludes can't fake a pass) across the six core scenarios: fresh repo run from a subdirectory (entry lands in the **root** `.gitignore`; file ignored and untracked), legacy tracked copy (`tracked=1` detected, entry appended exactly once across a re-run — pinning `--no-index`, without which a tracked path is never reported ignored and every re-run would re-append; the test also asserts plain `check-ignore` fails where `--no-index` passes), pre-existing broader `*.local.md` pattern (byte-identical `.gitignore`, nothing appended), `.gitignore` without a trailing newline (the `tail -c1` repair keeps the last existing pattern intact), non-git directory (silent skip, `root=none`, no `.gitignore` created), and symlinked `.gitignore` (append refused — the PR #72 review guard — link target byte-identical across two runs). The echoed `root=/gitignore=/tracked=` status line is asserted exactly: the SKILL declares it the recipe's only observable output, consumed by the untrack consent gate and Step 5. Mutation-verified before landing: dropping `--no-index`, disabling the symlink guard, or renaming the heading each fails the suite. Also commits `todos/004` (pending → complete). No component changes — counts unchanged.
+
 ## [3.5.3] - 2026-07-07
 
 ### Fixed
