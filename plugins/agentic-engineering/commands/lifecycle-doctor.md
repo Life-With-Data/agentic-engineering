@@ -25,7 +25,7 @@ Group the `checks` array into a table (columns: Check, Status, Detail, Fix) unde
 
 **Repo shape** — `origin`, `issues_enabled`
 
-**Board schema** — `board_config`, `status_options`, `priority_field`, `board_repo_link`
+**Board schema** — `board_config`, `status_options`, `priority_field`, `board_repo_link`, `board_forward_binding`
 
 **Delivery topology** — `default_branch_merges`, `deployments`
 
@@ -60,7 +60,7 @@ This creates one scratch issue, adds it to the board, closes it, asserts the Sta
 - After changing tokens, PAT/App credentials, or CD/deploy wiring
 - Before picking up the first real work item on a newly configured repo (this is the runbook's step 0)
 
-The auto-add-from-repo config and the ready-work saved view have **no API** and are never checked by the doctor — verify both by hand in the Project's UI, following the manual checklist in the setup skill.
+The **forward binding** (how new issues reach the board) is now a recorded decision, so the `board_forward_binding` check verifies it concretely per branch: `workflow-only` PASSes when no orphaned auto-add workflow exists; `auto-add` checks that `.github/workflows/add-to-project.yml` is present (its token secret is write-only, so that one bit stays unverifiable and is called out in the detail — and the separate `board_repo_link` row covers the link); `none` is informational; an unrecognized or unrecorded value WARNs. The one remaining no-API step is the **ready-work saved view** — verify it by hand in the Project's UI, following the setup skill. Backfill (a one-time action, not standing state) is not asserted here; re-run `lifecycle_board.py --backfill` when new un-added issues exist.
 
 ## Notes
 

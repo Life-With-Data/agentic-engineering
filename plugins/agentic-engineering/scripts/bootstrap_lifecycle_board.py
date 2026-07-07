@@ -28,11 +28,17 @@ The whole flow, in order (see the plan's Phase 4 bootstrap bullet):
      would stamp `stub` on reopen, erasing lifecycle position. Verify
      "Item closed" is enabled (WARN if not).
   7b. Link the board to the origin repo (idempotent; non-fatal) so it appears
-     on the repo's Projects tab and can auto-add issues. Projects v2 boards are
-     owned by a user/org — linking is the only repo-level association there is.
-  8. Write/refresh the COMMITTED `agentic-engineering.md` — create with the
-     two board keys if missing, else update only those two keys in-place,
-     preserving all other content byte-for-byte.
+     on the repo's Projects tab. Projects v2 boards are owned by a user/org —
+     linking is the only repo-level association there is. NOTE: linking does not
+     auto-add issues; how NEW issues reach the board is the explicit forward-
+     binding decision recorded in step 8 (issue #64).
+  8. Write/refresh the COMMITTED `agentic-engineering.md` — board identity (two
+     keys) AND the forward-binding decision (`--forward-binding`, default
+     workflow-only) in ONE write, so identity is never recorded without policy.
+     Existing content is preserved byte-for-byte. Backfilling EXISTING issues
+     (decision B) is the SEPARATE `lifecycle_board.py --backfill` command — it
+     is never run here, so bootstrap never mutates issues onto the board
+     unattended.
   9. Scripted probe (--probe, default ON): scratch issue -> board-add ->
      Status=stub -> close -> poll <=60s for the automation to stamp shipped
      -> report PASS/FAIL -> delete the scratch issue.
@@ -513,64 +519,18 @@ def link_repo(project: Project, ctx: "lb.RepoContext", runner: GhRunner) -> dict
 # 8. Committed config write (byte-for-byte preservation of unrelated content)
 # --------------------------------------------------------------------------
 
-def write_committed_config(main_root: str, owner: str, number: int) -> str:
-    """Create agentic-engineering.md with the two board keys if it is missing;
-    otherwise update ONLY those two keys inside the frontmatter, preserving
-    every other byte. Returns the path written."""
-    path = pathlib.Path(main_root) / COMMITTED_CONFIG
+def write_committed_config(main_root: str, owner: str, number: int,
+                           forward_binding: "Optional[str]" = None) -> str:
+    """Create agentic-engineering.md with the board keys if it is missing;
+    otherwise update ONLY those keys inside the frontmatter, preserving every
+    other byte. Board identity and the forward-binding decision (issue #64) are
+    written in ONE call, so a crash can never leave identity without policy.
+    Returns the path written. Delegates to lifecycle_board's shared writer (the
+    single write path for committed config keys)."""
     keys = {"github_project_owner": owner, "github_project_number": str(number)}
-
-    if not path.exists():
-        body = "---\n" + "".join(f"{k}: {v}\n" for k, v in keys.items()) + "---\n"
-        path.write_text(body, encoding="utf-8")
-        return str(path)
-
-    text = path.read_text(encoding="utf-8")
-    path.write_text(_upsert_frontmatter_keys(text, keys), encoding="utf-8")
-    return str(path)
-
-
-def _upsert_frontmatter_keys(text: str, keys: "dict[str, str]") -> str:
-    """Update the given keys inside a leading --- fenced frontmatter block,
-    preserving all other content. If a key is absent it is appended just
-    before the closing fence. If the file has no frontmatter, one is prepended."""
-    # Empty frontmatter (`---\n---\n`) has no inner content, so the general
-    # regex below (which requires a `\n---` before the closing fence) misses it.
-    # Insert the keys between the two fences rather than prepending a 2nd block.
-    empty = re.match(r"^(---[ \t]*\n)(---[ \t]*(?:\n|$))", text)
-    if empty:
-        block = empty.group(1) + "".join(f"{k}: {v}\n" for k, v in keys.items()) + empty.group(2)
-        return block + text[empty.end():]
-
-    m = re.match(r"^(---\s*\n)(.*?)(\n---\s*(?:\n|$))", text, re.DOTALL)
-    if not m:
-        block = "---\n" + "".join(f"{k}: {v}\n" for k, v in keys.items()) + "---\n"
-        return block + text
-
-    open_fence, inner, close_fence = m.group(1), m.group(2), m.group(3)
-    lines = inner.split("\n")
-    remaining = dict(keys)
-    key_line = re.compile(r"^(\s*)([A-Za-z_][\w-]*)(\s*:\s*).*$")
-
-    out_lines: "list[str]" = []
-    for line in lines:
-        km = key_line.match(line)
-        if km and km.group(2) in remaining:
-            indent, key, sep = km.group(1), km.group(2), km.group(3)
-            out_lines.append(f"{indent}{key}{sep}{remaining.pop(key)}")
-        else:
-            out_lines.append(line)
-
-    appended = [f"{k}: {v}" for k, v in remaining.items()]
-    if appended:
-        # Insert appended keys after the last non-empty inner line to avoid a
-        # blank gap, preserving trailing blank lines the author had.
-        insert_at = len(out_lines)
-        while insert_at > 0 and out_lines[insert_at - 1].strip() == "":
-            insert_at -= 1
-        out_lines[insert_at:insert_at] = appended
-
-    return open_fence + "\n".join(out_lines) + close_fence + text[m.end():]
+    if forward_binding is not None:
+        keys[lb.CONFIG_KEY_FORWARD_BINDING] = forward_binding
+    return lb.write_config_keys(main_root, keys)
 
 
 # --------------------------------------------------------------------------
@@ -634,10 +594,22 @@ def _parse_issue_number(stdout: str) -> Optional[int]:
 # --------------------------------------------------------------------------
 
 def bootstrap(ctx: "lb.RepoContext", runner: GhRunner, *, probe: bool = True,
+              forward_binding: "Optional[str]" = None,
               environ: "Optional[dict]" = None) -> dict:
     check_env_overrides(environ)
     version = check_gh_version(runner)
     check_gh_authenticated(runner)
+
+    # Preserve a previously-recorded forward binding on re-bootstrap: only
+    # overwrite it when the caller passed --forward-binding explicitly. First
+    # run with nothing recorded falls back to the workflow-only default. Key off
+    # the RAW recorded value, not the validated enum — a typo'd binding
+    # (`auto_add`) reads back as an invalid enum, and defaulting on it would
+    # silently erase the operator's (malformed but intentional) decision, the
+    # exact thing this preservation exists to prevent. The doctor WARNs on the
+    # malformed value instead.
+    if forward_binding is None:
+        forward_binding = lb.read_binding_config(ctx).forward_raw or lb.DEFAULT_FORWARD_BINDING
 
     project = resolve_or_create_project(ctx, runner)
     status = read_status_field(project, ctx, runner)
@@ -647,7 +619,12 @@ def bootstrap(ctx: "lb.RepoContext", runner: GhRunner, *, probe: bool = True,
     priority = ensure_priority_field(project, ctx, runner)
     workflows = configure_workflows(project, ctx, runner)
     repo_link = link_repo(project, ctx, runner)
-    config_path = write_committed_config(ctx.main_root, ctx.origin_owner, project.number)
+    # Step 8: board identity + the forward-binding decision (A) in one write.
+    # Backfill (B) is a separate, deliberate `lifecycle_board.py --backfill`
+    # command — never run here, so bootstrap never mutates issues onto the board
+    # unattended (CI-safe by construction).
+    config_path = write_committed_config(ctx.main_root, ctx.origin_owner, project.number,
+                                         forward_binding)
 
     option_mapping = _summarize_mapping(status, options, kind)
 
@@ -663,6 +640,7 @@ def bootstrap(ctx: "lb.RepoContext", runner: GhRunner, *, probe: bool = True,
         "workflows": workflows,
         "repo_link": repo_link,
         "config_path": config_path,
+        "forward_binding": forward_binding,
     }
     warnings = list(workflows.get("warnings") or [])
     if repo_link.get("warning"):
@@ -702,6 +680,11 @@ def main(argv: "list[str]") -> int:
     parser.add_argument("--probe-only", action="store_true",
                         help="run ONLY the verification probe against the already-configured "
                              "board (no project mutations) — used by /lifecycle-doctor --live")
+    parser.add_argument("--forward-binding", choices=lb.FORWARD_BINDINGS, default=None,
+                        help="how NEW issues reach the board, recorded in committed config "
+                             "(decision A, issue #64). Omitted: preserve the recorded choice on "
+                             f"re-run, else default {lb.DEFAULT_FORWARD_BINDING}. Backfill of "
+                             "EXISTING issues is the separate `lifecycle_board.py --backfill`.")
     args = parser.parse_args(argv)
     try:
         ctx = lb.repo_context()
@@ -714,7 +697,7 @@ def main(argv: "list[str]") -> int:
             project = Project(number=board.number, id="", created=False)
             print(json.dumps({"ok": True, "probe": run_probe(project, ctx, lb.run_gh)}, indent=2))
             return 0
-        summary = bootstrap(ctx, lb.run_gh, probe=args.probe)
+        summary = bootstrap(ctx, lb.run_gh, probe=args.probe, forward_binding=args.forward_binding)
         print(json.dumps(summary, indent=2))
         return 0
     except BoardError as err:

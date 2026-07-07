@@ -526,6 +526,320 @@ class RetryTimeoutTest(unittest.TestCase):
         self.assertEqual(caught.exception.code, "gh_timeout")
 
 
+def _issue_item(number, repo="acme/widget", type_="Issue"):
+    return {"content": {"type": type_, "number": number, "repository": repo,
+                        "title": f"i{number}"}}
+
+
+class ConfigKeysWriteTest(unittest.TestCase):
+    """write_config_keys / upsert_frontmatter_keys: the single committed-config
+    write path (moved from bootstrap). Byte-preservation + atomicity."""
+
+    def _tmp(self):
+        import tempfile
+        d = tempfile.TemporaryDirectory()
+        self.addCleanup(d.cleanup)
+        return d.name
+
+    def test_creates_file_with_all_keys_in_one_write(self) -> None:
+        root = self._tmp()
+        path = lb.write_config_keys(root, {
+            "github_project_owner": "acme", "github_project_number": "5",
+            lb.CONFIG_KEY_FORWARD_BINDING: "workflow-only"})
+        meta = lb.parse_frontmatter(Path(path).read_text(encoding="utf-8"))
+        self.assertEqual(meta["github_project_owner"], "acme")
+        self.assertEqual(meta["github_project_number"], "5")
+        self.assertEqual(meta[lb.CONFIG_KEY_FORWARD_BINDING], "workflow-only")
+
+    def test_upsert_preserves_body_and_unrelated_keys(self) -> None:
+        text = ("---\ntitle: Cfg\ngithub_project_owner: old\n"
+                "github_project_number: 1\nkeep: me\n---\n\n# Notes\n\nbody\n")
+        out = lb.upsert_frontmatter_keys(text, {
+            "github_project_owner": "acme", lb.CONFIG_KEY_BACKFILLED_THROUGH: "42"})
+        meta = lb.parse_frontmatter(out)
+        self.assertEqual(meta["github_project_owner"], "acme")
+        self.assertEqual(meta["github_project_number"], "1")  # untouched
+        self.assertEqual(meta["keep"], "me")
+        self.assertEqual(meta[lb.CONFIG_KEY_BACKFILLED_THROUGH], "42")
+        self.assertIn("# Notes", out)
+        self.assertIn("body", out)
+
+    def test_updates_every_occurrence_of_a_duplicate_key(self) -> None:
+        # parse_frontmatter is last-wins: a duplicate key left un-updated would
+        # make the write a silent no-op. Both occurrences must become the new value.
+        text = ("---\ngithub_project_owner: old\ngithub_project_number: 1\n"
+                "github_project_owner: older\n---\nbody\n")
+        out = lb.upsert_frontmatter_keys(text, {"github_project_owner": "new"})
+        self.assertEqual(lb.parse_frontmatter(out)["github_project_owner"], "new")
+        self.assertNotIn("older", out)
+
+    def test_crlf_file_keeps_crlf_on_rewritten_lines(self) -> None:
+        # Byte-preservation: a rewritten line must not flip \r\n to bare \n.
+        text = "---\r\ngithub_project_owner: old\r\ngithub_project_number: 1\r\n---\r\nbody\r\n"
+        out = lb.upsert_frontmatter_keys(text, {"github_project_owner": "new"})
+        self.assertIn("github_project_owner: new\r\n", out)
+        self.assertNotIn("github_project_owner: new\n", out.replace("\r\n", "\r\r"))  # no bare LF
+        self.assertEqual(lb.parse_frontmatter(out)["github_project_owner"], "new")
+        self.assertIn("body", out)
+
+    def test_marker_write_only_touches_its_key(self) -> None:
+        # A backfill marker write must not disturb identity or forward binding.
+        root = self._tmp()
+        lb.write_config_keys(root, {"github_project_owner": "acme",
+                                    "github_project_number": "5",
+                                    lb.CONFIG_KEY_FORWARD_BINDING: "auto-add"})
+        lb.write_config_keys(root, {lb.CONFIG_KEY_BACKFILLED_THROUGH: "99"})
+        meta = lb.parse_frontmatter(
+            (Path(root) / lb.COMMITTED_CONFIG).read_text(encoding="utf-8"))
+        self.assertEqual(meta["github_project_owner"], "acme")
+        self.assertEqual(meta[lb.CONFIG_KEY_FORWARD_BINDING], "auto-add")
+        self.assertEqual(meta[lb.CONFIG_KEY_BACKFILLED_THROUGH], "99")
+
+
+class BindingConfigTest(unittest.TestCase):
+    """read_binding_config: enum validation, backfill marker, unset degrade."""
+
+    def _ctx_with(self, body):
+        import tempfile
+        d = tempfile.TemporaryDirectory()
+        self.addCleanup(d.cleanup)
+        (Path(d.name) / lb.COMMITTED_CONFIG).write_text(body, encoding="utf-8")
+        return lb.RepoContext(root=d.name, main_root=d.name, origin_owner="acme",
+                              origin_repo="widget", default_branch="main")
+
+    def test_reads_valid_forward_binding_and_marker(self) -> None:
+        ctx = self._ctx_with(
+            "---\ngithub_project_owner: acme\ngithub_project_number: 5\n"
+            "github_project_forward_binding: auto-add\n"
+            "github_project_backfilled_through: 42\n---\n")
+        b = lb.read_binding_config(ctx)
+        self.assertEqual(b.forward_binding, "auto-add")
+        self.assertEqual(b.backfilled_through, 42)
+        self.assertEqual(b.source, "committed")
+
+    def test_unrecognized_forward_binding_degrades_to_none_but_keeps_raw(self) -> None:
+        ctx = self._ctx_with(
+            "---\ngithub_project_owner: acme\ngithub_project_number: 5\n"
+            "github_project_forward_binding: bogus\n---\n")
+        b = lb.read_binding_config(ctx)
+        self.assertIsNone(b.forward_binding)   # not a valid enum
+        self.assertEqual(b.forward_raw, "bogus")  # preserved for the doctor WARN
+
+    def test_unset_when_only_identity_present(self) -> None:
+        ctx = self._ctx_with(
+            "---\ngithub_project_owner: acme\ngithub_project_number: 5\n---\n")
+        b = lb.read_binding_config(ctx)
+        self.assertIsNone(b.forward_binding)
+        self.assertEqual(b.forward_raw, "")
+        self.assertIsNone(b.backfilled_through)
+
+    def test_local_override_of_one_key_does_not_mask_the_other(self) -> None:
+        # Orthogonal keys resolve independently: a .local that sets only the
+        # forward binding must NOT hide the committed backfill marker (a single
+        # first-hit-wins scan would, breaking verb_backfill's `prior` read).
+        import tempfile
+        d = tempfile.TemporaryDirectory()
+        self.addCleanup(d.cleanup)
+        root = d.name
+        (Path(root) / lb.COMMITTED_CONFIG).write_text(
+            "---\ngithub_project_owner: acme\ngithub_project_number: 5\n"
+            "github_project_backfilled_through: 40\n---\n", encoding="utf-8")
+        (Path(root) / lb.LOCAL_CONFIG).write_text(
+            "---\ngithub_project_forward_binding: auto-add\n---\n", encoding="utf-8")
+        ctx = lb.RepoContext(root=root, main_root=root, origin_owner="acme",
+                             origin_repo="widget", default_branch="main")
+        b = lb.read_binding_config(ctx)
+        self.assertEqual(b.forward_binding, "auto-add")   # from .local
+        self.assertEqual(b.backfilled_through, 40)         # still seen from committed
+
+
+class AutoAddWorkflowTest(unittest.TestCase):
+    def _ctx(self):
+        import tempfile
+        d = tempfile.TemporaryDirectory()
+        self.addCleanup(d.cleanup)
+        return lb.RepoContext(root=d.name, main_root=d.name, origin_owner="acme",
+                              origin_repo="widget", default_branch="main"), Path(d.name)
+
+    def test_finds_add_to_project_workflow(self) -> None:
+        ctx, root = self._ctx()
+        wf = root / ".github" / "workflows"
+        wf.mkdir(parents=True)
+        (wf / "add-to-project.yml").write_text(
+            "on: issues\njobs:\n  a:\n    steps:\n      - uses: actions/add-to-project@v2\n",
+            encoding="utf-8")
+        self.assertEqual(lb.find_auto_add_workflow(ctx), ".github/workflows/add-to-project.yml")
+
+    def test_none_when_no_workflows_dir(self) -> None:
+        ctx, _ = self._ctx()
+        self.assertIsNone(lb.find_auto_add_workflow(ctx))
+
+    def test_none_when_workflow_unrelated(self) -> None:
+        ctx, root = self._ctx()
+        wf = root / ".github" / "workflows"
+        wf.mkdir(parents=True)
+        (wf / "ci.yml").write_text("on: push\njobs: {}\n", encoding="utf-8")
+        self.assertIsNone(lb.find_auto_add_workflow(ctx))
+
+
+class ForwardBindingCheckTest(unittest.TestCase):
+    """The pure per-branch doctor verdict (evaluate_forward_binding_check)."""
+
+    def _binding(self, forward=None, raw="", through=None):
+        return lb.BindingConfig(forward_binding=forward, forward_raw=raw,
+                                backfilled_through=through, source="committed")
+
+    def test_unset_warns(self) -> None:
+        status, _detail, fix = lb.evaluate_forward_binding_check(self._binding(), None)
+        self.assertEqual(status, "WARN")
+        self.assertIn(lb.CONFIG_KEY_FORWARD_BINDING, fix)
+
+    def test_unrecognized_value_warns(self) -> None:
+        status, detail, _fix = lb.evaluate_forward_binding_check(
+            self._binding(forward=None, raw="bogus"), None)
+        self.assertEqual(status, "WARN")
+        self.assertIn("bogus", detail)
+
+    def test_workflow_only_passes_without_orphan(self) -> None:
+        status, _d, _f = lb.evaluate_forward_binding_check(
+            self._binding(forward="workflow-only"), None)
+        self.assertEqual(status, "PASS")
+
+    def test_workflow_only_warns_on_orphaned_auto_add_file(self) -> None:
+        status, detail, _f = lb.evaluate_forward_binding_check(
+            self._binding(forward="workflow-only"), ".github/workflows/add-to-project.yml")
+        self.assertEqual(status, "WARN")
+        self.assertIn("add-to-project.yml", detail)
+
+    def test_auto_add_warns_when_file_missing(self) -> None:
+        status, _d, fix = lb.evaluate_forward_binding_check(
+            self._binding(forward="auto-add"), None)
+        self.assertEqual(status, "WARN")
+        self.assertIn("#63", fix)
+
+    def test_auto_add_passes_with_file_and_flags_secret_unverifiable(self) -> None:
+        status, detail, _f = lb.evaluate_forward_binding_check(
+            self._binding(forward="auto-add"), ".github/workflows/add-to-project.yml")
+        self.assertEqual(status, "PASS")
+        self.assertIn("secret", detail.lower())  # the write-only-secret caveat is explicit
+
+    def test_none_passes(self) -> None:
+        status, _d, _f = lb.evaluate_forward_binding_check(self._binding(forward="none"), None)
+        self.assertEqual(status, "PASS")
+
+
+class BackfillVerbTest(unittest.TestCase):
+    """verb_backfill: idempotent add of open issues not on the board, with a
+    contiguous, resumable high-water mark. The 50-cap bug guard lives here."""
+
+    def setUp(self) -> None:
+        import tempfile
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        root = self._tmp.name
+        (Path(root) / lb.COMMITTED_CONFIG).write_text(
+            "---\ngithub_project_owner: acme\ngithub_project_number: 1\n---\n",
+            encoding="utf-8")
+        self.ctx = lb.RepoContext(root=root, main_root=root, origin_owner="acme",
+                                  origin_repo="widget", default_branch="main")
+
+    def _marker(self):
+        return lb.read_binding_config(self.ctx).backfilled_through
+
+    def test_adds_missing_skips_present_and_records_marker(self) -> None:
+        board_items = {"items": [_issue_item(1), _issue_item(2)]}
+        repo_issues = [{"number": n, "url": f"https://github.com/acme/widget/issues/{n}"}
+                       for n in (1, 2, 3, 4)]
+        runner = FakeRunner([
+            (["project", "item-list", "1", "--owner", "acme"], _ok(json.dumps(board_items))),
+            (["issue", "list", "--repo", "acme/widget"], _ok(json.dumps(repo_issues))),
+            (["project", "item-add", "1", "--owner", "acme"], _ok(json.dumps({"id": "i3"}))),
+            (["project", "item-add", "1", "--owner", "acme"], _ok(json.dumps({"id": "i4"}))),
+        ])
+        result = lb.verb_backfill(self.ctx, runner)
+        self.assertEqual(result["added"], [3, 4])
+        self.assertEqual(sorted(result["already_present"]), [1, 2])
+        self.assertEqual(result["counts"], {"added": 2, "already_present": 2, "failed": 0})
+        self.assertEqual(result["high_water"], 4)
+        self.assertTrue(result["marker_written"])
+        self.assertEqual(self._marker(), 4)  # round-trips through the reader
+
+    def test_excludes_prs_and_foreign_items_from_membership(self) -> None:
+        # A PR-typed and a foreign-repo board item must NOT count as present, so
+        # the matching repo issue (if any) is still (re-)added harmlessly.
+        board_items = {"items": [
+            _issue_item(1),
+            _issue_item(2, type_="PullRequest"),      # dropped
+            _issue_item(3, repo="other/repo"),         # foreign, dropped
+        ]}
+        repo_issues = [{"number": 1, "url": "u1"}, {"number": 5, "url": "u5"}]
+        runner = FakeRunner([
+            (["project", "item-list", "1", "--owner", "acme"], _ok(json.dumps(board_items))),
+            (["issue", "list", "--repo", "acme/widget"], _ok(json.dumps(repo_issues))),
+            (["project", "item-add", "1", "--owner", "acme"], _ok(json.dumps({"id": "i5"}))),
+        ])
+        result = lb.verb_backfill(self.ctx, runner)
+        self.assertEqual(result["already_present"], [1])
+        self.assertEqual(result["added"], [5])
+
+    def test_enumerates_past_fifty_no_silent_cap(self) -> None:
+        # The latent bug this whole change guards against: a backfill built on
+        # _item_list (cap 50) would silently drop issues 51+. 55 open issues,
+        # empty board → all 55 added.
+        n = 55
+        repo_issues = [{"number": i, "url": f"u{i}"} for i in range(1, n + 1)]
+        responses = [
+            (["project", "item-list", "1", "--owner", "acme"], _ok(json.dumps({"items": []}))),
+            (["issue", "list", "--repo", "acme/widget"], _ok(json.dumps(repo_issues))),
+        ]
+        responses += [(["project", "item-add", "1", "--owner", "acme"],
+                       _ok(json.dumps({"id": f"i{i}"}))) for i in range(1, n + 1)]
+        runner = FakeRunner(responses)
+        result = lb.verb_backfill(self.ctx, runner)
+        self.assertEqual(result["counts"]["added"], n)
+        self.assertEqual(result["high_water"], n)
+        # And the enumeration used a >50 limit, not READY_WORK_LIMIT.
+        list_call = next(c for c in runner.calls if c[:1] == ["issue"])
+        self.assertIn(str(lb.BACKFILL_ISSUE_LIMIT), list_call)
+        self.assertNotIn(str(lb.READY_WORK_LIMIT), list_call)
+
+    def test_partial_failure_keeps_high_water_contiguous(self) -> None:
+        # Issue 3's add fails; the mark advances only over the contiguous 1..2
+        # prefix so "everything <= mark is present" holds and a re-run resumes.
+        repo_issues = [{"number": i, "url": f"u{i}"} for i in (1, 2, 3, 4, 5)]
+        runner = FakeRunner([
+            (["project", "item-list", "1", "--owner", "acme"], _ok(json.dumps({"items": []}))),
+            (["issue", "list", "--repo", "acme/widget"], _ok(json.dumps(repo_issues))),
+            (["project", "item-add", "1", "--owner", "acme"], _ok(json.dumps({"id": "i1"}))),
+            (["project", "item-add", "1", "--owner", "acme"], _ok(json.dumps({"id": "i2"}))),
+            (["project", "item-add", "1", "--owner", "acme"],
+             subprocess.CompletedProcess([], 1, "", "boom")),
+            (["project", "item-add", "1", "--owner", "acme"], _ok(json.dumps({"id": "i4"}))),
+            (["project", "item-add", "1", "--owner", "acme"], _ok(json.dumps({"id": "i5"}))),
+        ])
+        result = lb.verb_backfill(self.ctx, runner)
+        self.assertEqual(sorted(result["added"]), [1, 2, 4, 5])
+        self.assertEqual([f["issue"] for f in result["failed"]], [3])
+        self.assertEqual(result["high_water"], 2)   # contiguous prefix only
+        self.assertEqual(self._marker(), 2)
+
+    def test_marker_not_regressed_when_all_present(self) -> None:
+        # Second run over a fully-backfilled board: no adds, marker stays put.
+        (Path(self.ctx.main_root) / lb.COMMITTED_CONFIG).write_text(
+            "---\ngithub_project_owner: acme\ngithub_project_number: 1\n"
+            "github_project_backfilled_through: 2\n---\n", encoding="utf-8")
+        board_items = {"items": [_issue_item(1), _issue_item(2)]}
+        repo_issues = [{"number": 1, "url": "u1"}, {"number": 2, "url": "u2"}]
+        runner = FakeRunner([
+            (["project", "item-list", "1", "--owner", "acme"], _ok(json.dumps(board_items))),
+            (["issue", "list", "--repo", "acme/widget"], _ok(json.dumps(repo_issues))),
+        ])
+        result = lb.verb_backfill(self.ctx, runner)
+        self.assertEqual(result["added"], [])
+        self.assertFalse(result["marker_written"])  # 2 is not > prior 2
+        self.assertEqual(self._marker(), 2)
+
+
 class FixtureReplayTest(unittest.TestCase):
     """Recorded gh fixtures are load-bearing: each is replayed through its real
     engine consumer so a shape drift in a re-record breaks a test, not prod."""
@@ -567,6 +881,21 @@ class FixtureReplayTest(unittest.TestCase):
         data = self._load("pr_view_merged.json")
         self.assertEqual(data["state"], "MERGED")
         self.assertIsNotNone(data["mergedAt"])
+
+    def test_project_item_list_issue_numbers_parse_from_recorded_shape(self) -> None:
+        # Load-bearing: the recorded item-list is fed through _origin_issue_number
+        # (the exact consumer verb_backfill's _board_issue_numbers uses). A future
+        # re-record where content.repository stops being a plain string, or type
+        # is renamed, breaks THIS test — not a live backfill. The fixture must be
+        # non-empty for this to pin anything.
+        payload = self._load("project_item_list.json")
+        items = payload["items"]
+        self.assertGreater(len(items), 0, "fixture must be non-empty to pin the shape")
+        numbers = [lb._origin_issue_number(i, "aagnone3/agentic-engineering") for i in items]
+        self.assertTrue(all(isinstance(n, int) for n in numbers),
+                        "every recorded Issue item must resolve to an int number")
+        # content.repository is a plain string in item-list output (not {nameWithOwner}).
+        self.assertIsInstance(items[0]["content"]["repository"], str)
 
 
 if __name__ == "__main__":

@@ -5,6 +5,15 @@ All notable changes to the agentic-engineering plugin will be documented in this
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.3.0] - 2026-07-06
+
+### Added
+
+- **The repo→board binding is now an explicit, recorded decision** (issue #64). Bootstrap used to leave "configure auto-add" as an orphaned manual UI step with no explanation and a doctor check that could only say "verify by hand." Projects v2 boards are *materialized collections, not live queries* — creating an issue does not put it on any board, and GitHub's auto-add is **forward-only** (never backfills). Setup now records **two orthogonal decisions**, treated independently (backfill is offered under *any* forward choice, never gated behind auto-add):
+  - **(A) Forward binding — how NEW issues reach the board.** `bootstrap_lifecycle_board.py` gained `--forward-binding {workflow-only,auto-add,none}` (default `workflow-only`), written into committed `agentic-engineering.md` as `github_project_forward_binding` **in the same write as board identity** (a crash can never leave identity without policy). Omitting the flag **preserves a prior choice on re-run** rather than resetting it. `/lifecycle-doctor` replaces its uncheckable "verify by hand" line with a concrete per-branch `board_forward_binding` check: `workflow-only` PASSes when no orphaned auto-add workflow exists; `auto-add` verifies `.github/workflows/add-to-project.yml` is present and the board is repo-linked (its token secret is write-only, so that one bit is explicitly called out as unverifiable); `none` is informational; an unrecognized/unrecorded value WARNs. (The auto-add workflow *scaffolding* itself remains issue #63's mechanism — this change records and verifies the decision.)
+  - **(B) Backfill — put EXISTING issues on the board now.** New `lifecycle_board.py --backfill` verb: a one-time, idempotent add of every open origin-repo issue not already on the board, recording a `github_project_backfilled_through` high-water mark so a re-run adds only what a partial run missed. Enumerates **repo issues via paginated `gh issue list`** — deliberately *not* the 50-capped ready-work path, which would have silently dropped issues 51+ — excludes PRs and closed issues, dedupes against board membership with one read (not N+1), tolerates partial failure (one failed add never aborts the loop), and advances an advisory high-water marker only over a failure-free prefix (the marker gates whether setup re-offers the backfill; a re-run always recomputes the full open-vs-board difference). Never run by bootstrap, so setup never mutates issues onto the board unattended (CI-safe by construction).
+  - Internals: the committed-config writer (`upsert_frontmatter_keys` / `write_config_keys`) moved to `lifecycle_board.py` as the single write path shared by bootstrap and the backfill marker; the forward-binding doctor verdict is a pure, unit-tested helper (`evaluate_forward_binding_check`). No new agents/commands/skills — counts unchanged.
+
 ## [3.2.0] - 2026-07-06
 
 ### Removed
