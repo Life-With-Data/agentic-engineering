@@ -5,6 +5,12 @@ All notable changes to the agentic-engineering plugin will be documented in this
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.5.1] - 2026-07-07
+
+### Fixed
+
+- **A git-tracked `agentic-engineering.local.md` can no longer pin the issue tracker** — closes the gap the issue #62 plan deferred as out of scope. `lifecycle_board.py` already ignores a *tracked* `.local.md` for board identity and binding config (a tracked file rides PRs, so honoring it would let a PR redirect the lifecycle), but `workflow-repo-preflight.py`'s `read_local_config_tracker` still read `issue_tracker:` from a tracked copy — so a PR could commit `issue_tracker: none` and silently downgrade every workflow command out of board gating. The preflight now applies the same gate (`git ls-files --error-unmatch`): a tracked `.local.md` is skipped with a stderr warning and resolution falls back to auto-detect. Untracked (gitignored) overrides and invalid-value surfacing are unchanged; unit tests mirror `lifecycle_board_test`'s `test_tracked_local_config_is_ignored`.
+
 ## [3.5.0] - 2026-07-07
 
 ### Added

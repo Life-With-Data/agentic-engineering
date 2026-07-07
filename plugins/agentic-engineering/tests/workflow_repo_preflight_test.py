@@ -7,6 +7,7 @@ hyphenated, so the module loads via importlib from its path.
 from __future__ import annotations
 
 import importlib.util
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -87,6 +88,32 @@ class ResolveIssueTrackerTest(unittest.TestCase):
         valid, invalid = preflight.read_local_config_tracker(self.repo)
         self.assertIsNone(valid)
         self.assertIsNone(invalid)
+
+    def test_tracked_local_config_is_ignored(self) -> None:
+        # A .local.md committed to git (would ride a PR) must not pin the
+        # tracker — `issue_tracker: none` in a PR would bypass board gates.
+        # Mirrors lifecycle_board's read_board_config tracked-file gate.
+        subprocess.run(["git", "-C", self.repo, "init", "-q"], check=True,
+                       capture_output=True, text=True)
+        _repo_with_config(self.repo, "issue_tracker: none")
+        subprocess.run(["git", "-C", self.repo, "add", "agentic-engineering.local.md"],
+                       check=True, capture_output=True, text=True)
+        info = self._resolve(board_configured=True, gh_authenticated=True)
+        self.assertEqual(info["resolved"], "github-project")
+        self.assertEqual(info["source"], "auto-detect")
+        self.assertIsNone(info["local_override"])
+        self.assertIsNone(info["local_override_invalid"])
+
+    def test_untracked_local_config_in_git_repo_is_honored(self) -> None:
+        # The gate keys on *tracked*, not on "a git repo exists": an
+        # untracked (gitignored) .local.md is the supported layout and must
+        # keep winning over every auto-detect signal.
+        subprocess.run(["git", "-C", self.repo, "init", "-q"], check=True,
+                       capture_output=True, text=True)
+        _repo_with_config(self.repo, "issue_tracker: none")
+        info = self._resolve(board_configured=True, gh_authenticated=True)
+        self.assertEqual(info["resolved"], "none")
+        self.assertEqual(info["source"], "agentic-engineering.local.md")
 
     def test_valid_trackers_are_the_lifecycle_modes(self) -> None:
         self.assertEqual(preflight.VALID_TRACKERS, {"github-project", "github", "none"})
