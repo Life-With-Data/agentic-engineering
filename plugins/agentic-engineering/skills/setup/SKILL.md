@@ -197,6 +197,11 @@ subagents need to resolve the same board identity and binding.
 >
 > `/lifecycle-doctor`'s `board_forward_binding` check goes WARN→PASS once the workflow file exists
 > (the secret itself is write-only and unverifiable from the CLI).
+>
+> **Hardening:** the scaffolded workflow triggers on `issues: [opened]` only — do **not** add a
+> `pull_request_target` trigger to it. That workflow holds a Projects-write PAT, and
+> `pull_request_target` runs with secrets in scope against fork-controlled refs (the Pwn Request
+> class). Keep it issue-triggered with no `run:` steps.
 
 **(B) Backfill — put EXISTING issues on the board now.** This is **independent** of (A): auto-add
 never backfills, so even with auto-add a board is never guaranteed to reflect the full repo, and a

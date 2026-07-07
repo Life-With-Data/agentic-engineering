@@ -536,16 +536,23 @@ def link_repo(project: Project, ctx: "lb.RepoContext", runner: GhRunner) -> dict
 # board_forward_binding check WARN -> PASS.
 # --------------------------------------------------------------------------
 
-def _resolve_owner_url_segment(ctx: "lb.RepoContext", runner: GhRunner) -> str:
-    """`users` for a user-owned board, `orgs` for an org-owned one — the
-    add-to-project project-url segment must match the owner type exactly (the
-    action does not normalize). The /users/{login} REST endpoint resolves BOTH
-    account types and returns a `type` discriminator, so one call covers both;
-    default to `users` if the type can't be read."""
+def _resolve_owner_url_segment(ctx: "lb.RepoContext", runner: GhRunner) -> "tuple[str, Optional[str]]":
+    """Return (`users`|`orgs`, warning). The add-to-project project-url segment
+    must match the owner type exactly (the action does not normalize). The
+    /users/{login} REST endpoint resolves BOTH account types and returns a `type`
+    discriminator, so one call covers both. A FAILED lookup is indistinguishable
+    from a user account, so on failure we default to `users` **and surface a
+    warning** — silently guessing `users` for an org would scaffold a project-url
+    the action rejects days later in a downstream Actions log."""
     result = runner(["api", f"users/{ctx.origin_owner}", "--jq", ".type"])
-    if result.returncode == 0 and result.stdout.strip() == "Organization":
-        return "orgs"
-    return "users"
+    if result.returncode == 0:
+        kind = result.stdout.strip()
+        return ("orgs" if kind == "Organization" else "users"), None
+    return "users", (
+        f"could not resolve the owner type for {ctx.origin_owner!r} "
+        f"({result.stderr.strip()[:120]}) — the scaffolded project-url assumes a USER board "
+        f"(https://github.com/users/...); if {ctx.origin_owner!r} is an organization, change the "
+        "segment to `orgs`")
 
 
 def _resolve_action_ref(runner: GhRunner) -> "tuple[str, str]":
@@ -563,10 +570,21 @@ def _resolve_action_ref(runner: GhRunner) -> "tuple[str, str]":
 def render_add_to_project_workflow(project_url: str, action_sha: str, action_ref: str) -> str:
     """The hardened workflow YAML: permissions:{} at both levels (the PAT does
     the write, GITHUB_TOKEN needs nothing), SHA-pinned action, and an inline
-    guardrail forbidding future run: steps that interpolate issue content."""
+    guardrail forbidding future run: steps that interpolate issue content.
+
+    Validate the interpolated action pin at this boundary so the safety does not
+    depend on caller discipline: the SHA must be a full 40-hex commit (never a
+    moving tag), and the human ref must be a single tame token (it lands in a
+    YAML comment — a newline would inject a line)."""
+    if not re.fullmatch(r"[0-9a-f]{40}", action_sha):
+        raise ValueError(f"action_sha must be a full 40-hex commit SHA, got {action_sha!r}")
+    if not re.fullmatch(r"[\w.\-/() ]+", action_ref):
+        raise ValueError(f"action_ref has unsafe characters for a YAML comment: {action_ref!r}")
     return f"""\
 # Auto-adds newly opened issues to the lifecycle Projects v2 board.
 # Scaffolded by agentic-engineering bootstrap (forward binding = auto-add).
+# Forward-only: fires on issue `opened`; it does not re-add reopened or
+# transferred issues (use `lifecycle_board.py --backfill` for existing issues).
 # One manual step: add a repo secret {ADD_TO_PROJECT_SECRET} (see the setup skill).
 # SECURITY: do NOT add `run:` steps that interpolate ${{{{ github.event.issue.* }}}}
 # — that reintroduces script injection. This job runs no untrusted code.
@@ -612,7 +630,10 @@ def _ensure_dependabot(ctx: "lb.RepoContext") -> dict:
             text = path.read_text(encoding="utf-8")
         except OSError:
             pass
-        if "github-actions" in text:
+        # Match the ecosystem in KEY position, not a raw substring — a bare
+        # "github-actions" in a comment or an npm directory path would otherwise
+        # read as "already covered" and silently skip the wiring we need.
+        if re.search(r'(?m)^\s*-?\s*package-ecosystem:\s*["\']?github-actions', text):
             return {"created": False, "already_covers_actions": True, "warning": None}
         return {"created": False, "already_covers_actions": False,
                 "warning": (f"{DEPENDABOT_FILENAME} exists but has no github-actions ecosystem — "
@@ -630,14 +651,20 @@ def _ensure_dependabot(ctx: "lb.RepoContext") -> dict:
 def scaffold_add_to_project_workflow(project: Project, ctx: "lb.RepoContext",
                                      runner: GhRunner) -> dict:
     """Write .github/workflows/add-to-project.yml (+ ensure dependabot) unless the
-    workflow already exists. Idempotent + non-fatal, mirroring link_repo."""
+    workflow already exists. Idempotent + non-fatal, mirroring link_repo.
+
+    The workflow/dependabot files are repo content committed on the working
+    branch, so they go to ctx.root (the worktree) — the same tree
+    lifecycle_board.find_auto_add_workflow scans, so the doctor agrees. This is
+    deliberately NOT ctx.main_root (where the shared board-identity config lives,
+    resolved from the git-common-dir)."""
     path = pathlib.Path(ctx.root) / WORKFLOW_FILENAME
     if path.exists():
         return {"scaffolded": False, "already_exists": True, "path": str(path),
                 "dependabot": {"created": False, "already_covers_actions": None, "warning": None},
                 "warning": None}
 
-    segment = _resolve_owner_url_segment(ctx, runner)
+    segment, segment_warning = _resolve_owner_url_segment(ctx, runner)
     project_url = f"https://github.com/{segment}/{ctx.origin_owner}/projects/{project.number}"
     action_sha, action_ref = _resolve_action_ref(runner)
     try:
@@ -652,7 +679,8 @@ def scaffold_add_to_project_workflow(project: Project, ctx: "lb.RepoContext",
     dependabot = _ensure_dependabot(ctx)
     return {"scaffolded": True, "already_exists": False, "path": str(path),
             "project_url": project_url, "action_ref": f"{action_sha} ({action_ref})",
-            "secret_name": ADD_TO_PROJECT_SECRET, "dependabot": dependabot, "warning": None}
+            "secret_name": ADD_TO_PROJECT_SECRET, "dependabot": dependabot,
+            "warning": segment_warning}
 
 
 # --------------------------------------------------------------------------

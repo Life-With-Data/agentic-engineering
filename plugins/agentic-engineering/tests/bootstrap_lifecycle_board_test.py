@@ -746,6 +746,45 @@ class ScaffoldAutoAddTest(unittest.TestCase):
         self.assertTrue(result["already_covers_actions"])
         self.assertIsNone(result["warning"])
 
+    def test_dependabot_comment_mention_is_not_treated_as_covered(self) -> None:
+        # A bare "github-actions" in a comment (real ecosystem = npm) must NOT
+        # read as covered — that would silently skip the wiring.
+        ctx, root = self._ctx()
+        dep = root / bs.DEPENDABOT_FILENAME
+        dep.parent.mkdir(parents=True)
+        dep.write_text("version: 2\nupdates:\n  # TODO maybe github-actions later\n"
+                       "  - package-ecosystem: npm\n    directory: /\n", encoding="utf-8")
+        result = bs._ensure_dependabot(ctx)
+        self.assertFalse(result["already_covers_actions"])
+        self.assertIsNotNone(result["warning"])
+
+    def test_owner_type_unresolved_surfaces_a_warning(self) -> None:
+        ctx, _root = self._ctx()
+        seg, warning = bs._resolve_owner_url_segment(ctx, FakeRunner([
+            (["api", "users/acme", "--jq", ".type"], _fail("HTTP 503")),
+        ]))
+        self.assertEqual(seg, "users")           # safe default
+        self.assertIsNotNone(warning)            # but the ambiguity is visible
+        self.assertIn("organization", warning.lower())
+
+    def test_scaffold_folds_owner_type_warning_into_result(self) -> None:
+        ctx, _root = self._ctx()
+        project = bs.Project(number=5, id="P", created=True)
+        runner = FakeRunner([
+            (["api", "users/acme", "--jq", ".type"], _fail("HTTP 503")),
+            (["api", "repos/actions/add-to-project/commits/v2", "--jq", ".sha"], _ok(self._SHA)),
+        ])
+        result = bs.scaffold_add_to_project_workflow(project, ctx, runner)
+        self.assertTrue(result["scaffolded"])
+        self.assertIsNotNone(result["warning"])  # segment-unresolved warning propagated
+
+    def test_render_rejects_non_sha_and_unsafe_ref(self) -> None:
+        with self.assertRaises(ValueError):
+            bs.render_add_to_project_workflow("https://github.com/users/a/projects/1", "v2", "v2")
+        with self.assertRaises(ValueError):
+            bs.render_add_to_project_workflow(
+                "https://github.com/users/a/projects/1", self._SHA, "v2\ninjected: true")
+
 
 class ProbeTest(unittest.TestCase):
     """run_probe calls lifecycle_board.verb_set_status, which reads the
