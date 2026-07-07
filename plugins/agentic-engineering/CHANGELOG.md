@@ -5,6 +5,12 @@ All notable changes to the agentic-engineering plugin will be documented in this
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.5.0] - 2026-07-07
+
+### Added
+
+- **`block-slack-webhook` secret-hygiene guard hook, ported from `agent-leverage`** (PreToolUse — Bash + Write/Edit/MultiEdit, wired in `plugin.json`, with a unit test). Completes the agent-leverage guard cluster: the prior ports (`block-no-verify`, `prevent-main-commit`, `check-node-version`, `block-beads-jsonl-stage`) cover git and env hygiene, but the plugin had **no guard against committing a live secret**. A Slack incoming-webhook URL (`hooks.slack.com/services/...`) is a credential; hardcoding one into code, CI config, or a `curl` leaks it into git history and build logs. The hook blocks that on the unambiguous host+path — so the Slack *app* (`api.slack.com` / `chat.postMessage` / MCP tooling) is never blocked — and exempts prose (`.md`/`.mdx`/`.txt`/…) and files under `hooks/`/`scripts/` that merely *describe* the anti-pattern. The block message points to the correct alternative: read the webhook from an env var / secret manager, or send through a connected Slack app. Generalized from agent-leverage's repo-specific version (removed references to that repo's internal notification code paths). No new agents/commands/skills — counts unchanged.
+
 ## [3.4.0] - 2026-07-07
 
 ### Added

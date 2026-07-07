@@ -42,6 +42,29 @@ mentioning "merge main" is fine), and a branch merely *named* like `main`
 
 **Correct alternative:** `git checkout -b <type>/<description>`, then open a PR.
 
+## `block-slack-webhook.py` — PreToolUse (Bash, Write, Edit, MultiEdit)
+
+**Blocks** introducing a Slack *incoming webhook* URL
+(`hooks.slack.com/services/...`) into a Bash command (a `curl`/fetch that posts
+to it) or into a file (Write/Edit/MultiEdit that writes the URL into code or
+config).
+
+**Why:** A Slack incoming-webhook URL **is a live credential** — anyone holding
+it can post to the channel. Hardcoding one leaks a secret into git history and
+build logs, where it is hard to fully revoke, and it fragments notification
+wiring away from a single authenticated code path. This is the plugin's
+secret-hygiene guardrail.
+
+**Precision:** It fires only on the unambiguous incoming-webhook host+path, so
+the Slack *app* (`api.slack.com`, `chat.postMessage`, the Slack MCP tooling) is
+never blocked. Documentation files (`.md`, `.mdx`, `.markdown`, `.txt`, `.rst`)
+and files under `hooks/`/`scripts/` may *name* the host — prose that describes
+the anti-pattern is exempt, mirroring the other guards here.
+
+**Correct alternative:** read the webhook from an environment variable / secret
+manager instead of inlining it, or send through a connected Slack app / the
+Slack MCP tooling (`chat.postMessage`).
+
 ## `plan-tracker-guard.py` — Stop
 
 **Blocks** turn termination if a plan file (`docs/plans/*.md`) modified during
@@ -66,6 +89,7 @@ Automated regression tests live in [`../tests/`](../tests) and run in CI via
 
 - [`block_no_verify_test.py`](../tests/block_no_verify_test.py)
 - [`prevent_main_commit_test.py`](../tests/prevent_main_commit_test.py)
+- [`block_slack_webhook_test.py`](../tests/block_slack_webhook_test.py)
 - [`plan_tracker_guard_test.py`](../tests/plan_tracker_guard_test.py)
 
 These pin the tricky false-positive / false-negative edges (prose that mentions
