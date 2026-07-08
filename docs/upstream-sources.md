@@ -69,6 +69,16 @@ Re-adoption after an upstream change repeats the same gate — adopting v1 of a
 component confers no trust on v2.
 -->
 
+## coreyhaines31/marketingskills
+
+- repo: https://github.com/coreyhaines31/marketingskills
+- license: MIT (verified 2026-07-07)
+- visibility: public
+- scan: auto
+- adopted:
+  - skill/seo-audit (upstream: skills/seo-audit/SKILL.md@6c6017451dcd340f3aaab3e354e28eed8aa782aa, adapted) — PR #81 — @aagnone3 2026-07-07
+- deferred:
+
 ## affaan-m/ECC
 
 - repo: https://github.com/affaan-m/ECC
