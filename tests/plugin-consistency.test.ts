@@ -1,6 +1,8 @@
 // Guards against the "added a component but forgot to update X" class of drift.
 // Every declared count / list / version that describes the agentic-engineering
-// plugin is checked against the filesystem truth. Runs in CI via `bun test`.
+// (core) plugin is checked against the filesystem truth, and every other plugin
+// under plugins/ gets basic checks (skill count in descriptions, version parity
+// with marketplace.json, skill frontmatter). Runs in CI via `bun test`.
 //
 // If this fails: the message names the exact file + component that is out of
 // sync. Fix the source of truth (add the missing row, bump the count, etc.) —
@@ -12,7 +14,9 @@ import path from "path"
 import { parseFrontmatter } from "../src/utils/frontmatter"
 
 const ROOT = path.resolve(import.meta.dir, "..")
-const PLUGIN = path.join(ROOT, "plugins/agentic-engineering")
+const PLUGINS_DIR = path.join(ROOT, "plugins")
+const CORE_PLUGIN_NAME = "agentic-engineering"
+const PLUGIN = path.join(PLUGINS_DIR, CORE_PLUGIN_NAME)
 
 function mdFilesRecursive(dir: string): string[] {
   if (!existsSync(dir)) return []
@@ -29,13 +33,29 @@ function frontmatterName(file: string): string {
   return String(parseFrontmatter(readFileSync(file, "utf8")).data.name ?? "")
 }
 
+function skillDirsIn(pluginDir: string): string[] {
+  const dir = path.join(pluginDir, "skills")
+  if (!existsSync(dir)) return []
+  return readdirSync(dir, { withFileTypes: true })
+    .filter((e) => e.isDirectory() && existsSync(path.join(dir, e.name, "SKILL.md")))
+    .map((e) => e.name)
+}
+
 // ---- filesystem truth -------------------------------------------------------
 
 const agentFiles = mdFilesRecursive(path.join(PLUGIN, "agents"))
 const commandFiles = mdFilesRecursive(path.join(PLUGIN, "commands"))
-const skillDirs = readdirSync(path.join(PLUGIN, "skills"), { withFileTypes: true })
-  .filter((e) => e.isDirectory() && existsSync(path.join(PLUGIN, "skills", e.name, "SKILL.md")))
+const skillDirs = skillDirsIn(PLUGIN)
+
+const nonCorePlugins = readdirSync(PLUGINS_DIR, { withFileTypes: true })
+  .filter(
+    (e) =>
+      e.isDirectory() &&
+      e.name !== CORE_PLUGIN_NAME &&
+      existsSync(path.join(PLUGINS_DIR, e.name, ".claude-plugin/plugin.json")),
+  )
   .map((e) => e.name)
+  .sort()
 
 const counts = {
   agents: agentFiles.length,
@@ -82,8 +102,10 @@ describe("declared counts match filesystem", () => {
   })
 
   test("docs/index.html landing-page stats (agents, commands, skills, mcp)", () => {
+    // Skills (like all landing stats) are marketplace-wide: core plugin + every other plugin under plugins/.
+    const totalSkills = counts.skills + nonCorePlugins.reduce((n, p) => n + skillDirsIn(path.join(PLUGINS_DIR, p)).length, 0)
     const nums = [...indexHtml.matchAll(/<div class="stat-number">(\d+)<\/div>/g)].map((m) => Number(m[1]))
-    expect(nums.slice(0, 4)).toEqual([counts.agents, counts.commands, counts.skills, mcpCount])
+    expect(nums.slice(0, 4)).toEqual([counts.agents, counts.commands, totalSkills, mcpCount])
   })
 })
 
@@ -141,4 +163,42 @@ describe("skills declare name (matching dir) + description", () => {
     expect(typeof data.description).toBe("string")
     expect(String(data.description).length).toBeGreaterThan(0)
   })
+})
+
+// ---- non-core plugins: basic consistency checks ------------------------------
+// Every plugin under plugins/ other than the core one gets at minimum: a
+// marketplace.json entry, an accurate "Includes N skill(s)" phrase in both
+// descriptions, version parity, and skill frontmatter hygiene.
+
+describe.each(nonCorePlugins)("non-core plugin: %s", (name) => {
+  const dir = path.join(PLUGINS_DIR, name)
+  const pj = JSON.parse(readFileSync(path.join(dir, ".claude-plugin/plugin.json"), "utf8"))
+  const entry = marketplace.plugins.find((p: { name: string }) => p.name === name)
+  const skills = skillDirsIn(dir)
+  const skillPhrase = `Includes ${skills.length} skill${skills.length === 1 ? "" : "s"}`
+
+  test("has a marketplace.json entry", () => {
+    expect(entry).toBeDefined()
+  })
+
+  test(`plugin.json description declares "${skillPhrase}"`, () => {
+    expect(pj.description).toContain(skillPhrase)
+  })
+
+  test(`marketplace.json description declares "${skillPhrase}"`, () => {
+    expect(entry?.description).toContain(skillPhrase)
+  })
+
+  test("plugin.json and marketplace.json versions agree", () => {
+    expect(pj.version).toBe(entry?.version)
+  })
+
+  if (skills.length) {
+    test.each(skills)("skill %s declares name (matching dir) + description", (skillDir) => {
+      const { data } = parseFrontmatter(readFileSync(path.join(dir, "skills", skillDir, "SKILL.md"), "utf8"))
+      expect(data.name).toBe(skillDir)
+      expect(typeof data.description).toBe("string")
+      expect(String(data.description).length).toBeGreaterThan(0)
+    })
+  }
 })

@@ -63,7 +63,7 @@ When working on this repository, follow the compounding engineering process:
 
 ### Updating the Compounding Engineering Plugin
 
-> **Automated guardrail:** `tests/plugin-consistency.test.ts` (run by `bun test` in CI) enforces this checklist — component counts across `plugin.json` / `marketplace.json` / both READMEs / `docs/index.html`, version parity, README completeness, and frontmatter hygiene. Run `bun test` before committing; a failure names the exact file/component that is out of sync. The manual steps below remain the human-readable guide, but the test is the source of enforcement.
+> **Automated guardrail:** `tests/plugin-consistency.test.ts` (run by `bun test` in CI) enforces this checklist — component counts across `plugin.json` / `marketplace.json` / both READMEs / `docs/index.html`, version parity, README completeness, and frontmatter hygiene. Non-core plugins under `plugins/` (e.g. `plugins/marketing`) get basic checks too: an "Includes N skill(s)" phrase matching the filesystem in both descriptions, plugin.json↔marketplace.json version parity, and skill frontmatter hygiene. Run `bun test` before committing; a failure names the exact file/component that is out of sync. The manual steps below remain the human-readable guide, but the test is the source of enforcement.
 
 When agents, commands, or skills are added/removed, follow this checklist:
 
@@ -244,10 +244,10 @@ bun run docs:build
 ```
 
 This deterministic generator (`scripts/generate-docs.ts`):
-1. Reads all agent/command/skill/MCP components from the filesystem
+1. Reads all agent/command/skill/MCP components from every plugin under `plugins/` (any dir with `.claude-plugin/plugin.json`, core plugin first) — non-core skills render in their own section with a `plugin:skill` invocation
 2. Regenerates the card sections of each reference page (between `<!-- GENERATED -->` markers)
 3. Regenerates each page's "On This Page" sidebar
-4. Updates the landing-page stat numbers
+4. Updates the landing-page stat numbers (marketplace-wide totals across all plugins)
 5. Parses `plugins/agentic-engineering/CHANGELOG.md` (Keep a Changelog format) and renders it into `docs/pages/changelog.html` between the same GENERATED markers
 
 `bun run docs:check` (run in CI via `bun test`) fails if the committed pages are out of sync, so drift is impossible — including changelog drift. Hand-written chrome (intros, manual-config) is preserved — edit it directly. **Never hand-edit the version entries in `docs/pages/changelog.html`** — they are generated from `CHANGELOG.md` and any manual edit is overwritten (and caught by `docs:check`) on the next build. To add a changelog entry, edit `plugins/agentic-engineering/CHANGELOG.md` and run `bun run docs:build`.

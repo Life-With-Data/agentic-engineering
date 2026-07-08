@@ -15,17 +15,34 @@
  * Plus the four stat numbers on the landing page, and the changelog page
  * (rendered from plugins/agentic-engineering/CHANGELOG.md). All other page
  * chrome (nav, header, intros, footer) is preserved verbatim.
+ *
+ * Components are collected from EVERY plugin directory under plugins/ (any dir
+ * with a .claude-plugin/plugin.json), core plugin first. Skills render one
+ * section per plugin; non-core skills are invoked as `<plugin>:<skill>`. The
+ * changelog page stays core-plugin only.
  */
 import { existsSync, readFileSync, readdirSync, writeFileSync } from "fs"
 import path from "path"
 import { parseFrontmatter } from "../src/utils/frontmatter"
 
 const ROOT = path.resolve(import.meta.dir, "..")
-const PLUGIN = path.join(ROOT, "plugins/agentic-engineering")
+const PLUGINS_DIR = path.join(ROOT, "plugins")
+const CORE_PLUGIN_NAME = "agentic-engineering"
+const PLUGIN = path.join(PLUGINS_DIR, CORE_PLUGIN_NAME)
 const DOCS = path.join(ROOT, "docs")
 
 export type Component = { name: string; description: string; category: string }
+export type PluginSkills = { plugin: string; skills: Component[] }
 type NavItem = { href: string; label: string }
+
+/** Every plugin directory under plugins/ — core plugin first, rest alphabetical. */
+export function pluginDirs(): { name: string; dir: string }[] {
+  return readdirSync(PLUGINS_DIR, { withFileTypes: true })
+    .filter((e) => e.isDirectory() && existsSync(path.join(PLUGINS_DIR, e.name, ".claude-plugin/plugin.json")))
+    .map((e) => e.name)
+    .sort((a, b) => (a === CORE_PLUGIN_NAME ? -1 : b === CORE_PLUGIN_NAME ? 1 : a.localeCompare(b)))
+    .map((name) => ({ name, dir: path.join(PLUGINS_DIR, name) }))
+}
 
 // ---- collection ------------------------------------------------------------
 
@@ -40,35 +57,48 @@ function mdIn(dir: string): string[] {
 }
 
 export function collectAgents(): Component[] {
-  const dir = path.join(PLUGIN, "agents")
-  const cats = readdirSync(dir, { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => e.name)
   const out: Component[] = []
-  for (const cat of cats) for (const f of mdIn(path.join(dir, cat))) out.push({ ...fm(f), category: cat })
+  for (const { dir } of pluginDirs()) {
+    const agentsDir = path.join(dir, "agents")
+    if (!existsSync(agentsDir)) continue
+    const cats = readdirSync(agentsDir, { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => e.name)
+    for (const cat of cats) for (const f of mdIn(path.join(agentsDir, cat))) out.push({ ...fm(f), category: cat })
+  }
   return out
 }
 
 export function collectCommands(): Component[] {
   const out: Component[] = []
-  for (const f of mdIn(path.join(PLUGIN, "commands", "workflows"))) out.push({ ...fm(f), category: "workflow" })
-  for (const f of mdIn(path.join(PLUGIN, "commands"))) out.push({ ...fm(f), category: "utility" })
+  for (const { dir } of pluginDirs()) {
+    for (const f of mdIn(path.join(dir, "commands", "workflows"))) out.push({ ...fm(f), category: "workflow" })
+    for (const f of mdIn(path.join(dir, "commands"))) out.push({ ...fm(f), category: "utility" })
+  }
   return out
 }
 
-export function collectSkills(): Component[] {
-  const dir = path.join(PLUGIN, "skills")
-  return readdirSync(dir, { withFileTypes: true })
-    .filter((e) => e.isDirectory() && existsSync(path.join(dir, e.name, "SKILL.md")))
-    .map((e) => ({ name: e.name, description: fm(path.join(dir, e.name, "SKILL.md")).description, category: "skill" }))
-    .sort((a, b) => a.name.localeCompare(b.name))
+export function collectSkills(): PluginSkills[] {
+  const out: PluginSkills[] = []
+  for (const { name, dir } of pluginDirs()) {
+    const skillsDir = path.join(dir, "skills")
+    if (!existsSync(skillsDir)) continue
+    const skills = readdirSync(skillsDir, { withFileTypes: true })
+      .filter((e) => e.isDirectory() && existsSync(path.join(skillsDir, e.name, "SKILL.md")))
+      .map((e) => ({ name: e.name, description: fm(path.join(skillsDir, e.name, "SKILL.md")).description, category: "skill" }))
+      .sort((a, b) => a.name.localeCompare(b.name))
+    if (skills.length) out.push({ plugin: name, skills })
+  }
+  return out
 }
 
 export function collectMcp(): Component[] {
-  const pj = JSON.parse(readFileSync(path.join(PLUGIN, ".claude-plugin/plugin.json"), "utf8"))
-  return Object.entries(pj.mcpServers ?? {}).map(([name, cfg]: [string, any]) => ({
-    name,
-    description: String(cfg.url ?? cfg.type ?? ""),
-    category: String(cfg.type ?? "http"),
-  }))
+  const out: Component[] = []
+  for (const { dir } of pluginDirs()) {
+    const pj = JSON.parse(readFileSync(path.join(dir, ".claude-plugin/plugin.json"), "utf8"))
+    for (const [name, cfg] of Object.entries(pj.mcpServers ?? {}) as [string, any][]) {
+      out.push({ name, description: String(cfg.url ?? cfg.type ?? ""), category: String(cfg.type ?? "http") })
+    }
+  }
+  return out
 }
 
 // ---- changelog ---------------------------------------------------------
@@ -403,12 +433,20 @@ function buildCommands(commands: Component[]): { inner: string; nav: NavItem[] }
   return { inner: sections.join("\n\n"), nav }
 }
 
-function buildSkills(skills: Component[]): { inner: string; nav: NavItem[] } {
-  const cards = skills.map((s) =>
-    card("skill", s.name, `              <h3>${esc(s.name)}</h3>`, s.description, `skill: ${s.name}`),
-  )
-  const inner = section("all-skills", "fa-wand-magic-sparkles", "Skills", skills.length, cards)
-  return { inner, nav: [{ href: "#all-skills", label: `Skills (${skills.length})` }] }
+function buildSkills(groups: PluginSkills[]): { inner: string; nav: NavItem[] } {
+  const sections: string[] = []
+  const nav: NavItem[] = []
+  for (const g of groups) {
+    const core = g.plugin === CORE_PLUGIN_NAME
+    const id = core ? "all-skills" : `${slug(g.plugin)}-skills`
+    const heading = core ? "Skills" : `${g.plugin} Plugin Skills`
+    const cards = g.skills.map((s) =>
+      card("skill", s.name, `              <h3>${esc(s.name)}</h3>`, s.description, `skill: ${core ? s.name : `${g.plugin}:${s.name}`}`),
+    )
+    sections.push(section(id, "fa-wand-magic-sparkles", heading, g.skills.length, cards))
+    nav.push({ href: `#${id}`, label: `${heading} (${g.skills.length})` })
+  }
+  return { inner: sections.join("\n\n"), nav }
 }
 
 function buildMcp(mcp: Component[]): { inner: string; nav: NavItem[] } {
@@ -464,7 +502,8 @@ export function buildUpdates(): FileUpdate[] {
     updates.push({ file: path.join(DOCS, p.file), next: html })
   }
 
-  const counts = [agents.length, commands.length, skills.length, mcp.length]
+  const skillCount = skills.reduce((n, g) => n + g.skills.length, 0)
+  const counts = [agents.length, commands.length, skillCount, mcp.length]
   updates.push({ file: path.join(DOCS, "index.html"), next: applyIndexStats(read("index.html"), counts) })
 
   return updates
