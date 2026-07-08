@@ -1,0 +1,10 @@
+{
+  "name": "marketing",
+  "version": "0.1.0",
+  "description": "Marketing domain plugin: adopted, provenance-pinned marketing skills and (eventually) orchestrators over installed marketing plugins. Includes 1 skill.",
+  "author": {
+    "name": "Anthony Agnone",
+    "url": "https://github.com/aagnone3"
+  },
+  "keywords": ["marketing", "seo", "agentic-engineering"]
+}

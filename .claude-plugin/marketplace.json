@@ -28,6 +28,18 @@
         "image-generation"
       ],
       "source": "./plugins/agentic-engineering"
+    },
+    {
+      "name": "marketing",
+      "description": "Marketing domain plugin: adopted, provenance-pinned marketing skills and (eventually) orchestrators over installed marketing plugins. Includes 1 skill.",
+      "version": "0.1.0",
+      "author": {
+        "name": "Anthony Agnone",
+        "url": "https://github.com/aagnone3"
+      },
+      "homepage": "https://github.com/aagnone3/agentic-engineering",
+      "tags": ["marketing", "seo", "agentic-engineering"],
+      "source": "./plugins/marketing"
     }
   ]
 }

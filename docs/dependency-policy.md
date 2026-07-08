@@ -70,7 +70,7 @@ Mechanics:
 5. **The core plugin stays dependency-free.** `plugins/agentic-engineering` is
    engineering-specific and universally installed; it declares no
    `dependencies`. Cross-plugin composition lives in thin domain plugins
-   (e.g., a future `marketing-stack`) that hold the orchestrator skills plus
+   (e.g., the `marketing` plugin) that hold the orchestrator skills plus
    the `dependencies` array, typically with `defaultEnabled: false`.
 
 6. **Namespaces.** Dependency-provided skills keep their upstream plugin
