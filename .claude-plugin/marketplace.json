@@ -12,7 +12,7 @@
     {
       "name": "agentic-engineering",
       "description": "AI-powered development tools that get smarter with every use. Make each unit of engineering work easier than the last. Includes 30 specialized agents, 26 commands, and 25 skills.",
-      "version": "3.5.5",
+      "version": "3.5.6",
       "author": {
         "name": "Anthony Agnone",
         "url": "https://github.com/aagnone3"
@@ -38,7 +38,11 @@
         "url": "https://github.com/aagnone3"
       },
       "homepage": "https://github.com/aagnone3/agentic-engineering",
-      "tags": ["marketing", "seo", "agentic-engineering"],
+      "tags": [
+        "marketing",
+        "seo",
+        "agentic-engineering"
+      ],
       "source": "./plugins/marketing"
     }
   ]

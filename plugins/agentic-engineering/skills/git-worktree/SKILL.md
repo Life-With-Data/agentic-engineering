@@ -139,6 +139,45 @@ bash ${CLAUDE_PLUGIN_ROOT}/skills/git-worktree/scripts/worktree-manager.sh clean
 3. Removes selected worktrees
 4. Cleans up empty directories
 
+> **Warning:** `cleanup` force-removes EVERY inactive worktree regardless of merge status,
+> so it can discard unmerged parallel work. For unattended runs, prefer `gc`.
+
+### `gc` (safe, non-interactive reap of merged worktrees)
+
+Reaps only worktrees that are safe to drop — no prompts — so it can run at the end of a
+parallel/swarm session or from a git `post-merge` hook. A worktree is reaped only when it is
+fully merged into the base branch, has a clean tree, and has been idle for the grace window;
+the orphaned local branch is deleted too.
+
+**Example:**
+```bash
+bash ${CLAUDE_PLUGIN_ROOT}/skills/git-worktree/scripts/worktree-manager.sh gc
+bash ${CLAUDE_PLUGIN_ROOT}/skills/git-worktree/scripts/worktree-manager.sh gc develop   # base = develop
+```
+
+**A worktree is reaped only when ALL hold:**
+1. It lives under `.worktrees/` (never the main tree)
+2. It is not the worktree `gc` is running from
+3. Its working tree is clean (no uncommitted changes)
+4. It is fully merged into the base — `git cherry <base> <branch>` shows no `+` commits
+   (patch-equivalence catches squash/rebase merges where SHAs differ); a brand-new empty
+   branch (no commits) is left alone
+5. It is idle — nothing outside `node_modules`/`.git` modified in the last grace window
+
+**Configuration (env vars):**
+- `WORKTREE_GC=0` — skip GC entirely
+- `WORKTREE_GC_GRACE_MIN` — idle window in minutes (default `30`)
+- `WORKTREE_GC_BASE` — base branch when no argument is passed (default `origin/main`,
+  falling back to local `main`)
+
+**Wiring it into a git `post-merge` hook** (auto-reap at `git pull`/`git merge` time):
+```bash
+# .git/hooks/post-merge
+#!/bin/sh
+bash "$(git rev-parse --show-toplevel)/.worktrees/../<plugin-path>/scripts/worktree-manager.sh" gc
+```
+`gc` always exits 0, so it never fails the surrounding git operation.
+
 ## Workflow Examples
 
 ### Code Review with Worktree
