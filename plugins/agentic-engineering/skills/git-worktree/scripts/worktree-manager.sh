@@ -270,6 +270,101 @@ cleanup_worktrees() {
   echo -e "${GREEN}Cleanup complete!${NC}"
 }
 
+# Safe, non-interactive garbage collection of MERGED worktrees.
+#
+# Unlike `cleanup` (interactive, force-removes EVERY inactive worktree regardless of merge
+# state — which can destroy unmerged parallel work), `gc` only reaps a worktree when ALL of
+# these hold, so it is safe to run unattended from an agentic loop or a git post-merge hook:
+#   - lives under .worktrees/ (never the main tree)
+#   - is not the worktree gc is running from
+#   - has a clean working tree (no uncommitted changes)
+#   - is fully merged into the base branch: `git cherry <base> <branch>` shows zero '+'
+#     (every commit's patch is already in base — this catches squash/rebase merges where the
+#     SHAs differ) and at least one '-' (it had real commits; a brand-new empty branch is left)
+#   - is idle: nothing outside node_modules/.git modified in the last GRACE minutes
+# It also deletes the now-orphaned local branch. Always returns 0 — never aborts a caller.
+#
+# Base branch: $1, else $WORKTREE_GC_BASE, else origin/main (falls back to local main).
+# WORKTREE_GC_GRACE_MIN overrides the idle window (default 30). WORKTREE_GC=0 skips entirely.
+gc_worktrees() {
+  [ "${WORKTREE_GC:-1}" = "0" ] && return 0
+
+  if [[ ! -d "$WORKTREE_DIR" ]]; then
+    echo -e "${GREEN}No worktrees to gc${NC}"
+    return 0
+  fi
+
+  local grace="${WORKTREE_GC_GRACE_MIN:-30}"
+  local base="${1:-${WORKTREE_GC_BASE:-}}"
+  if [[ -z "$base" ]]; then
+    if git -C "$GIT_ROOT" rev-parse --verify -q origin/main >/dev/null; then
+      base="origin/main"
+    else
+      base="main"
+    fi
+  fi
+
+  # Refresh the remote base and prune deleted remotes so merge detection is accurate.
+  case "$base" in
+    origin/*) git -C "$GIT_ROOT" fetch -q origin "${base#origin/}" 2>/dev/null || true ;;
+  esac
+  git -C "$GIT_ROOT" remote prune origin 2>/dev/null || true
+
+  echo -e "${BLUE}Reaping merged worktrees (base: $base, grace: ${grace}m)...${NC}"
+
+  local removed=0
+  local here="$PWD"
+  while IFS= read -r path; do
+    path="${path#worktree }"
+    case "$path" in "$WORKTREE_DIR"/*) ;; *) continue ;; esac   # only .worktrees/, never main tree
+    [ "$path" = "$here" ] && continue                            # never the one we're in
+
+    local name; name=$(basename "$path")
+    local br; br=$(git -C "$path" symbolic-ref --quiet --short HEAD 2>/dev/null || true)
+    [ -n "$br" ] || continue                                     # detached HEAD → skip
+
+    if [ -n "$(git -C "$path" status --porcelain 2>/dev/null)" ]; then
+      echo -e "${YELLOW}(skip) $name — uncommitted changes${NC}"
+      continue
+    fi
+
+    # merged = had commits, all patch-present in base (all '-'); zero '+' and at least one '-'.
+    local cherry; cherry=$(git -C "$GIT_ROOT" cherry "$base" "$br" 2>/dev/null || true)
+    if [ "$(printf '%s\n' "$cherry" | grep -c '^+')" -ne 0 ] || \
+       [ "$(printf '%s\n' "$cherry" | grep -c '^-')" -lt 1 ]; then
+      echo -e "${YELLOW}(skip) $name — not fully merged into $base${NC}"
+      continue
+    fi
+
+    # active use? recent file activity (node_modules/.git pruned for speed) → skip
+    local recent; recent=$(find "$path" -type d \( -name node_modules -o -name .git \) -prune -o \
+                           -type f -mmin -"$grace" -print 2>/dev/null | head -1)
+    if [ -n "$recent" ]; then
+      echo -e "${YELLOW}(skip) $name — active in the last ${grace}m${NC}"
+      continue
+    fi
+
+    if git -C "$GIT_ROOT" worktree remove "$path" 2>/dev/null; then
+      git -C "$GIT_ROOT" branch -D "$br" 2>/dev/null || true
+      echo -e "${GREEN}✓ Reaped: $name (branch $br)${NC}"
+      removed=$((removed + 1))
+    fi
+  done < <(git -C "$GIT_ROOT" worktree list --porcelain 2>/dev/null | grep '^worktree ')
+
+  if [ "$removed" -eq 0 ]; then
+    echo -e "${GREEN}No merged worktrees to reap${NC}"
+  else
+    echo -e "${GREEN}Reaped $removed merged worktree(s) + local branch(es)${NC}"
+  fi
+
+  # Remove the container dir if nothing is left.
+  if [[ -d "$WORKTREE_DIR" && -z "$(ls -A "$WORKTREE_DIR" 2>/dev/null)" ]]; then
+    rmdir "$WORKTREE_DIR" 2>/dev/null || true
+  fi
+
+  return 0
+}
+
 # Main command handler
 main() {
   local command="${1:-list}"
@@ -289,6 +384,9 @@ main() {
       ;;
     cleanup|clean)
       cleanup_worktrees
+      ;;
+    gc)
+      gc_worktrees "$2"
       ;;
     help)
       show_help
@@ -315,7 +413,10 @@ Commands:
   switch | go [name]                  Switch to worktree
   copy-env | env [name]               Copy .env files from main repo to worktree
                                       (if name omitted, uses current worktree)
-  cleanup | clean                     Clean up inactive worktrees
+  cleanup | clean                     Interactively remove ALL inactive worktrees (prompts)
+  gc [base-branch]                    Non-interactively reap only MERGED, clean, idle worktrees
+                                      and their local branches (safe for unattended/loop use;
+                                      base defaults to origin/main)
   help                                Show this help message
 
 Environment Files:
@@ -331,7 +432,16 @@ Examples:
   worktree-manager.sh copy-env feature-login
   worktree-manager.sh copy-env                   # copies to current worktree
   worktree-manager.sh cleanup
+  worktree-manager.sh gc                         # reap merged worktrees (unattended-safe)
+  worktree-manager.sh gc develop                 # reap worktrees merged into develop
   worktree-manager.sh list
+
+GC vs Cleanup:
+  - cleanup: interactive; force-removes every inactive worktree (can drop unmerged work)
+  - gc:      non-interactive; only reaps worktrees fully merged into the base, with a clean
+             tree, idle for WORKTREE_GC_GRACE_MIN minutes (default 30); also deletes the
+             orphaned local branch. Skips with WORKTREE_GC=0. Safe to wire into a git
+             post-merge hook or run at the end of a parallel/swarm agentic session.
 
 EOF
 }

@@ -5,6 +5,12 @@ All notable changes to the agentic-engineering plugin will be documented in this
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.5.6] - 2026-07-08
+
+### Added
+
+- **`git-worktree` skill gains a non-interactive `gc` subcommand for safe, unattended reaping of merged worktrees** (adapted from the `bluestar-intel` repo's post-merge `gc-worktrees.sh` hook). The skill previously only offered `cleanup`, which is interactive (`read -r` prompt — unusable in an agentic loop or hook) and force-removes EVERY inactive worktree regardless of merge state, so it can silently discard unmerged parallel work and leaves orphaned local branches behind. This is a real hazard for the plugin's core parallel/swarm workflows (`/resolve_parallel`, `orchestrating-swarms`), where several worktrees hold live in-progress work at once. `worktree-manager.sh gc [base-branch]` reaps a worktree only when ALL hold: it lives under `.worktrees/`, is not the current worktree, has a clean tree, is fully merged into the base (`git cherry` shows zero `+` commits and ≥1 `-` — patch-equivalence catches GitHub's default squash/rebase merges where SHAs differ, while a brand-new empty branch is left alone), and has been idle for the grace window (default 30 min, `WORKTREE_GC_GRACE_MIN`); it also deletes the now-orphaned local branch. `WORKTREE_GC=0` skips, `WORKTREE_GC_BASE` sets the default base (`origin/main` → local `main` fallback), and it always exits 0 so it can be wired into a git `post-merge` hook without ever failing the surrounding operation. `cleanup` is unchanged but now documents its force-remove hazard and points at `gc` for unattended use. Verified end-to-end in scratch repos: squash-merged worktree + branch reaped; genuinely-unmerged, dirty, and current worktrees all preserved. No component count changes — skill enhancement only.
+
 ## [3.5.5] - 2026-07-07
 
 ### Added
