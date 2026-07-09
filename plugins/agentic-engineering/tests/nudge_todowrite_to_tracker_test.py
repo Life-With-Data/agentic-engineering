@@ -13,6 +13,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 SCRIPT = Path(__file__).resolve().parent.parent / "scripts" / "nudge-todowrite-to-tracker.py"
 
@@ -87,9 +88,13 @@ class ResolveMessageTest(unittest.TestCase):
         os.chdir(self.repo)
 
     def test_none_tracker_yields_no_message(self) -> None:
-        # No board config, no gh auth signal available in this sandboxed repo
-        # (no `origin` remote at all) -> resolves to "none".
-        self.assertIsNone(nudge.resolve_message(self.repo))
+        # No board config -> resolves to "none", provided gh auth doesn't
+        # also signal "github". `shutil.which("gh")` is patched out rather
+        # than relied on to return None, because CI runners have `gh`
+        # installed and authenticated (GH_TOKEN) — the ambient environment's
+        # real gh state must not leak into this assertion.
+        with mock.patch.object(nudge.shutil, "which", return_value=None):
+            self.assertIsNone(nudge.resolve_message(self.repo))
 
     def test_github_project_board_config_yields_project_message(self) -> None:
         board_config = Path(self.repo) / "agentic-engineering.md"
