@@ -1,6 +1,6 @@
 ---
 name: setup
-description: Configure which review agents run for your project. Auto-detects stack, writes agentic-engineering.local.md, and offers to bootstrap the lifecycle board and install the operating-principles always-on layer into CLAUDE.md/AGENTS.md.
+description: Configure which review agents run for your project. Auto-detects stack, writes agentic-engineering.local.md, and offers to bootstrap the lifecycle board, install the operating-principles always-on layer into CLAUDE.md/AGENTS.md, and install the Headroom context-compression CLI.
 disable-model-invocation: true
 ---
 
@@ -322,6 +322,63 @@ For the create branch: `cat "$SNIPPET" > CLAUDE.md`.
 The ten rules are tool-agnostic; in `AGENTS.md` the trigger line's skill reference is inert for
 non-Claude tools while the rules themselves still apply as instructions.
 
+## Step 3.8: Install Headroom (optional)
+
+The `headroom` skill wraps the [Headroom](https://github.com/headroomlabs-ai/headroom) CLI, which
+compresses agent context (tool outputs, logs, RAG chunks, files) to cut 60-95% of tokens. The skill
+installs it lazily on first invocation; this step offers to install it **up front** instead. It is
+strictly opt-in — the plugin never installs a binary without consent.
+
+First detect current state (idempotent — skip the offer entirely when already installed):
+
+```bash
+if command -v headroom >/dev/null 2>&1; then
+  echo "state=installed version=$(headroom --version 2>/dev/null)"
+elif command -v uv >/dev/null 2>&1; then
+  echo "state=absent installer=uv"
+elif command -v pip >/dev/null 2>&1 || command -v pip3 >/dev/null 2>&1; then
+  echo "state=absent installer=pip"
+else
+  echo "state=absent installer=none"
+fi
+```
+
+- If `state=installed`: skip this step silently.
+- If `state=absent installer=none`: neither `uv` nor `pip` is available — do not offer an install
+  that cannot run. State that installing Headroom needs `uv` (recommended) or `pip`, point at the
+  skill for later, and move on.
+
+Otherwise offer it with AskUserQuestion:
+
+```
+question: "Install Headroom now to compress agent context (60-95% fewer tokens)? It installs as a global CLI via {uv|pip}."
+header: "Headroom"
+options:
+  - label: "Yes, install"
+    description: "Runs {uv tool install|pip install} \"headroom-ai[all]\" now, then verifies with headroom doctor."
+  - label: "Skip (Recommended)"
+    description: "Leave it uninstalled — the headroom skill installs it on demand the first time it runs."
+```
+
+On yes, install with the detected installer (prefer `uv` — it isolates the CLI while exposing
+`headroom` on PATH), then verify routing:
+
+```bash
+if command -v uv >/dev/null 2>&1; then
+  uv tool install "headroom-ai[all]"
+else
+  (command -v pip3 >/dev/null 2>&1 && pip3 || echo pip) install "headroom-ai[all]"
+fi
+command -v headroom >/dev/null 2>&1 && headroom doctor
+```
+
+On non-interactive runs (no answer obtainable), never auto-install: print the `uv tool install
+"headroom-ai[all]"` command for later and move on. Record the outcome for Step 5.
+
+The `[all]` extra pulls optional ONNX features that need an AVX2-capable x86/x86_64 CPU; on other
+architectures (e.g. Apple Silicon without Rosetta) the install may warn or fail on those extras —
+fall back to the base package `headroom-ai` (no `[all]`), which the skill also documents.
+
 ## Step 4: Build Agent List and Write File
 
 **Stack-specific agents:**
@@ -450,6 +507,7 @@ Review depth:  {depth}
 Agents:        {count} configured
                {agent list, one per line}
 Always-on:     {operating-principles layer: installed into <files> | already present | skipped}
+Headroom:      {installed now | already present | skipped | unavailable (needs uv or pip) | command printed (non-interactive)}
 Gitignore:     {entry present | added | failed (see warning) | n/a (not a git repo)}
 Tracked:       {no | untracked now (deletion staged — commit it) | still tracked (declined) | still tracked (no answer — command printed) | n/a (not a git repo)}
 

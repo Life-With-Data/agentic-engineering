@@ -5,6 +5,12 @@ All notable changes to the agentic-engineering plugin will be documented in this
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.6.2] - 2026-07-09
+
+### Added
+
+- **`setup` skill now offers an opt-in up-front Headroom install (Step 3.8).** Previously the `headroom` skill only installed the CLI lazily on its first invocation; the plugin's setup flow did not manage it. Setup now detects install state (`command -v headroom`) and the available installer (`uv` preferred, `pip` fallback), and — only when Headroom is absent and an installer exists — offers `uv tool install "headroom-ai[all]"` behind an AskUserQuestion gate, then verifies with `headroom doctor`. Consistent with the plugin's norm of never installing a binary without consent: it skips silently when already installed, declines to offer when neither `uv` nor `pip` is present (pointing at the skill instead), never auto-installs on non-interactive runs (prints the command for later), and notes the AVX2/ONNX `[all]`-extra caveat with the base-package fallback. Step 5's confirmation summary gains a `Headroom:` line; the skill description is updated to match. Skill enhancement only — no component count changes.
+
 ## [3.6.1] - 2026-07-09
 
 ### Fixed
