@@ -5,6 +5,12 @@ All notable changes to the agentic-engineering plugin will be documented in this
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.6.0] - 2026-07-09
+
+### Added
+
+- **`headroom` skill — AI context compression via the [Headroom](https://github.com/headroomlabs-ai/headroom) CLI.** Headroom compresses everything an agent reads (tool outputs, logs, RAG chunks, files, conversation history) before it reaches the LLM, cutting 60-95% of tokens with the same answers via reversible compression that caches and restores originals on demand. The skill follows the same shape as the `rclone` skill: a setup check that installs the tool as a global CLI with `uv tool install "headroom-ai[all]"` (pip fallback, plus AVX2/ONNX requirement notes and `headroom doctor` routing verification), a command reference (`wrap`, `proxy`, `perf`, `dashboard`, `learn`), and worked workflows for the three integration modes — wrapping a coding agent (`headroom wrap claude`), running the drop-in proxy (`headroom proxy --port 8787`), and library use (`from headroom import compress`). `headroom learn` (mine failed sessions into local markdown corrections) ties into the compounding-engineering loop. Skill count 25 → 26.
+
 ## [3.5.7] - 2026-07-08
 
 ### Changed
