@@ -754,6 +754,6 @@ Based on selection:
 - **`/workflows:work`** → Call the /workflows:work command with the plan file path
 - **Continue refining** → Loop back to Question 1
 
-**Note:** If running `/workflows:plan` with ultrathink enabled, automatically run `/deepen-plan` after plan creation for maximum depth and grounding.
+**Note:** For maximum depth and grounding, run `/deepen-plan` after plan creation.
 
 NEVER CODE! Just research and write the plan.
