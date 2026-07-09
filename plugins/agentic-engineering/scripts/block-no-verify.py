@@ -13,6 +13,11 @@ Design notes:
 - Segment-aware: the flag must appear in the same simple command segment as the
   git verb (not after a later `&&`/`;`/`|`).
 - Covers `git push --no-verify`, which has its own pre-push hook bypass.
+- Ignores `--no-verify` that only appears inside a here-document body (e.g. a
+  PR/issue body describing the flag, passed via
+  `gh pr create --body-file - <<'EOF' … EOF`). Heredoc bodies are data, not
+  commands, so prose mentioning the flag there must not block; inline
+  `--body "…"` bodies are already covered by the quoted-string stripping.
 """
 import json
 import re
@@ -54,7 +59,17 @@ def uses_no_verify_bypass(command: str) -> bool:
     return bool(COMMIT_BYPASS.search(cleaned) or PUSH_BYPASS.search(cleaned))
 
 
+# Here-document body: `<<[-] [quote]DELIM[quote] … \n DELIM`. Non-greedy with a
+# per-heredoc backref so each body is matched to its own closer, and a real
+# bypass chained *after* the heredoc still shows.
+HEREDOC = re.compile(
+    r"<<-?\s*(?P<q>['\"]?)(?P<delim>\w+)(?P=q).*?^\s*(?P=delim)\s*$",
+    re.DOTALL | re.MULTILINE,
+)
+
+
 def sanitize(command: str) -> str:
+    command = HEREDOC.sub("", command)           # here-document bodies (PR/issue bodies)
     command = re.sub(r"'[^']*'", "", command)
     command = re.sub(r'"[^"]*"', "", command)
     command = re.sub(r"#.*", "", command)

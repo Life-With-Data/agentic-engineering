@@ -92,6 +92,42 @@ class BlockNoVerifyTest(unittest.TestCase):
             _run("git commit --no-verify", tool_name="Read").returncode, ALLOW
         )
 
+    # --- heredoc PR/issue bodies: MUST allow (data, not commands) ---------
+
+    def test_allows_flag_in_heredoc_pr_body_quoted_delim(self) -> None:
+        cmd = (
+            "gh pr create --body-file - <<'EOF'\n"
+            "We block git commit --no-verify in CI.\n"
+            "EOF"
+        )
+        self.assertEqual(_run(cmd).returncode, ALLOW)
+
+    def test_allows_flag_in_heredoc_pr_body_bare_delim(self) -> None:
+        cmd = (
+            "gh pr create --title x --body-file - <<EOF\n"
+            "Run git commit --no-verify to skip.\n"
+            "EOF"
+        )
+        self.assertEqual(_run(cmd).returncode, ALLOW)
+
+    def test_allows_flag_in_dash_indented_heredoc(self) -> None:
+        cmd = (
+            "gh pr create --body-file - <<-EOF\n"
+            "\tprose git commit --no-verify\n"
+            "\tEOF"
+        )
+        self.assertEqual(_run(cmd).returncode, ALLOW)
+
+    def test_blocks_real_bypass_after_heredoc_body(self) -> None:
+        # Heredoc body is stripped, but a real bypass chained AFTER it still fires.
+        cmd = (
+            "gh pr create --body-file - <<EOF\n"
+            "some body\n"
+            "EOF\n"
+            "git commit --no-verify"
+        )
+        self.assertEqual(_run(cmd).returncode, BLOCK)
+
 
 if __name__ == "__main__":
     unittest.main()
