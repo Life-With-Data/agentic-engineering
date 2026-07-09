@@ -65,6 +65,35 @@ the anti-pattern is exempt, mirroring the other guards here.
 manager instead of inlining it, or send through a connected Slack app / the
 Slack MCP tooling (`chat.postMessage`).
 
+## `nudge-todowrite-to-tracker.py` — PreToolUse (TodoWrite)
+
+**Never blocks** (`exit 0` always). Opt-in only: silent unless the repo sets
+`nudge_todowrite: true` in `agentic-engineering.local.md` frontmatter. When
+enabled, reminds the agent (via `systemMessage` + `additionalContext`) that
+this repo has a durable issue tracker, so cross-session work should be filed
+there rather than left in `TodoWrite`'s ephemeral, in-session list.
+
+**Why:** `TodoWrite` is legitimate for throwaway in-session steps, but it's
+easy to reach for out of habit for work that should outlive the session.
+Repos that have committed to a durable tracker want a lightweight reminder
+without a hard block — `TodoWrite` has a real ephemeral role and shouldn't be
+fought.
+
+**Tracker resolution:** reuses `workflow-repo-preflight.py`'s
+`resolve_issue_tracker()` chain verbatim (local override > committed board
+config -> `github-project` -> `gh auth` -> `github` -> `none`), so the
+reminder always names the same tracker the rest of the lifecycle tooling
+agrees on. Resolves to `none` → silent (nothing to nudge toward). Beads is
+intentionally not a nudge target: under the unified lifecycle GitHub is the
+sole authoritative tracker and beads is a non-authoritative scratchpad (see
+`plan-tracker-guard.py` above).
+
+**Enable it:** add `nudge_todowrite: true` to `agentic-engineering.local.md`'s
+frontmatter (same file the `setup` skill writes `issue_tracker:` into). A
+*tracked* copy of that file is ignored (security invariant shared with the
+other local-config reads), so the flag only takes effect from an untracked,
+per-machine copy.
+
 ## `plan-tracker-guard.py` — Stop
 
 **Blocks** turn termination if a plan file (`docs/plans/*.md`) modified during
@@ -91,6 +120,7 @@ Automated regression tests live in [`../tests/`](../tests) and run in CI via
 - [`prevent_main_commit_test.py`](../tests/prevent_main_commit_test.py)
 - [`block_slack_webhook_test.py`](../tests/block_slack_webhook_test.py)
 - [`plan_tracker_guard_test.py`](../tests/plan_tracker_guard_test.py)
+- [`nudge_todowrite_to_tracker_test.py`](../tests/nudge_todowrite_to_tracker_test.py)
 
 These pin the tricky false-positive / false-negative edges (prose that mentions
 a flag, chained command segments, branches named like `main`) so the regex

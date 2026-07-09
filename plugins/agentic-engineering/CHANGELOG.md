@@ -5,6 +5,12 @@ All notable changes to the agentic-engineering plugin will be documented in this
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.7.0] - 2026-07-09
+
+### Added
+
+- **`nudge-todowrite-to-tracker.py` — optional, non-blocking `PreToolUse` (TodoWrite) hook nudging toward the repo's durable issue tracker.** `TodoWrite` is ephemeral, in-session scratch; a repo that has committed to a durable tracker (GitHub Issues / GitHub Project board) wants cross-session work filed there instead, without fighting `TodoWrite`'s legitimate ephemeral role with a hard block. The hook is silent (`exit 0`, no output) unless the repo opts in with `nudge_todowrite: true` in `agentic-engineering.local.md` frontmatter (same tracked-file security invariant as `issue_tracker:` — a committed copy is ignored) *and* a tracker actually resolves to something other than `none`. Tracker resolution reuses `workflow-repo-preflight.py`'s `resolve_issue_tracker()` chain verbatim (local override > committed board config -> `github-project` -> `gh auth` -> `github` -> `none`), so the reminder always names the same tracker the rest of the lifecycle tooling agrees on; beads is intentionally not a nudge target since the unified lifecycle already demotes it to a non-authoritative scratchpad (`plan-tracker-guard.py`). Pinned by `nudge_todowrite_to_tracker_test.py`. Addresses #89. No component count changes — hook addition only.
+
 ## [3.6.2] - 2026-07-09
 
 ### Added
