@@ -111,6 +111,41 @@ class PreventMainCommitTest(unittest.TestCase):
             ALLOW,
         )
 
+    # --- `main` token in a SIBLING segment of a compound command ---------
+    # The refspec check is scoped per `git push` segment, so a `main` in an
+    # unrelated chained command must not be attributed to the push.
+
+    def test_allows_feature_push_then_gh_pr_base_main(self) -> None:
+        self._on_branch("feature/x")
+        self.assertEqual(
+            _run(
+                "git push -u origin feature/x && gh pr create --base main",
+                self.repo,
+            ).returncode,
+            ALLOW,
+        )
+
+    def test_allows_gh_pr_create_base_main_without_push(self) -> None:
+        self._on_branch("feature/x")
+        self.assertEqual(
+            _run("gh pr create --base main --head feature/x", self.repo).returncode,
+            ALLOW,
+        )
+
+    def test_allows_feature_push_piped_to_tail(self) -> None:
+        self._on_branch("feature/x")
+        self.assertEqual(
+            _run("git push -u origin feature/x 2>&1 | tail -3", self.repo).returncode,
+            ALLOW,
+        )
+
+    def test_blocks_real_main_push_chained_before_gh(self) -> None:
+        # A genuine bypass in the first segment still fires despite a later gh cmd.
+        self._on_branch("feature/x")
+        self.assertEqual(
+            _run("git push origin main && gh pr create", self.repo).returncode, BLOCK
+        )
+
     # --- unrelated commands: MUST allow ----------------------------------
 
     def test_allows_status(self) -> None:

@@ -5,6 +5,12 @@ All notable changes to the agentic-engineering plugin will be documented in this
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.6.1] - 2026-07-09
+
+### Fixed
+
+- **`block-no-verify` and `prevent-main-commit` hooks no longer false-block on PR-body prose.** Two precision bugs surfaced when authoring PRs from an agent shell: (1) `block-no-verify` scanned quoted strings but not **here-document bodies**, so a PR/issue body describing the bypass flag — e.g. `gh pr create --body-file - <<'EOF' … git commit --no-verify … EOF` — was blocked; `sanitize()` now strips heredoc bodies (per-heredoc backref, non-greedy) before matching, while a real bypass chained *after* a heredoc still blocks. (2) `prevent-main-commit` scanned the whole compound command for a `main`/`master` refspec token, so a `main` in a **sibling segment** (`git push -u origin my-feature && gh pr create --base main`, or a chained `git log origin/main`) false-blocked the push; the protected-refspec check is now scoped to the actual `git push` segment(s). Both fixes are pinned by expanded `block_no_verify_test.py` (heredoc cases) and `prevent_main_commit_test.py` (sibling-segment cases). No component count changes — hook precision only.
+
 ## [3.6.0] - 2026-07-09
 
 ### Added
