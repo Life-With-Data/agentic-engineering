@@ -42,6 +42,29 @@ mentioning "merge main" is fine), and a branch merely *named* like `main`
 
 **Correct alternative:** `git checkout -b <type>/<description>`, then open a PR.
 
+## `block-db-push.py` — PreToolUse (Bash)
+
+**Blocks** `prisma db push` in any of its runner forms (`prisma db push`,
+`npx prisma db push`, `pnpm prisma db push`, `bunx prisma db push`,
+`dotenv -e .env -- prisma db push`, …).
+
+**Why:** `prisma db push` mutates the database schema directly to match
+`schema.prisma` *without* recording a migration. That desyncs the live database
+from the migration history, which breaks integration tests (they apply
+migrations from scratch) and CI/CD and production deploys (they run migrations,
+not `push`) — and it destroys the single source of truth for the schema. This is
+the plugin's schema-drift guardrail, adopted from the convergent `block-db-push`
+hook that both the `agent-leverage` and `bluestar-intel` repos ship locally.
+
+**Precision:** It fires only when `prisma db push` is the real command verb.
+Mentions in a quoted string (`echo 'never run prisma db push'`), a `#` comment,
+or the correct `prisma migrate dev`/`migrate deploy`/`generate` verbs are **not**
+blocked, and a plain `git push` is unaffected — mirroring the other guards here.
+
+**Correct alternative:** `prisma migrate dev --name <migration-name>`, which
+records a migration so the database and its history stay in sync. If the repo
+ships a `prisma-migrate` skill or a `/dev:migrate-database` command, use it.
+
 ## `block-slack-webhook.py` — PreToolUse (Bash, Write, Edit, MultiEdit)
 
 **Blocks** introducing a Slack *incoming webhook* URL
@@ -89,6 +112,7 @@ Automated regression tests live in [`../tests/`](../tests) and run in CI via
 
 - [`block_no_verify_test.py`](../tests/block_no_verify_test.py)
 - [`prevent_main_commit_test.py`](../tests/prevent_main_commit_test.py)
+- [`block_db_push_test.py`](../tests/block_db_push_test.py)
 - [`block_slack_webhook_test.py`](../tests/block_slack_webhook_test.py)
 - [`plan_tracker_guard_test.py`](../tests/plan_tracker_guard_test.py)
 

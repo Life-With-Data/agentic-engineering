@@ -5,6 +5,12 @@ All notable changes to the agentic-engineering plugin will be documented in this
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.5.8] - 2026-07-09
+
+### Added
+
+- **`block-db-push.py` schema-drift guardrail** (PreToolUse/Bash), adopted from the convergent `block-db-push` hook that both the `agent-leverage` and `bluestar-intel` repos ship locally. It blocks `prisma db push` in its various runner forms (`prisma db push`, `npx`/`pnpm`/`bunx`/`yarn prisma db push`, `dotenv -e .env -- prisma db push`, and a push chained after a benign command). `prisma db push` mutates the database schema directly to match `schema.prisma` *without* recording a migration, desyncing the live database from its migration history — which breaks integration tests that apply migrations from scratch, breaks CI/CD and production deploys that run migrations rather than `push`, and destroys the single source of truth for the schema. The hook slots into the plugin's existing PreToolUse guardrail family and shares their precision ethos: it fires only when `prisma db push` is the real command verb, staying quiet on quoted-string / `#`-comment mentions, on the correct `prisma migrate dev`/`migrate deploy`/`generate` verbs, and on a plain `git push`. Documented in `scripts/HOOKS.md` and pinned by a new `tests/block_db_push_test.py` regression suite (16 cases covering the runner forms, the correct-workflow allowlist, and the false-positive edges). No agent/command/skill/MCP count changes — hook-only addition.
+
 ## [3.5.7] - 2026-07-08
 
 ### Changed
