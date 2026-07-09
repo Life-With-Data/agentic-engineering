@@ -8,7 +8,7 @@ AI-powered development tools that get smarter with every use. Make each unit of 
 |-----------|-------|
 | Agents | 30 |
 | Commands | 26 |
-| Skills | 25 |
+| Skills | 26 |
 | MCP Servers | 1 |
 
 > 📊 **[FLOWS.md](FLOWS.md)** — mermaid diagrams of every workflow (brainstorm → plan → work → review → compound) and how `/workflows:orchestrate` drives them.
@@ -192,6 +192,12 @@ One skill is designed to be **always-on**: `operating-principles` ships a paste-
 | Skill | Description |
 |-------|-------------|
 | `rclone` | Upload files to S3, Cloudflare R2, Backblaze B2, and cloud storage |
+
+### Context Compression
+
+| Skill | Description |
+|-------|-------------|
+| `headroom` | Compress AI context (tool outputs, logs, RAG chunks, files) via the Headroom CLI (`uv tool install "headroom-ai[all]"`) to cut 60-95% of tokens |
 
 ### Browser Automation
 
