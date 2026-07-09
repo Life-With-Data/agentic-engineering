@@ -1,12 +1,12 @@
 ---
 name: workflows:review
-description: Perform exhaustive code reviews using multi-agent analysis, ultra-thinking, and worktrees
+description: Perform exhaustive code reviews using multi-agent analysis and worktrees
 argument-hint: "[PR number, GitHub URL, branch name, or latest]"
 ---
 
 # Review Command
 
-<command_purpose> Perform exhaustive code reviews using multi-agent analysis, ultra-thinking, and Git worktrees for deep local inspection. </command_purpose>
+<command_purpose> Perform exhaustive code reviews using multi-agent analysis and Git worktrees for deep local inspection. </command_purpose>
 
 ## Introduction
 
@@ -111,9 +111,9 @@ These agents are run ONLY when the PR matches specific criteria. Check the PR fi
 
 </conditional_agents>
 
-### 4. Ultra-Thinking Deep Dive Phases
+### 4. Deep Dive Phases
 
-<ultrathink_instruction> For each phase below, spend maximum cognitive effort. Think step by step. Consider all angles. Question assumptions. And bring all reviews in a synthesis to the user.</ultrathink_instruction>
+<instruction> For each phase below, think step by step. Consider all angles. Question assumptions. And bring all reviews in a synthesis to the user.</instruction>
 
 <deliverable>
 Complete system context map with component interactions
@@ -121,7 +121,7 @@ Complete system context map with component interactions
 
 #### Phase 3: Stakeholder Perspective Analysis
 
-<thinking_prompt> ULTRA-THINK: Put yourself in each stakeholder's shoes. What matters to them? What are their pain points? </thinking_prompt>
+<thinking_prompt> Put yourself in each stakeholder's shoes. What matters to them? What are their pain points? </thinking_prompt>
 
 <stakeholder_perspectives>
 
@@ -161,7 +161,7 @@ Complete system context map with component interactions
 
 #### Phase 4: Scenario Exploration
 
-<thinking_prompt> ULTRA-THINK: Explore edge cases and failure scenarios. What could go wrong? How does the system behave under stress? </thinking_prompt>
+<thinking_prompt> Explore edge cases and failure scenarios. What could go wrong? How does the system behave under stress? </thinking_prompt>
 
 <scenario_checklist>
 

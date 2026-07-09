@@ -5,6 +5,12 @@ All notable changes to the agentic-engineering plugin will be documented in this
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.5.7] - 2026-07-08
+
+### Changed
+
+- **Removed ultrathink invocations from the workflow commands.** `/workflows:review` no longer frames its deep-dive phases as "ultra-thinking": the section-4 heading is now "Deep Dive Phases", the `<ultrathink_instruction>` block is a plain `<instruction>` (dropping "spend maximum cognitive effort"), the two `ULTRA-THINK:` thinking-prompt prefixes are gone, and the command description/`command_purpose` read "multi-agent analysis and worktrees". `/workflows:plan`'s closing note no longer gates `/deepen-plan` on "ultrathink enabled" — it now recommends running `/deepen-plan` for maximum depth unconditionally. Landing-page and generated command-reference copy updated to match. Behavior is unchanged; the commands relied on prose "ultrathink" cues rather than any harness feature. No component count changes.
+
 ## [3.5.6] - 2026-07-08
 
 ### Added
