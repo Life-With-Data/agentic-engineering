@@ -5,6 +5,12 @@ All notable changes to the agentic-engineering plugin will be documented in this
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.9.0] - 2026-07-10
+
+### Added
+
+- **`/config-flags` — discoverable config surface for every opt-in flag the plugin offers.** `scripts/config_registry.py` is the single declared inventory of per-repo configuration flags read from `agentic-engineering.local.md` (and, for board identity, the committed `agentic-engineering.md`): a `ConfigFlag` dataclass (key/kind/default/description/owner/file/choices/toggleable) per flag, with `--inventory`/`--get`/`--set` verbs sharing `lifecycle_board.py`'s existing atomic-write, tracked-file-guard, and `{ok, error_code, error, fix}` error contract — writes are refused outright if `agentic-engineering.local.md` is tracked in git, never silently overwritten. Retrofits the four flags that previously shipped with zero central discoverability (`issue_tracker`, `review_agents`, `plan_review_agents`, `nudge_todowrite` from v3.7.0) plus the two board-identity keys (`github_project_owner`/`github_project_number`, inventoried but never toggleable). `/config-flags` (named to avoid colliding with the built-in `/config`) browses the full inventory and flips a flag via `AskUserQuestion`; `/lifecycle-doctor` gains a read-only **Configuration** section (SET/UNSET vocabulary, distinct from its PASS/WARN/FAIL/SKIP health checks) over the same inventory; the `setup` skill now delegates its flag writes to the shared writer instead of hand-templating frontmatter (and, as a side effect, no longer risks silently overwriting a tracked local config — the writer refuses first). A new lint test (`tests/config-registry.test.ts`, mirroring `tests/flagless-gh.test.ts`) fails CI if a script reads a frontmatter key with no matching registry entry, so a flag can never ship invisibly again the way `nudge_todowrite` did. Command count 26 → 27. See `docs/plans/2026-07-10-feat-discoverable-config-surface-plan.md` (#91) for the full design, including the deliberately-deferred Phase 2 (build-time aggregation of config flags across every plugin in this marketplace, once a second plugin ships one).
+
 ## [3.8.0] - 2026-07-10
 
 ### Added
