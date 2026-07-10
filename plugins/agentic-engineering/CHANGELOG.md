@@ -5,6 +5,12 @@ All notable changes to the agentic-engineering plugin will be documented in this
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.8.0] - 2026-07-10
+
+### Added
+
+- **`land-docs` skill — the autonomous "data lane" that ships compounded knowledge as its own docs-only PR and merges it on green, so a session closes out without a second user turn.** Before this, the seam between `land-pr` (merges the code PR) and `/workflows:compound` (writes `docs/solutions/**` markdown) had a gap: `compound` never touched git — it wrote the knowledge into the post-merge default branch's working tree, stamped the board `compounded`, and stopped on a blocking "What's next?" menu. The knowledge was left uncommitted and the agent turned back to ask the user what to do — another cycle before the session could end. `land-docs` closes that seam: it opens a `docs/<N>-knowledge` PR, follows its GitHub Actions checks (CI owns review — the skill runs no in-agent review pass), and **merges on green with no user turn; fixes a simple check failure; or pauses only when a failure genuinely warrants user input.** Its one safety property is a **docs-only scope gate** — every changed path must match `*.md` / `docs/**`; any non-doc path aborts the auto-merge and escalates — which is what licenses the unattended merge. Wired into `/workflows:compound` (new Phase 3) and `/workflows:orchestrate` (new Compound sub-row + suppressed the blocking `compound-docs` decision menu on the pipeline path), and referenced from the `land-pr` skill as the counterpart knowledge-PR lander. Skills 26 → 27.
+
 ## [3.7.0] - 2026-07-09
 
 ### Added

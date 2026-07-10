@@ -257,11 +257,20 @@ When user selects Option 2 (Add to Required Reading), use the template from `ass
 
 ---
 
-<decision_gate name="post-documentation" wait_for_user="true">
+<decision_gate name="post-documentation" wait_for_user="conditional">
 
 ## Decision Menu After Capture
 
-After successful documentation, present options and WAIT for user response:
+**Suppressed on the autonomous path.** When this skill runs as the compound stage of a pipeline —
+`/workflows:compound` or `/workflows:orchestrate` — do **not** present this blocking menu. It is the
+exact turn-back that strands compounded knowledge and forces another user cycle. Instead, hand off to
+the [`land-docs`](../land-docs/SKILL.md) skill, which ships the doc as its own docs-only PR and merges
+it on green (see `/workflows:compound` Phase 3). Routing to `land-docs` *is* "Continue workflow." The
+menu below applies **only** when a human invoked this skill directly and interactively, outside a
+pipeline, and wants to pick a follow-up action by hand.
+
+After successful documentation (interactive standalone use only), present options and WAIT for user
+response:
 
 ```
 ✓ Solution documented
