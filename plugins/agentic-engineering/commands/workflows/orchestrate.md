@@ -19,7 +19,8 @@ The full expansion — including the finalization steps — is:
 
 ```
 brainstorm → plan → [deepen-plan?] → work (→ PR) → review → [resolve findings]
-           → [test-browser] → [feature-video] → [land-pr: CI green + merge] → compound
+           → [test-browser] → [feature-video] → [land-pr: CI green + merge]
+           → compound → [land-docs: docs-only PR merged on green]
 ```
 
 Your job is to **run that flow for them** — handling every menial transition automatically while reaching out **only when the user's judgment is genuinely required**. Think of yourself like `/goal` or `/loop`: you keep the work moving on your own, and you interrupt the user for steering, not for chores.
@@ -102,6 +103,7 @@ This table is the heart of the orchestrator. Apply it literally. **🧍 CHECKPOI
 | Land: drive CI green + resolve threads (`land-pr` skill) | **AUTO** | Run the `land-pr` skill to wait on CI, resolve any remaining review threads, and reach a landable state (CI green, threads resolved, mergeable). The independent review that justifies the merge already ran upstream (the Review stage above) — that, not a human GitHub approval, is the review gate. |
 | Land: **the merge itself** (`gh pr merge`) | **AUTO** (default) / **🧍 FINAL-REVIEW GATE** (`--final-review`) / **🧍 CHECKPOINT** (steer/careful) | Merging is outward-facing and irreversible. In the **default** (fully autonomous) mode, the `land-pr` skill merges with no prompt — **once** CI is green, the upstream multi-agent review ran with P1s resolved, all threads are resolved, and the PR is mergeable. Under **`--final-review`**, this is the run's single surfacing point: present the **Final-Review packet** (see gate spec below) and wait for the user's go. In **`--steer`/`--careful`**, stop and ask before merging. In all cases, do **not** wait on a human GitHub `APPROVED` (a solo run never gets one — that's the whole point of the autonomous review). Never merge on an unmet condition or directly to the default branch. The one real stop even in the default is `mergeStateStatus: BLOCKED` (branch protection requires something the agent can't supply) → escalate as a blocker. |
 | Compound: document the solution | **AUTO** | Run `/workflows:compound` once work has shipped (merged) and a non-trivial problem was solved. |
+| Compound: ship the knowledge PR (`land-docs` skill) | **AUTO** | Compound's Phase 3 spins the written markdown off into its own **docs-only** PR via the `land-docs` skill and merges it on green — no separate user turn. `land-docs` enforces a docs-only scope gate (any non-doc path aborts the auto-merge → blocker) and follows CI: pass → merge; simple failure → fix; failure needing input → escalate. This is the seam that used to bounce back to the user after the code PR merged. |
 | Any genuine blocker | **🧍 ESCALATE** | Access, credentials, an ambiguous product decision, conflicting requirements, a failing gate you can't resolve in ~2 tries. Batch open blockers into ONE AskUserQuestion. Never guess on irreversible or product-shaping choices. |
 
 Mode collapse rules, precisely: in the **default** (fully autonomous) mode, every **🧍 CHECKPOINT** collapses to its *Autonomous self-answer*, leaving **material scope expansion and genuine blockers as the only stops** — the run merges once landable with no other pause. That pair is the universal floor: it surfaces in *every* mode — autonomy never extends to redefining WHAT is built or overriding a blocker. **`--final-review`** is the default plus exactly one reinstated stop: the Final-Review gate at the merge (the packet is presented and the run waits for the user's go). In `--careful`, add a lightweight confirm at each stage boundary on top of the steer checkpoints.
@@ -327,7 +329,7 @@ When a sub-command asks one of its built-in questions, answer as the orchestrato
 | review: inline end-to-end testing offer | **Decline** — the dedicated `test-browser` finalization stage handles E2E so it isn't run twice. |
 | test-browser: human-verification pauses (OAuth/email/payment/IAP) | **Forward to user** — these are genuine manual-verification steps, not menial. |
 | feature-video: *"record a walkthrough?"* | Run it for UI/user-facing changes; skip (noted) for internal-only changes. |
-| compound: *"what's next?"* | **Continue workflow** → finish. |
+| compound: *"what's next?"* | **Suppressed** — the compound stage routes to the `land-docs` skill (docs-only PR → merge on green) instead of the blocking menu. Don't forward it. |
 | any `--gate` verdict | **Auto-follow it.** `proceed` → run the stage. `already_done` → skip the stage (it's complete on the board). `route_to_plan` → run `/workflows:plan`. `route_to_work` → run `/workflows:work`. `repair_needed` → the reconciler already handled it — re-read stage and continue. `no_board` → fall to Legacy fallback. |
 | `--claim` returns `claim_conflict` | **Blocker.** Another agent/human owns the issue (or is racing for it). Do not force the claim — escalate. |
 | `--reconcile`/`--gate` `flags` present | **Surface in the status stream** — `merged_to_non_default_branch` and `stale_join_key` as blockers/notes (see State Detection step 1); `truncated_ready_work` as a note. |
@@ -351,7 +353,8 @@ When the pipeline completes, emit:
                  (--final-review: ⏸ paused at Final-Review gate — your call)
                  (steer mode: ⏸ paused at merge gate — your call)
                  (blocked: 🚧 branch protection needs <reason> you must supply)
-  Compound    ✓  docs/solutions/<file>
+  Compound    ✓  docs/solutions/<file>  →  docs PR #<d> merged (docs-only, auto)
+                 (paused: ⏸ a docs-PR check needs your input — <reason>)
 
   Sub-agents:            <count> dispatched / <count> retried / <count> escalated
   Decisions you made:    <count>  (approach, plan-approval, triage, merge, …)

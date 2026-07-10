@@ -106,13 +106,52 @@ The orchestrating agent (main conversation) performs these steps:
 
 </sequential_tasks>
 
-### Phase 3: Optional Enhancement
+### Phase 3: Ship the knowledge as its own PR (the data lane)
 
 **WAIT for Phase 2 to complete before proceeding.**
 
+Phase 2 wrote markdown into the working tree — but writing a file is not shipping it. Left there, the
+knowledge sits uncommitted on the (post-merge) default branch and the session has to turn back and ask
+the user what to do. Instead, **spin the docs off into their own PR and land it autonomously.** The
+data is markdown-only and low-risk, so it does not need the code PR's review gate — it needs a PR and a
+merge.
+
+Invoke the [`land-docs`](../../skills/land-docs/SKILL.md) skill with the source issue number:
+
+```
+skill: land-docs <N>
+```
+
+`land-docs` opens a **docs-only** PR (`docs/<N>-knowledge`), follows its GitHub Actions checks, and:
+
+- **checks pass** → merges (squash, delete branch) — no user turn, the session closes out cleanly;
+- **a check fails and the fix is simple** → fixes it, pushes, re-checks;
+- **a check fails and it warrants input** → pauses and asks the user.
+
+It enforces one safety property: the diff must be **100% documentation** (`*.md`, `docs/**`). Any
+non-doc path aborts the auto-merge and escalates. This is what makes the merge safe to do unattended.
+
+**When to run the data lane:**
+
+- **Autonomous pipeline** (`/workflows:orchestrate`, or `/workflows:compound` invoked as the pipeline's
+  compound stage) → run it automatically. This is the seam that used to bounce back to the user.
+- **Standalone `/workflows:compound`** → run it too, so a hand-invoked compound also closes out without
+  a manual "now open a PR for these docs" step.
+- **`no_board` / hotfix with no issue** → still applies; `land-docs` uses `compound` as the branch/PR
+  slug when no `<N>` is available.
+
+The old blocking "What's next?" decision menu in the `compound-docs` skill is **suppressed** on this
+path — routing to `land-docs` *is* "what's next."
+
+### Phase 4: Optional Enhancement
+
+**WAIT for Phase 3 to complete before proceeding.**
+
 <parallel_tasks>
 
-Based on problem type, optionally invoke specialized agents to review the documentation:
+Based on problem type, optionally invoke specialized agents to review the documentation. These are
+in-agent enhancers, not a merge gate — the docs PR's review is owned by CI (`land-docs`). Run them
+before Phase 3 if you want their edits included in the PR; skip freely for a straightforward capture:
 
 - **performance_issue** → `performance-oracle`
 - **security_issue** → `security-sentinel`
@@ -230,7 +269,8 @@ Build → Test → Find Issue → Research → Improve → Document → Validate
 
 ## Routes To
 
-`compound-docs` skill
+- `compound-docs` skill — writes the single documentation file (Phases 1–2).
+- `land-docs` skill — ships that file as its own docs-only PR and merges it on green (Phase 3).
 
 ## Applicable Specialized Agents
 

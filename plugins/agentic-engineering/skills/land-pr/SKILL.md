@@ -26,6 +26,13 @@ This skill does **not** write the feature or open the PR — point it at a PR th
 For the comment-resolution step this skill delegates to the [`resolve-pr-parallel`](../resolve-pr-parallel/SKILL.md)
 skill rather than reimplementing it.
 
+**Code PR vs. knowledge PR.** This skill lands the **code** PR through the full independent-review
+gate. The **compound** step that follows a merge produces docs-only markdown, which ships as its own
+separate PR through the [`land-docs`](../land-docs/SKILL.md) skill — a lighter lane with no in-agent
+review (GitHub Actions own review there; the agent only follows the checks and merges on green). When
+you finish landing a code PR and the pipeline moves to compound, that docs PR is `land-docs`'s job,
+not this skill's.
+
 ## The merge gate (read first)
 
 Merging is outward-facing and effectively irreversible. Called on its own, land-pr **pauses and asks
