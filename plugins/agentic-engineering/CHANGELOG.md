@@ -5,6 +5,12 @@ All notable changes to the agentic-engineering plugin will be documented in this
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.16.0] - 2026-07-10
+
+### Added
+
+- **`api-and-interface-design` skill — design-time contract authoring for REST/GraphQL endpoints, module boundaries, component props, and type contracts** (adopted from [addyosmani/agent-skills](https://github.com/addyosmani/agent-skills), `skills/api-and-interface-design/SKILL.md@4e8bd9fd`, adapted). Fills a genuine gap: the plugin's `architecture-strategist` and `integration-boundary-reviewer` agents both inspect an interface *after* the code is written, and nothing local covered shaping a contract *before* it exists. The skill carries the upstream's Hyrum's Law framing (every observable behavior — error text, timing, ordering — becomes a de facto contract once someone depends on it), the One-Version Rule, branded types for IDs (`type TaskId = string & { readonly __brand: 'TaskId' }`), discriminated-union status modeling, input/output type separation, the HTTP status-code and naming-convention tables, and a rationalizations table. Adaptations: a **Positioning** section stating the design-time-vs-review-time split against the two review agents; the upstream's `deprecation-and-migration` sibling reference (not adopted here) retargeted to the local `data-migration-expert` agent for the data-layer-migration facet; frontmatter description and voice conformed to house style (imperative, what + when). Supply-chain review: single prose SKILL.md, no scripts/network/dependencies — clean. Skills 32 → 33.
+
 ## [3.15.0] - 2026-07-10
 
 ### Added
