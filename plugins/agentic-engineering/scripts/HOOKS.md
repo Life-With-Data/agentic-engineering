@@ -2,7 +2,7 @@
 
 Installing the **agentic-engineering** plugin activates a small set of Claude
 Code hooks (wired in [`.claude-plugin/plugin.json`](../.claude-plugin/plugin.json)).
-They are safety nets that keep the compounding-engineering workflow — plan →
+They are safety nets that keep the agentic-engineering workflow — plan →
 work → PR → review → merge — from being short-circuited. They fire
 automatically; there is nothing to configure.
 

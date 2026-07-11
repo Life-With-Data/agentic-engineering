@@ -1,4 +1,4 @@
-# Compounding Engineering Plugin Development
+# Agentic Engineering Plugin Development
 
 ## Versioning Requirements
 

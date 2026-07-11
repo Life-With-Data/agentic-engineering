@@ -1,6 +1,6 @@
 # Workflow Flows
 
-Visual reference for the plugin's engineering pipeline. Each "flow" below is a slash command; together they form the compounding-engineering loop. Diagrams render natively on GitHub.
+Visual reference for the plugin's engineering pipeline. Each "flow" below is a slash command; together they form the agentic-engineering loop. Diagrams render natively on GitHub.
 
 ## Legend
 

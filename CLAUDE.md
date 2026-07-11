@@ -34,11 +34,11 @@ agentic-engineering/
 
 Component counts are intentionally not listed here — they drift. The authoritative counts live in `plugins/agentic-engineering/README.md` and the two JSON manifests, where `tests/plugin-consistency.test.ts` (`bun test`) enforces they match the filesystem. MCP servers are declared in `plugin.json`'s `mcpServers` field (currently context7), not a directory.
 
-## Philosophy: Compounding Engineering
+## Philosophy: Agentic Engineering
 
 **Each unit of engineering work should make subsequent units of work easier—not harder.**
 
-When working on this repository, follow the compounding engineering process:
+When working on this repository, follow the agentic engineering process:
 
 1. **Plan** → Understand the change needed and its impact
 2. **Delegate** → Use AI tools to help with implementation
@@ -61,7 +61,7 @@ When working on this repository, follow the compounding engineering process:
 3. Update `.claude-plugin/marketplace.json` to include the new plugin
 4. Test locally before committing
 
-### Updating the Compounding Engineering Plugin
+### Updating the Agentic Engineering Plugin
 
 > **Automated guardrail:** `tests/plugin-consistency.test.ts` (run by `bun test` in CI) enforces this checklist — component counts across `plugin.json` / `marketplace.json` / both READMEs / `docs/index.html`, version parity, README completeness, and frontmatter hygiene. Non-core plugins under `plugins/` (e.g. `plugins/marketing`) get basic checks too: an "Includes N skill(s)" phrase matching the filesystem in both descriptions, plugin.json↔marketplace.json version parity, and skill frontmatter hygiene. Run `bun test` before committing; a failure names the exact file/component that is out of sync. The manual steps below remain the human-readable guide, but the test is the source of enforcement.
 
@@ -353,7 +353,7 @@ Detailed documentation...
 
 ### Updating Tags/Keywords
 
-Tags should reflect the compounding engineering philosophy:
+Tags should reflect the agentic engineering philosophy:
 
 - Use: `ai-powered`, `agentic-engineering`, `workflow-automation`, `knowledge-management`
 - Avoid: Framework-specific tags unless the plugin is framework-specific
