@@ -1,0 +1,14 @@
+{
+  "skill_name": "operating-principles",
+  "trigger": {
+    "positive": [
+      { "prompt": "What is the default operating approach for this nontrivial autonomous engineering task?", "top_k": 3 },
+      { "prompt": "I'm stuck and looping on this delegated work — how should I decompose and verify it?", "top_k": 3 },
+      { "prompt": "Gather evidence before planning and verify through an independent channel before reporting done", "top_k": 3 }
+    ],
+    "negative": [
+      { "prompt": "Capture this solved problem as a doc for lookup", "owner": "compound-docs" },
+      { "prompt": "Land this PR once CI passes", "owner": "land-pr" }
+    ]
+  }
+}

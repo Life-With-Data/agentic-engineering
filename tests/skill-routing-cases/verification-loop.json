@@ -1,0 +1,14 @@
+{
+  "skill_name": "verification-loop",
+  "trigger": {
+    "positive": [
+      { "prompt": "Run the build, types, lint, and tests and give me a ready or not-ready verdict before I open a PR", "top_k": 3 },
+      { "prompt": "Verify this refactor clears all the quality gates before we call it done", "top_k": 3 },
+      { "prompt": "Do a verify-before-done pass over my change and review the diff", "top_k": 3 }
+    ],
+    "negative": [
+      { "prompt": "Let's brainstorm what to build next", "owner": "brainstorming" },
+      { "prompt": "Get this PR merged once review threads are resolved", "owner": "land-pr" }
+    ]
+  }
+}
