@@ -116,7 +116,7 @@ component confers no trust on v2.
   - skill/observability-and-instrumentation (upstream: skills/observability-and-instrumentation/SKILL.md@4e8bd9fde4a38cd009053e649f4cdc7cd36b568b, adapted) — PR #99 — @aagnone3 2026-07-10
   - skill/security-and-hardening (upstream: skills/security-and-hardening/SKILL.md@4e8bd9fde4a38cd009053e649f4cdc7cd36b568b, adapted) — PR #103 — @aagnone3 2026-07-10
   - skill/test-driven-development (upstream: skills/test-driven-development/SKILL.md@4e8bd9fde4a38cd009053e649f4cdc7cd36b568b, adapted) — PR #104 — @aagnone3 2026-07-10
-  - hook/sdd-cache (upstream: hooks/sdd-cache-pre.sh@4e8bd9fde4a38cd009053e649f4cdc7cd36b568b, adapted) — PR #<N> — @aagnone3 2026-07-10
+  - hook/sdd-cache (upstream: hooks/sdd-cache-pre.sh@4e8bd9fde4a38cd009053e649f4cdc7cd36b568b, adapted) — PR #107 — @aagnone3 2026-07-10
 - deferred:
   - skill/doubt-driven-development — shortlisted for adoption: in-flight adversarial fresh-context review (CLAIM/EXTRACT/DOUBT/RECONCILE/STOP) complementing the post-hoc verification-loop; retarget its agent-roster and orchestration-patterns references to local components — @aagnone3 2026-07-10
   - script/run-evals — shortlisted for adoption (pattern, not code): port the Tier-2 TF-IDF trigger-routing and description-collision checks to bun beside plugin-consistency.test.ts; skip the claude-shelling Tier 3 — @aagnone3 2026-07-10
