@@ -5,6 +5,12 @@ All notable changes to the agentic-engineering plugin will be documented in this
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.10.0] - 2026-07-10
+
+### Added
+
+- **`interview-me` skill — confidence-gated intent extraction that runs upstream of `brainstorming`.** Adopted and adapted from `addyosmani/agent-skills` (`skills/interview-me/SKILL.md`). What the user asks for and what they actually want are different things ("build me a dashboard" is a convention, not a solved problem); this skill closes that gap before any spec, plan, or code exists, when switching costs are still zero. The mechanic is a mandated `HYPOTHESIS / CONFIDENCE ~N% — missing:` opener, then **one question at a time** each carrying a falsifiable `GUESS:` (the user reacts to a wrong guess faster than they generate an answer, which also surfaces the interviewer's own assumptions), a "want vs. should-want" detector for buzzword goals ("scalable", "clean", "modern") whose probe is *"If you didn't have to justify this to anyone, what would you actually want?"*, an anti-sycophancy rule, rejection of false confirmations ("Whatever you think is best" → re-ask with two concrete options), a checkable stop condition (*"Can I predict the user's reaction to the next three questions?"*), and a restate template with a non-negotiable **Out-of-scope** line. It explicitly refuses non-interactive contexts (CI, `/loop`, autonomous loops), flagging underspecification as a blocker instead of guessing. Positioned deliberately relative to `brainstorming` — interview-me extracts **what** the user wants (intent); brainstorming explores **how** to build it (approaches) — so their adjacent triggers order rather than collide, then it hands off to `brainstorming` and `/workflows:plan`. Optional user-confirmed persistence to `docs/intent/YYYY-MM-DD-<topic>-intent.md`, mirroring where `brainstorming` saves its design docs. Supply-chain review: clean (pure-prose skill, no remote fetches, scripts, or exfiltration). Skills 27 → 28. Provenance pinned in `docs/upstream-sources.md`.
+
 ## [3.9.0] - 2026-07-10
 
 ### Added
