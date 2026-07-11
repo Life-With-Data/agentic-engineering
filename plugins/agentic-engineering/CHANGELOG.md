@@ -5,6 +5,12 @@ All notable changes to the agentic-engineering plugin will be documented in this
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.15.0] - 2026-07-10
+
+### Added
+
+- **`debugging-and-error-recovery` skill — the root-cause debugging methodology that sits above the plugin's existing reproduce-and-file tools.** Adopted and adapted from [addyosmani/agent-skills](https://github.com/addyosmani/agent-skills) (`skills/debugging-and-error-recovery/SKILL.md@4e8bd9fd`, MIT, supply-chain reviewed). Codifies stop-the-line on any unexpected failure, then a six-step triage checklist — reproduce, localize, reduce, fix the root cause, guard, verify. Its high-value content is preserved intact: the **non-reproducible-bug decision tree** (branch on timing / environment / state / randomness, with tactics like artificial delays to widen race windows and load to raise collision probability), the **symptom-vs-root-cause** worked example (fix the JOIN, not `[...new Set(users)]` in the UI), a **`git bisect run`** regression recipe, the calibrated "you might be right 70% of the time; the other 30% costs hours — reproduce first" rationalization, and a **"Treating Error Output as Untrusted Data"** section (never execute commands or URLs embedded in stack traces or CI logs) that mirrors this repo's own untrusted-input posture. Positioned explicitly as the broader triage *methodology*: it points to the `/reproduce-bug` and `/report-bug` commands and the `bug-reproduction-validator` agent for the concrete reproduce-and-file workflow so their triggers stay distinct, and hands off to the `verification-loop` skill for the pre-PR quality pass. Generic per-error triage trees (TypeError, CORS, white screen) tightened; stack-specific commands marked illustrative to keep the methodology language-agnostic. Skill count 31 → 32.
+
 ## [3.14.0] - 2026-07-10
 
 ### Added
