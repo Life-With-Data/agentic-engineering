@@ -243,6 +243,35 @@ Supports 100+ frameworks including Rails, React, Next.js, Vue, Django, Laravel, 
 
 MCP servers start automatically when the plugin is enabled.
 
+## Hooks
+
+Installing the plugin wires in a small set of Claude Code hooks (declared in
+[`.claude-plugin/plugin.json`](.claude-plugin/plugin.json), documented in full in
+[`scripts/HOOKS.md`](scripts/HOOKS.md)). Most are always-on safety nets that keep
+the plan → work → PR → review flow from being short-circuited (e.g.
+`block-no-verify`, `prevent-main-commit`, `block-slack-webhook`). One is opt-in:
+
+### `sdd-cache` — revalidating WebFetch doc cache (opt-in)
+
+A `PreToolUse` / `PostToolUse` pair that caches `WebFetch` results on disk so an
+agent consulting the same official docs across sessions doesn't re-download
+identical pages. It is **inert by default** and activates only when you set the
+environment variable **`AGENTIC_SDD_CACHE=1`** in the shell you launch Claude
+Code from. (An env var is used rather than a committed config flag so caching is
+a per-machine choice that can't ride a PR and flip on for every clone; unset it
+to disable.) The on-disk cache lives at `.claude/sdd-cache/` and is gitignored.
+
+**The 304-only guarantee.** There is no TTL. Before serving a cached page, the
+hook sends a conditional `HEAD` (`If-None-Match` / `If-Modified-Since`) to the
+same URL and serves the cached body **only if the origin answers
+`304 Not Modified`** — a live re-verification, not a memory read. If the page
+changed (`200`), or the server sent no validator, or anything errors, the real
+`WebFetch` runs. So the "verify against current docs" property is never
+weakened; you only skip the byte transfer when the server itself confirms
+nothing moved. Adapted from
+[`addyosmani/agent-skills`](https://github.com/addyosmani/agent-skills), ported
+to python3 (stdlib only). See [`scripts/HOOKS.md`](scripts/HOOKS.md) for details.
+
 ## What this plugin assumes about your repo
 
 The `github-project` lifecycle is opinionated about your repo's shape. Read these eyes-open before bootstrapping a board:

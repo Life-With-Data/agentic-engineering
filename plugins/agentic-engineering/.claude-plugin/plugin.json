@@ -1,6 +1,6 @@
 {
   "name": "agentic-engineering",
-  "version": "3.13.0",
+  "version": "3.14.0",
   "description": "AI-powered development tools. 30 agents, 27 commands, 31 skills, 1 MCP server for code review, research, design, and workflow automation.",
   "author": {
     "name": "Anthony Agnone",
@@ -91,6 +91,26 @@
           {
             "type": "command",
             "command": "python3 ${CLAUDE_PLUGIN_ROOT}/scripts/nudge-todowrite-to-tracker.py"
+          }
+        ]
+      },
+      {
+        "matcher": "WebFetch",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 ${CLAUDE_PLUGIN_ROOT}/scripts/sdd-cache-pre.py"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "WebFetch",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 ${CLAUDE_PLUGIN_ROOT}/scripts/sdd-cache-post.py"
           }
         ]
       }

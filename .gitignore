@@ -5,6 +5,10 @@ node_modules/
 todos/
 __pycache__/
 *.pyc
+
+# sdd-cache hook: per-project on-disk WebFetch doc cache (opt-in via
+# AGENTIC_SDD_CACHE=1). Local memory, never committed.
+.claude/sdd-cache/
 # Local, per-machine board override — must never be committed (a PR carrying it
 # is ignored by the engine's trust check, but keep it out of git entirely).
 agentic-engineering.local.md
