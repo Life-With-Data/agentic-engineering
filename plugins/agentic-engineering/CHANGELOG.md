@@ -5,6 +5,12 @@ All notable changes to the agentic-engineering plugin will be documented in this
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.12.0] - 2026-07-10
+
+### Added
+
+- **`security-and-hardening` skill — the build-time security playbook that complements the audit-time `security-sentinel` agent.** Adopted (adapted) from [addyosmani/agent-skills](https://github.com/addyosmani/agent-skills) via the `/upstream-scan` triage pipeline. Where `security-sentinel` reviews finished code ("did they build it safely"), this skill guides hardening *during* implementation ("how to build it safely") — the two are stated as complementary in the skill so their triggers don't collide. Substance preserved in full: a five-minute **threat-model-first** process running STRIDE over each trust boundary (with mitigations) and writing abuse cases next to use cases; a three-tier **Always / Ask-First / Never** boundary system; OWASP Top 10 prevention patterns including an **SSRF allowlist** built on `ipaddr.js` `range() !== 'unicast'` that names its own residual **TOCTOU / DNS-rebinding** gap and the pinned-IP mitigation; a reachability-keyed **`npm audit` triage** decision tree ("is the vulnerable function actually called in your code path?") plus supply-chain hygiene (lockfile + `npm ci`, `postinstall` wariness, typosquat watch); and a full **OWASP LLM Top 10** section treating model output as untrusted data (no `eval`/SQL/`innerHTML`/shell), with prompt-injection, excessive-agency, and unbounded-consumption guidance. Co-locates the upstream security checklist as a skill reference ([security-checklist.md](skills/security-and-hardening/references/security-checklist.md)), linked from `SKILL.md`. Provenance pinned to `addyosmani/agent-skills@4e8bd9fde4a38cd009053e649f4cdc7cd36b568b`; both source files passed supply-chain review (pure documentation — no scripts, network calls, or embedded instructions). Skills 29 → 30.
+
 ## [3.11.0] - 2026-07-10
 
 ### Added
