@@ -1,12 +1,12 @@
 # Claude Code Plugin Marketplace
 
-**IMPORTANT: NEVER create PRs targeting EveryInc/compound-engineering-plugin (upstream). All PRs must target origin (aagnone3/agentic-engineering).**
+**IMPORTANT: NEVER create PRs targeting EveryInc/compound-engineering-plugin (upstream). All PRs must target origin (Life-With-Data/agentic-engineering).**
 
 > **The "fork trap" and its automated guardrails.** This repo has two remotes — `origin` (the fork we ship from) and `upstream` (the EveryInc parent). With no gh default repo set, `gh` resolves *flagless* `gh pr ...` commands to the **parent**, so a bare `gh pr create` silently tries to open a PR against upstream. Two committed hooks (`.claude/settings.json` → `.claude/hooks/`) close this:
 > - **`ensure-gh-default-repo.sh`** (SessionStart) pins gh's default repo to `origin` each session via `git config remote.origin.gh-resolved base` (local, offline). After it runs, flagless `gh pr` commands target origin correctly.
 > - **`block-upstream-pr.sh`** (PreToolUse/Bash) is the backstop: it denies any `gh pr create|merge|edit|ready` that explicitly names upstream, or that is flagless while the default isn't pinned to origin (CI, a fresh clone). The denial message names the exact fix.
 >
-> If you ever see a fork-trap denial, run `gh repo set-default aagnone3/agentic-engineering` once, or add `--repo aagnone3/agentic-engineering` to the command.
+> If you ever see a fork-trap denial, run `gh repo set-default Life-With-Data/agentic-engineering` once, or add `--repo Life-With-Data/agentic-engineering` to the command.
 
 This repository is a Claude Code plugin marketplace that distributes the `agentic-engineering` plugin to developers building with AI-powered tools.
 
