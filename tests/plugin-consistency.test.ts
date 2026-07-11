@@ -102,10 +102,23 @@ describe("declared counts match filesystem", () => {
   })
 
   test("docs/index.html landing-page stats (agents, commands, skills, mcp)", () => {
+    // Every stat on the landing page is marked data-stat="<key>" and filled by
+    // scripts/generate-docs.ts. Assert EVERY occurrence (cards + hero + CTA
+    // prose) matches the filesystem, so a stale hardcoded number can't slip in.
     // Skills (like all landing stats) are marketplace-wide: core plugin + every other plugin under plugins/.
     const totalSkills = counts.skills + nonCorePlugins.reduce((n, p) => n + skillDirsIn(path.join(PLUGINS_DIR, p)).length, 0)
-    const nums = [...indexHtml.matchAll(/<div class="stat-number">(\d+)<\/div>/g)].map((m) => Number(m[1]))
-    expect(nums.slice(0, 4)).toEqual([counts.agents, counts.commands, totalSkills, mcpCount])
+    const statOccurrences = (key: string) =>
+      [...indexHtml.matchAll(new RegExp(`data-stat="${key}"[^>]*>([^<]+)<`, "g"))].map((m) => m[1])
+    const expectAll = (key: string, expected: string | number) => {
+      const found = statOccurrences(key)
+      expect(found.length).toBeGreaterThan(0) // the marker must exist
+      for (const v of found) expect(v).toBe(String(expected))
+    }
+    expectAll("agents", counts.agents)
+    expectAll("commands", counts.commands)
+    expectAll("skills", totalSkills)
+    expectAll("mcp", mcpCount)
+    expectAll("version", pluginJson.version)
   })
 })
 
