@@ -105,6 +105,25 @@ component confers no trust on v2.
 - adopted:
 - deferred:
 
+## addyosmani/agent-skills
+
+- repo: https://github.com/addyosmani/agent-skills
+- license: MIT (verified 2026-07-10)
+- visibility: public
+- scan: auto
+- adopted:
+- deferred:
+  - skill/doubt-driven-development — shortlisted for adoption: in-flight adversarial fresh-context review (CLAIM/EXTRACT/DOUBT/RECONCILE/STOP) complementing the post-hoc verification-loop; retarget its agent-roster and orchestration-patterns references to local components — @aagnone3 2026-07-10
+  - skill/interview-me — shortlisted for adoption: confidence-gated intent-extraction interview with falsifiable per-question guesses; self-contained, no local equivalent, sits upstream of brainstorming — @aagnone3 2026-07-10
+  - skill/observability-and-instrumentation — shortlisted for adoption: RED/USE selection tables, cardinality denylist, symptom-vs-cause alerting; genuine gap, co-locate the upstream observability checklist as skill references — @aagnone3 2026-07-10
+  - skill/security-and-hardening — shortlisted for adoption: build-time hardening playbook (STRIDE per boundary, SSRF with TOCTOU caveat, OWASP LLM Top 10) complementing the audit-time security-sentinel agent; co-locate the security checklist — @aagnone3 2026-07-10
+  - skill/test-driven-development — shortlisted for adoption: test-authoring discipline (Prove-It, test-size resource model, double preference order) complementing the review-time test-strategy-reviewer; co-locate testing-patterns — @aagnone3 2026-07-10
+  - hook/sdd-cache — shortlisted for adoption: revalidating WebFetch doc cache (ETag/304-gated, fail-open), self-contained bash with clean supply chain; ship as opt-in wiring like upstream does — @aagnone3 2026-07-10
+  - script/run-evals — shortlisted for adoption (pattern, not code): port the Tier-2 TF-IDF trigger-routing and description-collision checks to bun beside plugin-consistency.test.ts; skip the claude-shelling Tier 3 — @aagnone3 2026-07-10
+  - skill/debugging-and-error-recovery — shortlisted for adoption, second wave: non-reproducible-bug decision tree and untrusted-error-output discipline beyond the local reproduce-bug workflow — @aagnone3 2026-07-10
+  - skill/api-and-interface-design — shortlisted for adoption, second wave: design-time contract authoring (Hyrum's Law framing, branded types, status-code table) with no local design-time equivalent — @aagnone3 2026-07-10
+  - all-unlisted @ 4e8bd9fde4a38cd009053e649f4cdc7cd36b568b — bulk-deferred at type level, see docs/upstream-reports/2026-07-10-agent-skills-initial-triage.md — @aagnone3 2026-07-10
+
 ## aagnone3/agent-leverage
 
 - repo: https://github.com/aagnone3/agent-leverage
