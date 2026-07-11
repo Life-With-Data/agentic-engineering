@@ -12,9 +12,10 @@
  * Per reference page it owns two things:
  *   1. the component card sections (between `<!-- GENERATED:<id> START/END -->`)
  *   2. the sidebar "On This Page" list (the <ul> after that heading)
- * Plus the four stat numbers on the landing page, and the changelog page
- * (rendered from plugins/agentic-engineering/CHANGELOG.md). All other page
- * chrome (nav, header, intros, footer) is preserved verbatim.
+ * Plus every landing-page stat marked with data-stat="<key>" (agent/command/
+ * skill/mcp counts + plugin version), and the changelog page (rendered from
+ * plugins/agentic-engineering/CHANGELOG.md). All other page chrome (nav,
+ * header, intros, footer) is preserved verbatim.
  *
  * Components are collected from EVERY plugin directory under plugins/ (any dir
  * with a .claude-plugin/plugin.json), core plugin first. Skills render one
@@ -465,11 +466,21 @@ function buildMcp(mcp: Component[]): { inner: string; nav: NavItem[] } {
   return { inner: sections.join("\n\n"), nav }
 }
 
-// ---- landing-page stats ----------------------------------------------------
+// ---- site stats (counts + version) -----------------------------------------
+// Every stat the site displays is owned here so it can never drift. Mark a spot
+// with data-stat="<key>" on any element (e.g. <span data-stat="agents">30</span>
+// or <div class="stat-number" data-stat="skills">35</div>): the generator
+// overwrites that element's text from the live component counts / plugin version
+// on every `docs:build`, and `docs:check` fails CI if a committed file is stale.
+// Counts are marketplace-wide (all plugins), matching the landing-page cards.
 
-export function applyIndexStats(html: string, counts: number[]): string {
-  let i = 0
-  return html.replace(/(<div class="stat-number">)\d+(<\/div>)/g, (m, a, b) => (i < counts.length ? `${a}${counts[i++]}${b}` : m))
+export type SiteStats = Record<string, string | number>
+
+export function applyStats(html: string, stats: SiteStats): string {
+  return html.replace(
+    /(<(\w+)\b[^>]*\bdata-stat="([a-z]+)"[^>]*>)[\s\S]*?(<\/\2>)/g,
+    (m, open, _tag, key, close) => (key in stats ? `${open}${stats[key]}${close}` : m),
+  )
 }
 
 // ---- driver ----------------------------------------------------------------
@@ -503,8 +514,9 @@ export function buildUpdates(): FileUpdate[] {
   }
 
   const skillCount = skills.reduce((n, g) => n + g.skills.length, 0)
-  const counts = [agents.length, commands.length, skillCount, mcp.length]
-  updates.push({ file: path.join(DOCS, "index.html"), next: applyIndexStats(read("index.html"), counts) })
+  const version = String(JSON.parse(readFileSync(path.join(PLUGIN, ".claude-plugin/plugin.json"), "utf8")).version ?? "")
+  const stats: SiteStats = { agents: agents.length, commands: commands.length, skills: skillCount, mcp: mcp.length, version }
+  updates.push({ file: path.join(DOCS, "index.html"), next: applyStats(read("index.html"), stats) })
 
   return updates
 }

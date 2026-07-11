@@ -5,6 +5,12 @@ All notable changes to the agentic-engineering plugin will be documented in this
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.3] - 2026-07-11
+
+### Fixed
+
+- **Landing-page stats are now generator-owned and drift-proof.** The docs site's hero, call-to-action, and "Version X released" eyebrow carried hand-written counts that had gone stale ("29 agents, 23 commands, 18 skills", "Version 2.32.2") while the real marketplace-wide totals were 30 / 27 / 35 and the version was 3.17.x. Every on-page stat is now marked `data-stat="<key>"` (agents/commands/skills/mcp/version) and filled by `scripts/generate-docs.ts` from the live component counts and plugin version on every `bun run docs:build`; `bun run docs:check` (CI) fails if any committed value is stale, and `tests/plugin-consistency.test.ts` asserts every occurrence matches the filesystem. SEO `<meta>` descriptions that cited counts were made evergreen (count-free) so they can't drift either. No plugin components change.
+
 ## [3.17.2] - 2026-07-11
 
 ### Changed
