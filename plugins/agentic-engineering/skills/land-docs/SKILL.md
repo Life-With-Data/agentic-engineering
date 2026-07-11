@@ -1,6 +1,6 @@
 ---
 name: land-docs
-description: Ship compounded knowledge (docs-only markdown) as its own pull request and drive it to merge unattended. Use after a code PR has merged and the compound step has written docs/solutions or other markdown — this opens the "data PR", follows its checks, and merges when green without another user turn. Triggers on "land the docs PR", "ship the compound knowledge", "open a data PR for these docs".
+description: Ship compounded knowledge (docs-only markdown) as its own pull request, submitted with auto-merge enabled so it lands on green unattended. Use after a code PR has merged and the compound step has written docs/solutions or other markdown — this opens the "data PR", arms GitHub auto-merge, follows its checks, and lets it merge when green without another user turn. Triggers on "land the docs PR", "ship the compound knowledge", "open a data PR for these docs".
 argument-hint: "[optional: issue number the knowledge came from — e.g. 92]"
 disable-model-invocation: true
 allowed-tools: Bash(gh *), Bash(git *), Read
@@ -41,16 +41,27 @@ git diff --name-only "$BASE"...HEAD | grep -vE '(\.md$|^docs/)' && \
   echo "docs-only ✓"
 ```
 
+## Auto-merge is armed at creation, not merged by hand
+
+**The knowledge PR is always submitted with GitHub-native auto-merge enabled** (`gh pr merge --auto
+--squash --delete-branch`), armed in the same step that opens it. This is a hard rule for the data
+lane: the merge is pre-committed the moment the PR is created, so the docs land the instant CI goes
+green **even if this session has already ended**. The skill never blocks on a manual merge and never
+depends on staying alive to watch the checks.
+
+The docs-only scope check (below) is the gate that licenses arming auto-merge unattended — it must
+pass *before* the PR is opened.
+
 ## Reacting to checks (the whole decision tree)
 
 The repo's GitHub Actions are the reviewer. This skill does **not** run its own multi-agent review,
-style pass, or findings triage — it submits the PR and follows the checks:
+style pass, or findings triage — it submits the PR with auto-merge armed and follows the checks:
 
 | Check outcome | Action |
 |---------------|--------|
-| **All required checks pass** | Merge (squash, delete branch). No user turn. |
-| **A check fails and the fix is simple** | Fix it (a broken relative link, a frontmatter typo, a failed docs build, a count that needs regenerating), push, re-check. Bounded to ~2 attempts that make measurable progress. |
-| **A check fails and the fix warrants user input** | Pause and ask. Ambiguous content, a schema/enum choice, a failure you can't resolve in ~2 attempts, or anything that would change *what the knowledge says* → surface it in one message and wait. Don't guess on content. |
+| **All required checks pass** | GitHub auto-merges (squash, delete branch) on its own — nothing to do but confirm. No user turn. |
+| **A check fails and the fix is simple** | Fix it (a broken relative link, a frontmatter typo, a failed docs build, a count that needs regenerating), push, re-check. Auto-merge stays armed and re-evaluates on the new commit. Bounded to ~2 attempts that make measurable progress. |
+| **A check fails and the fix warrants user input** | Pause and ask. Auto-merge stays armed but harmless (GitHub won't merge a red PR). Ambiguous content, a schema/enum choice, a failure you can't resolve in ~2 attempts, or anything that would change *what the knowledge says* → surface it in one message and wait. Don't guess on content. |
 
 "Simple" = mechanical and self-evident from the failure log (link/anchor fix, whitespace, rebuild
 a generated artifact). "Warrants input" = a judgment about the knowledge itself.
@@ -132,40 +143,58 @@ PR_NUM=$(gh pr view --repo "$ORIGIN" --json number --jq '.number')
 Do **not** put `Closes #<N>` in the body — the source issue was already closed by the code PR's
 merge; this data PR must not reopen/retouch its lifecycle.
 
-### 5. Follow the checks
+### 5. Arm auto-merge immediately
+
+The moment the PR exists, enable GitHub-native auto-merge — this is the whole point of the data lane:
+the merge is pre-committed and will fire on green with no further session turn.
 
 ```bash
-gh pr checks "$PR_NUM" --watch          # wait for GitHub Actions to conclude
+gh pr merge "$PR_NUM" --repo "$ORIGIN" --squash --delete-branch --auto
+```
+
+If this errors because auto-merge is not enabled on the repo, that is a repo-settings blocker, not a
+content problem — report it to the user (they must enable "Allow auto-merge" in the repo's settings)
+and fall back to the watch-then-merge path in step 6. Do **not** silently skip arming it.
+
+### 6. Follow the checks to close-out
+
+With auto-merge armed, GitHub merges on green by itself. This step only exists to catch and fix a
+failing check before it strands the PR:
+
+```bash
+gh pr checks "$PR_NUM" --watch          # follow GitHub Actions to their conclusion
 ```
 
 Then branch on the outcome per the decision tree above:
 
-- **Green** → step 6.
+- **Green** → GitHub auto-merges. Confirm with `gh pr view "$PR_NUM" --repo "$ORIGIN" --json state`
+  (expect `MERGED`), then sync locally:
+  ```bash
+  git checkout "$BASE" && git pull --ff-only
+  git branch -D "docs/${N:-compound}-knowledge" 2>/dev/null || true   # branch auto-deleted on merge
+  ```
 - **Red + simple** → read the failing job (`gh run view <run-id> --log-failed`), fix, `git push`,
-  re-watch. Max ~2 attempts that make measurable progress (fewer failing checks each time).
+  re-watch. Auto-merge stays armed and re-evaluates the new commit. Max ~2 attempts that make
+  measurable progress (fewer failing checks each time).
 - **Red + warrants input**, or still red after 2 dry attempts → **stop and ask the user** with the
-  specific failure. The docs PR stays open; the session does not silently merge or silently drop it.
-
-### 6. Merge and clean up
-
-```bash
-gh pr merge "$PR_NUM" --repo "$ORIGIN" --squash --delete-branch
-git checkout "$BASE" && git pull --ff-only
-git branch -d "docs/${N:-compound}-knowledge"   # safe-delete; already merged
-```
+  specific failure. The docs PR stays open with auto-merge armed (harmless while red); the session
+  does not silently drop it.
 
 No lifecycle stamp here — the source issue is already `compounded` (the compound step stamped it
 when it wrote the doc). This skill only delivers the artifact; it is not a lifecycle writer.
 
 ### 7. Report
 
-One line: the merged docs PR (number + URL), that it was docs-only and auto-merged on green (or
-paused, with the reason). This is the session's clean close-out — no further user turn needed on a
-green run.
+One line: the docs PR (number + URL), that it was docs-only and submitted with auto-merge armed —
+merged on green (or still open with auto-merge pending a check, with the reason). This is the
+session's clean close-out — no further user turn needed on a green run.
 
 ## Success criteria
 
-- Docs PR shows `MERGED`, branch deleted, local default branch fast-forwarded.
+- Docs PR was **submitted with auto-merge enabled** (`--auto`) in the same step it was opened.
+- Docs PR reaches `MERGED` (by GitHub auto-merge on green), branch deleted, local default branch
+  fast-forwarded.
 - The merged diff was **100% documentation** (the scope check held at open and at merge).
 - No in-agent review was run — CI (GitHub Actions) was the reviewer; the skill only followed checks.
-- The user was involved **only** if a check failure warranted their input — never for a green run.
+- The user was involved **only** if a check failure warranted their input, or if the repo lacks
+  auto-merge permission — never for a green run.

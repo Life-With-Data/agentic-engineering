@@ -122,11 +122,16 @@ Invoke the [`land-docs`](../../skills/land-docs/SKILL.md) skill with the source 
 skill: land-docs <N>
 ```
 
-`land-docs` opens a **docs-only** PR (`docs/<N>-knowledge`), follows its GitHub Actions checks, and:
+`land-docs` opens a **docs-only** PR (`docs/<N>-knowledge`) **with GitHub auto-merge armed at
+creation**, then follows its GitHub Actions checks:
 
-- **checks pass** → merges (squash, delete branch) — no user turn, the session closes out cleanly;
-- **a check fails and the fix is simple** → fixes it, pushes, re-checks;
+- **checks pass** → GitHub auto-merges (squash, delete branch) on its own — no user turn, and it
+  lands even if the session has already ended;
+- **a check fails and the fix is simple** → fixes it, pushes, re-checks (auto-merge stays armed);
 - **a check fails and it warrants input** → pauses and asks the user.
+
+The knowledge PR is **always submitted with auto-merge enabled** — the merge is pre-committed the
+moment the PR opens, gated only by the docs-only scope check.
 
 It enforces one safety property: the diff must be **100% documentation** (`*.md`, `docs/**`). Any
 non-doc path aborts the auto-merge and escalates. This is what makes the merge safe to do unattended.

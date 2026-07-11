@@ -5,6 +5,12 @@ All notable changes to the agentic-engineering plugin will be documented in this
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.5] - 2026-07-11
+
+### Changed
+
+- **The compounding-knowledge PR is now always submitted with GitHub auto-merge enabled.** The `land-docs` skill (compound's Phase 3 data lane) previously opened the docs-only PR, blocked on `gh pr checks --watch`, then merged by hand — which meant the merge depended on the session staying alive until CI finished. It now arms GitHub-native auto-merge (`gh pr merge --auto --squash --delete-branch`) in the same step the PR is opened, gated only by the docs-only scope check, so the knowledge PR lands the instant checks go green even if the session has already ended. If the repo lacks "Allow auto-merge" the skill reports it as a settings blocker and falls back to watch-then-merge. `/workflows:compound` Phase 3 and `/workflows:orchestrate`'s compound row are updated to match. No component counts change.
+
 ## [3.17.4] - 2026-07-11
 
 ### Fixed
