@@ -109,7 +109,7 @@ Syncs personal skills from `~/.claude/skills/` (as symlinks, so edits reflect im
 |-----------|-------|
 | Specialized agents | 30 |
 | Commands | 27 |
-| Skills | 28 |
+| Skills | 29 |
 | MCP servers | 1 |
 
 → **[Full component reference](plugins/agentic-engineering/README.md)** — every agent, command, and skill.

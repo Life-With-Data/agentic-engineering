@@ -8,7 +8,7 @@ AI-powered development tools that get smarter with every use. Make each unit of 
 |-----------|-------|
 | Agents | 30 |
 | Commands | 27 |
-| Skills | 28 |
+| Skills | 29 |
 | MCP Servers | 1 |
 
 > 📊 **[FLOWS.md](FLOWS.md)** — mermaid diagrams of every workflow (brainstorm → plan → work → review → compound) and how `/workflows:orchestrate` drives them.
@@ -181,6 +181,7 @@ One skill is designed to be **always-on**: `operating-principles` ships a paste-
 
 | Skill | Description |
 |-------|-------------|
+| `observability-and-instrumentation` | Instrument code as it's built so production behavior is visible: signal selection, RED/USE, a cardinality denylist, symptom-based alerting, and a verify-the-telemetry step |
 | `test-strategy-reviewer` | Analyze test files for coverage gaps, mock depth, and untested integration boundaries |
 | `verification-loop` | Run a systematic verify-before-done loop (build, types, lint, tests, security, diff review) and produce a ready/not-ready verdict |
 
