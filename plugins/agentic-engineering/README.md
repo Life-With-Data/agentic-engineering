@@ -8,7 +8,7 @@ AI-powered development tools that get smarter with every use. Make each unit of 
 |-----------|-------|
 | Agents | 30 |
 | Commands | 27 |
-| Skills | 33 |
+| Skills | 34 |
 | MCP Servers | 1 |
 
 > 📊 **[FLOWS.md](FLOWS.md)** — mermaid diagrams of every workflow (brainstorm → plan → work → review → compound) and how `/workflows:orchestrate` drives them.
@@ -183,6 +183,7 @@ One skill is designed to be **always-on**: `operating-principles` ships a paste-
 | Skill | Description |
 |-------|-------------|
 | `debugging-and-error-recovery` | Root-cause debugging methodology — stop-the-line, reproduce, localize, reduce, fix the cause, guard, verify; the broader triage layer above the `/reproduce-bug` and `/report-bug` commands and the `bug-reproduction-validator` agent |
+| `doubt-driven-development` | In-flight adversarial review of non-trivial decisions (CLAIM → EXTRACT → DOUBT → RECONCILE → STOP) with a fresh-context reviewer and gated cross-model escalation |
 | `observability-and-instrumentation` | Instrument code as it's built so production behavior is visible: signal selection, RED/USE, a cardinality denylist, symptom-based alerting, and a verify-the-telemetry step |
 | `security-and-hardening` | Harden a feature against vulnerabilities while building it — STRIDE threat modeling per trust boundary, the Always/Ask-First/Never rules, injection/XSS/SSRF patterns, reachability-keyed `npm audit` triage, and OWASP LLM Top 10; build-time counterpart to the `security-sentinel` agent |
 | `test-driven-development` | Write a failing test before the code and reproduce every bug with a test before fixing it (RED-GREEN-REFACTOR, the Prove-It pattern) — the test-authoring complement to `test-strategy-reviewer` and `verification-loop` |
