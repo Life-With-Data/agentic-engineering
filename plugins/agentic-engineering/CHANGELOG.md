@@ -5,6 +5,12 @@ All notable changes to the agentic-engineering plugin will be documented in this
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.13.0] - 2026-07-10
+
+### Added
+
+- **`test-driven-development` skill — the test-*authoring* discipline, adopted (adapted) from `addyosmani/agent-skills`.** Fills the gap on the write side of testing: RED-GREEN-REFACTOR, the **Prove-It pattern** (every bug fix starts with a failing reproduction test), the test pyramid plus a Google-style **test-size resource model** (Small = no I/O, ms / Medium = localhost, s / Large = external, min), the test-double **preference order** (real > fake > stub > mock, mock only at boundaries), state-not-interactions assertions, DAMP-over-DRY, the Beyonce Rule, and the efficiency rule "after a clean run, don't re-run the same command unless code changed." Explicitly positioned as the authoring complement to the review-time `test-strategy-reviewer` (audits existing tests) and the `verification-loop` gate (runs the suite before done), so the three skills' triggers don't collide. Co-locates an adapted `references/testing-patterns.md` (framework-generic Arrange-Act-Assert, naming, assertions, mocking-at-boundaries, component/API/E2E examples). The upstream browser-testing section is retargeted from Chrome DevTools MCP to the local `agent-browser` skill and `/test-browser` command, and the "sibling reference" pointers now name only components that exist here. Skills 30 → 31. Provenance pinned in `docs/upstream-sources.md`.
+
 ## [3.12.0] - 2026-07-10
 
 ### Added
