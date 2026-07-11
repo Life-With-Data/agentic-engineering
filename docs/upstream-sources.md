@@ -136,3 +136,16 @@ component confers no trust on v2.
   - command/ci-resolve-workflow-issues (upstream: .claude/commands/ci:resolve-workflow-issues.md@8a428a2d61925ec046a7ad77e89eadeddee30e54, adapted) — PR #22 — @aagnone3 2026-07-02
   - skill/reflect-for-skill-updates (upstream: .claude/skills/reflect-for-skill-updates/SKILL.md@8a428a2d61925ec046a7ad77e89eadeddee30e54, adapted) — PR #24 — @aagnone3 2026-07-02
 - deferred:
+
+## obra/superpowers
+
+- repo: https://github.com/obra/superpowers
+- license: MIT (verified 2026-07-10)
+- visibility: public
+- scan: auto
+- adopted:
+- deferred:
+  - skill/receiving-code-review — shortlisted for adoption: response-side review discipline (verify-claims-before-implementing, external-reviewer verification gate, no performative agreement, grep-backed YAGNI check on suggestions) filling the gap beside the mechanical pr-comment-resolver/resolve-pr-parallel surface; self-contained, recast the human-partner persona and keep the in-thread gh reply mechanics — @aagnone3 2026-07-10
+  - skill/writing-skills — shortlisted for adoption as an enhancement into create-agent-skills, not a third authoring skill: TDD-for-skills iron law, subagent pressure-testing protocol, match-the-form-to-the-failure taxonomy, persuasion principles; co-locate adapted testing-skills-with-subagents.md and persuasion-principles.md as references and reconcile the description-only-triggers rule with the official what+when spec at adoption time — @aagnone3 2026-07-10
+  - skill/subagent-driven-development — shortlisted for adoption, second wave once the in-flight addyosmani wave (PRs #100-#107) lands: fresh-implementer-per-task execution protocol (four status codes, file-based context handoff, per-task BASE discipline, compaction-proof progress ledger, reviewer anti-pre-judging trip-wires, one-fixer economics) plus three portable clean bash scripts; retarget plan/review/TDD/finish references to workflows:plan, local review agents, test-driven-development, land-pr — @aagnone3 2026-07-10
+  - all-unlisted @ d884ae04edebef577e82ff7c4e143debd0bbec99 — bulk-deferred at type level, see docs/upstream-reports/2026-07-10-superpowers-initial-triage.md — @aagnone3 2026-07-10
