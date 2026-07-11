@@ -120,8 +120,8 @@ component confers no trust on v2.
   - skill/debugging-and-error-recovery (upstream: skills/debugging-and-error-recovery/SKILL.md@4e8bd9fde4a38cd009053e649f4cdc7cd36b568b, adapted) — PR #100 — @aagnone3 2026-07-10
   - skill/api-and-interface-design (upstream: skills/api-and-interface-design/SKILL.md@4e8bd9fde4a38cd009053e649f4cdc7cd36b568b, adapted) — PR #101 — @aagnone3 2026-07-10
   - skill/doubt-driven-development (upstream: skills/doubt-driven-development/SKILL.md@4e8bd9fde4a38cd009053e649f4cdc7cd36b568b, adapted) — PR #105 — @aagnone3 2026-07-10
+  - script/run-evals (upstream: scripts/run-evals.js@4e8bd9fde4a38cd009053e649f4cdc7cd36b568b, adapted) — PR #106 — @aagnone3 2026-07-10
 - deferred:
-  - script/run-evals — shortlisted for adoption (pattern, not code): port the Tier-2 TF-IDF trigger-routing and description-collision checks to bun beside plugin-consistency.test.ts; skip the claude-shelling Tier 3 — @aagnone3 2026-07-10
   - all-unlisted @ 4e8bd9fde4a38cd009053e649f4cdc7cd36b568b — bulk-deferred at type level, see docs/upstream-reports/2026-07-10-agent-skills-initial-triage.md — @aagnone3 2026-07-10
 
 ## mattpocock/skills

@@ -1,0 +1,14 @@
+{
+  "skill_name": "land-pr",
+  "trigger": {
+    "positive": [
+      { "prompt": "Land this PR — wait for CI and merge it when green", "top_k": 3 },
+      { "prompt": "Take this open PR to completion: resolve the review threads and merge it", "top_k": 3 },
+      { "prompt": "Get this PR merged and clean up the branch", "top_k": 3 }
+    ],
+    "negative": [
+      { "prompt": "Run the verification gates over this change before it is done", "owner": "verification-loop" },
+      { "prompt": "Help me think through the design before implementing", "owner": "brainstorming" }
+    ]
+  }
+}
