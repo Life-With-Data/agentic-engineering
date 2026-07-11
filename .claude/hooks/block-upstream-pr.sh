@@ -2,7 +2,7 @@
 #
 # PreToolUse(Bash) backstop for the "fork trap" — block any gh command that would target
 # upstream (EveryInc/compound-engineering-plugin) instead of origin
-# (aagnone3/agentic-engineering).
+# (Life-With-Data/agentic-engineering).
 #
 # The primary fix is .claude/hooks/ensure-gh-default-repo.sh (SessionStart), which pins gh's
 # default repo to origin. This guard catches the cases that hook can't cover: an explicit
@@ -33,7 +33,7 @@ set -euo pipefail
 
 UPSTREAM_OWNER='EveryInc'
 UPSTREAM_SLUG='EveryInc/compound-engineering-plugin'
-ORIGIN_DEFAULT='aagnone3/agentic-engineering'
+ORIGIN_DEFAULT='Life-With-Data/agentic-engineering'
 
 COMMAND=$(jq -r '.tool_input.command // empty')
 [ -n "$COMMAND" ] || exit 0

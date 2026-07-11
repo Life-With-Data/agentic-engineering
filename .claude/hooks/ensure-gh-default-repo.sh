@@ -2,7 +2,7 @@
 #
 # SessionStart hook — solve the "fork trap" at its root.
 #
-# This repo has two remotes: origin = the fork we ship from (aagnone3/agentic-engineering)
+# This repo has two remotes: origin = the fork we ship from (Life-With-Data/agentic-engineering)
 # and upstream = the parent (EveryInc/compound-engineering-plugin). When no gh default repo
 # is set, `gh` resolves *flagless* `gh pr ...` / `gh repo ...` commands to the PARENT, so a
 # bare `gh pr create` silently tries to open a PR against upstream. CLAUDE.md forbids that.
