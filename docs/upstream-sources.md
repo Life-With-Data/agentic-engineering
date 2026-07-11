@@ -86,8 +86,8 @@ component confers no trust on v2.
 - visibility: public
 - scan: auto
 - adopted:
+  - skill/verification-loop (upstream: .agents/skills/verification-loop/SKILL.md@81af40761939056ab3dc54732fd4f562a27309d0, adapted) — PR #61 — @aagnone3 2026-07-06
 - deferred:
-  - skill/verification-loop — shortlisted for adoption: self-contained verify-before-done workflow with no local equivalent and the lowest adaptation cost — @aagnone3 2026-07-03
   - skill/agent-introspection-debugging — shortlisted for adoption: agent self-debug workflow with no local equivalent, self-contained — @aagnone3 2026-07-03
   - skill/continuous-agent-loop — shortlisted for adoption: autonomous-loop-with-quality-gates pattern, adopt if additive over local orchestrating-swarms — @aagnone3 2026-07-03
   - skill/security-scan — shortlisted for adoption: .claude config security scanner filling the gap beside the security-sentinel agent, conditional on removing the hard AgentShield dependency — @aagnone3 2026-07-03
@@ -123,6 +123,24 @@ component confers no trust on v2.
   - skill/debugging-and-error-recovery — shortlisted for adoption, second wave: non-reproducible-bug decision tree and untrusted-error-output discipline beyond the local reproduce-bug workflow — @aagnone3 2026-07-10
   - skill/api-and-interface-design — shortlisted for adoption, second wave: design-time contract authoring (Hyrum's Law framing, branded types, status-code table) with no local design-time equivalent — @aagnone3 2026-07-10
   - all-unlisted @ 4e8bd9fde4a38cd009053e649f4cdc7cd36b568b — bulk-deferred at type level, see docs/upstream-reports/2026-07-10-agent-skills-initial-triage.md — @aagnone3 2026-07-10
+
+## mattpocock/skills
+
+- repo: https://github.com/mattpocock/skills
+- license: MIT (verified 2026-07-10)
+- visibility: public
+- scan: auto
+- adopted:
+- deferred:
+  - skill/codebase-design — shortlisted for adoption: deep-module design vocabulary (deletion test, two-adapter seam rule, interface-as-test-surface, dependency-category to test-strategy mapping, design-it-twice parallel-agent pattern); fills the design-time architecture gap beside the review-time architecture-strategist and complements the in-flight api-and-interface-design (PR #101, API contracts vs module depth); standalone and author-neutral — @aagnone3 2026-07-10
+  - skill/prototype — shortlisted for adoption: throwaway-prototype discipline (logic-vs-UI branch selection, existing-route variant switcher spec, capture-when-done via throwaway branch as primary source); no local equivalent for the pre-implementation spike moment; standalone — @aagnone3 2026-07-10
+  - skill/resolving-merge-conflicts — shortlisted for adoption: intent-archaeology conflict resolution (primary sources per hunk, preserve-both-intents, always-resolve-never-abort, run-checks-after); genuine gap that recurring cross-PR version races hit in practice; tiny and standalone — @aagnone3 2026-07-10
+  - skill/handoff — shortlisted for adoption: session-handoff document discipline (reference-not-copy rule, suggested-skills routing metadata, temp-dir placement, secret redaction); no local session-bridge equivalent for multi-session lifecycle work; tiny and standalone — @aagnone3 2026-07-10
+  - skill/to-tickets — shortlisted for adoption: work-item decomposition with context-window-sized tracer-bullet slices, blocking-edge frontier scheduling, and the expand-contract wide-refactor exception; adapt the tracker contract to lifecycle-board verbs (the costly part) — @aagnone3 2026-07-10
+  - skill/wayfinder — shortlisted for adoption, second wave: fog-of-war multi-session planning (map-as-index, fog graduation test, one-ticket-per-session, claim-before-work concurrency); complements the lifecycle board; adopt after to-tickets settles the tracker-adaptation pattern — @aagnone3 2026-07-10
+  - skill/diagnosing-bugs — shortlisted for adoption, second wave, conditional: feedback-loop-first debugging (10-way loop ladder, red-capable gate with pasted-output proof, ranked falsifiable hypotheses); first fold the ladder into the debugging-slot owner (debugging-and-error-recovery, PR #100, already slated for superpowers systematic-debugging enhancements) as references, adopt standalone only if it does not fit there — @aagnone3 2026-07-10
+  - skill/domain-modeling — shortlisted for adoption, second wave: domain-glossary and ADR discipline (ADR triple gate, single-paragraph minimal ADR template, CONTEXT.md glossary format with avoid-lists); pairs with codebase-design; reconcile file-location conventions with compound-docs first — @aagnone3 2026-07-10
+  - all-unlisted @ 391a2701dd948f94f56a39f7533f8eea9a859c87 — bulk-deferred at type level, see docs/upstream-reports/2026-07-10-mattpocock-skills-initial-triage.md — @aagnone3 2026-07-10
 
 ## aagnone3/agent-leverage
 
