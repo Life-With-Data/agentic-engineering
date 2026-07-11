@@ -5,6 +5,12 @@ All notable changes to the agentic-engineering plugin will be documented in this
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.0] - 2026-07-10
+
+### Added
+
+- **`doubt-driven-development` skill — in-flight adversarial review of non-trivial decisions, adopted and adapted from [addyosmani/agent-skills](https://github.com/addyosmani/agent-skills).** Where `verification-loop` and `/workflows:review` are post-hoc gates on a finished artifact, doubt-driven is an in-flight posture: it materializes a fresh-context reviewer — biased to disprove, not approve — before any non-trivial decision stands. The loop is **CLAIM → EXTRACT → DOUBT → RECONCILE → STOP**: name the decision and why it matters, extract the smallest reviewable artifact + contract, hand the reviewer **ARTIFACT + CONTRACT but never the CLAIM** (passing the conclusion biases toward agreement), then classify every finding in strict precedence (contract-misread / valid-actionable / valid-trade-off / noise) and stop on trivial findings, a hard 3-cycle bound, or user override. Includes a "doubt theater" checkable signal (two+ cycles of substantive findings with zero classified actionable = validating, not doubting), rationalization/red-flag tables, and a heavily-gated **cross-model escalation** protocol (read-only sandbox, prompt piped via stdin not argv, explicit per-invocation user authorization, announced skips in non-interactive contexts). Retargeted to local components: the fresh-context reviewer roster points at the `agentic-engineering` review agents (`security-sentinel`, `architecture-strategist`, `code-simplicity-reviewer`, `integration-boundary-reviewer`, `pattern-recognition-specialist`, the `kieran-*` reviewers) spawned per `orchestrating-swarms`; docs-fact verification points at the context7 MCP; the post-hoc counterpart is `/workflows:review` + `verification-loop`; TDD's RED step (`test-driven-development`) is doubt made concrete for behavioral claims, with `test-strategy-reviewer` covering coverage quality at review time; reviewer-surfaced failure modes hand off to `debugging-and-error-recovery`. Provenance pinned in `docs/upstream-sources.md`. Skills 33 → 34.
+
 ## [3.16.0] - 2026-07-10
 
 ### Added
