@@ -5,6 +5,12 @@ All notable changes to the agentic-engineering plugin will be documented in this
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.11.0] - 2026-07-10
+
+### Added
+
+- **`observability-and-instrumentation` skill — instrument-as-you-build discipline so a feature ships with the telemetry to operate it, not archaeology after the first incident.** Adopted and adapted from `addyosmani/agent-skills` (skill + its repo-root observability checklist, co-located here as [references/observability-checklist.md](skills/observability-and-instrumentation/references/observability-checklist.md)). Codifies the parts most teams get wrong: a signal-selection table (structured log vs metric vs trace, each with a cost profile — "metrics tell you *that*, traces *where*, logs *why*"), RED for endpoints / USE for resources, a hard cardinality denylist (user_id, email, request_id, full URL, and error text are **never** metric labels), "percentiles always, averages never", symptom-vs-cause alerting (error rate > 1% for 5 min pages; CPU at 85% does not), a log-level → on-call-action table, and a verify-the-telemetry step (force an error in staging, find it by `requestId`). Complements the audit-time `security-sentinel` agent (secret-in-logs) and the `performance-oracle` agent (measured slowness); illustrative OpenTelemetry/Prometheus snippets are examples only. Skills 28 → 29.
+
 ## [3.10.0] - 2026-07-10
 
 ### Added
