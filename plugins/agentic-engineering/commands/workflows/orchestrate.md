@@ -5,7 +5,7 @@ argument-hint: "[feature idea, or path to an existing brainstorm/plan] [--final-
 disable-model-invocation: true
 ---
 
-# Orchestrate the Compounding Engineering Pipeline
+# Orchestrate the Agentic Engineering Pipeline
 
 **Note: The current year is 2026.**
 

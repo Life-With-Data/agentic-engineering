@@ -119,7 +119,7 @@ Turn failed sessions into durable corrections written to local markdown:
 headroom learn
 ```
 
-This complements the compounding-engineering loop — captured corrections become
+This complements the agentic-engineering loop — captured corrections become
 context that future runs read (cheaply, once compressed).
 
 ## When to Reach for Headroom

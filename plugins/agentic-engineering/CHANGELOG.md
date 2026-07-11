@@ -5,6 +5,12 @@ All notable changes to the agentic-engineering plugin will be documented in this
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.2] - 2026-07-11
+
+### Changed
+
+- **Standardized the project name to "Agentic Engineering" across outward-facing surfaces.** Renamed the "Compounding Engineering" / "compounding engineering" brand and philosophy label to "Agentic Engineering" in the root and plugin READMEs/CLAUDE.md, the docs site (`docs/index.html` title, Open Graph/Twitter meta, logo, hero, philosophy sections) and every `docs/pages/*.html` chrome title/meta/logo (`CE Docs` → `AE Docs`), `FLOWS.md`, `orchestrate.md`, `HOOKS.md`, and the `reflect-for-skill-updates` / `headroom` skills. Left intentionally intact: the `/workflows:compound` command, `compound-docs` skill, and standalone "compounding" descriptions of the accumulation mechanic (these name an action, not the product); historical CHANGELOG entries; and every provenance reference to the upstream `EveryInc/compound-engineering-plugin` repo (its actual name) and former `plugins/compound-engineering` paths in archived plans. No component counts change.
+
 ## [3.17.1] - 2026-07-11
 
 ### Changed

@@ -9,7 +9,7 @@ Most codebases drift the other way. Every feature adds complexity, every shortcu
 
 It works in Claude Code first, and converts to a dozen other AI coding tools (OpenCode, Codex, Cursor, Droid, Gemini, Copilot, and more).
 
-> Grounded in the compounding-engineering philosophy. This is an independent project — tracker-aware workflows, a steering orchestrator, and cross-tool conversion, built as our own.
+> An independent project — tracker-aware workflows, a steering orchestrator, and cross-tool conversion, built as our own.
 
 ## The loop
 

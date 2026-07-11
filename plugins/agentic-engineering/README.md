@@ -1,4 +1,4 @@
-# Compounding Engineering Plugin
+# Agentic Engineering Plugin
 
 AI-powered development tools that get smarter with every use. Make each unit of engineering work easier than the last.
 
@@ -158,7 +158,7 @@ One skill is designed to be **always-on**: `operating-principles` ships a paste-
 | `dhh-rails-style` | Write Ruby/Rails code in DHH's 37signals style |
 | `dspy-ruby` | Build type-safe LLM applications with DSPy.rb |
 | `frontend-design` | Create production-grade frontend interfaces |
-| `reflect-for-skill-updates` | Turn debugging sessions into permanent skill improvements; the meta-improvement loop for compounding engineering |
+| `reflect-for-skill-updates` | Turn debugging sessions into permanent skill improvements; the meta-improvement loop for agentic engineering |
 | `skill-creator` | Guide for creating effective Claude Code skills |
 
 ### Content & Workflow
