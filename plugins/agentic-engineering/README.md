@@ -61,7 +61,7 @@ Agents are organized into categories for easier discovery.
 | Agent | Description |
 |-------|-------------|
 | `bug-reproduction-validator` | Systematically reproduce and validate bug reports |
-| `every-style-editor` | Edit content to conform to Every's style guide |
+| `editorial-style-editor` | Edit content to conform to our editorial style guide |
 | `lint` | Run linting and code quality checks on Ruby and ERB files |
 | `pr-comment-resolver` | Address PR comments and implement fixes |
 | `spec-flow-analyzer` | Analyze user flows and identify gaps in specifications |
@@ -167,7 +167,7 @@ One skill is designed to be **always-on**: `operating-principles` ships a paste-
 |-------|-------------|
 | `brainstorming` | Explore requirements and approaches through collaborative dialogue |
 | `document-review` | Improve documents through structured self-review |
-| `every-style-editor` | Review copy for Every's style guide compliance |
+| `editorial-style-editor` | Review copy for our editorial style guide compliance |
 | `file-todos` | File-based todo tracking system |
 | `git-worktree` | Manage Git worktrees for parallel development |
 | `interview-me` | Extract the user's true intent via a one-question-at-a-time interview (each with a falsifiable guess) to ~95% confidence before any spec, plan, or code — runs upstream of `brainstorming` |

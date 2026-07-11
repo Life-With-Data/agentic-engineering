@@ -96,7 +96,7 @@ A file the agent reads at the start of each session and updates as it learns:
 # Context
 
 ## Who I Am
-Reading assistant for the Every app.
+Reading assistant for a reader app.
 
 ## What I Know About This User
 - Interested in military history and Russian literature

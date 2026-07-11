@@ -5,6 +5,12 @@ All notable changes to the agentic-engineering plugin will be documented in this
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.1] - 2026-07-11
+
+### Changed
+
+- **De-branded outward-facing references to the original upstream (Every / every.to).** The project began as a fork and has since diverged substantially into its own thing; this removes the upstream company and repo from user-facing surfaces. The `every-style-editor` agent and skill are renamed to **`editorial-style-editor`** (directory, frontmatter `name`, and the bundled style reference `EVERY_WRITE_STYLE.md` → `EDITORIAL_STYLE.md`), with "Every's style guide" rewritten as "our editorial style guide" throughout and the Every-specific brand-capitalization rule dropped. The `agent-native-architecture` reference examples that named the "Every Reader" product are genericized to "a reader app." Root `README.md` (attribution blockquote + external "Learn more" links), the docs-site footer (`docs/index.html`), and the plugin `homepage` fields now point at our own docs site instead of every.to. Historical CHANGELOG attribution and upstream-adoption provenance records (`docs/upstream-sources.md`, the fork-trap notes in `CLAUDE.md`) are intentionally left intact — they are accurate history and load-bearing operational records, not branding. No component counts change.
+
 ## [3.17.0] - 2026-07-10
 
 ### Added

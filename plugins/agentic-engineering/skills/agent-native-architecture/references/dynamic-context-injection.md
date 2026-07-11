@@ -265,9 +265,9 @@ let cachedContext = appLaunchContext  // Stale!
 </context_freshness>
 
 <examples>
-## Real-World Example: Every Reader
+## Real-World Example: A Reader App
 
-The Every Reader app injects context for its chat agent:
+A reader app injects context for its chat agent:
 
 ```swift
 func getChatAgentSystemPrompt() -> String {
