@@ -400,14 +400,26 @@ fall back to the base package `headroom-ai` (no `[all]`), which the skill also d
 
 **Plan review agents:** stack-specific reviewer + `code-simplicity-reviewer`.
 
-Write `agentic-engineering.local.md`:
+Write the three flags through the shared config writer — never hand-template the frontmatter here;
+`config_registry.py` is the single serializer for `agentic-engineering.local.md` so this skill,
+`/config-flags`, and any future writer can never drift:
+
+```bash
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/config_registry.py" --set issue_tracker "{detected tracker}"
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/config_registry.py" --set review_agents "[{computed agent list}]"
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/config_registry.py" --set plan_review_agents "[{computed plan agent list}]"
+```
+
+If any call returns `{"ok": false, "error_code": "local_config_tracked", ...}`, the file is
+currently tracked in git — the write is refused rather than silently overwriting a committed copy.
+The Step 4.5 recipe below still runs regardless and will surface the same tracked status and offer
+to untrack; once untracked, retry the three calls above.
+
+If `agentic-engineering.local.md` did not already contain a `# Review Context` section before these
+writes (check the file after the three calls above), append the free-form body scaffold — the
+writer above only ever touches the frontmatter block, never the body:
 
 ```markdown
----
-issue_tracker: {detected tracker}    # github-project | github | none
-review_agents: [{computed agent list}]
-plan_review_agents: [{computed plan agent list}]
----
 
 # Review Context
 
@@ -512,7 +524,8 @@ Gitignore:     {entry present | added | failed (see warning) | n/a (not a git re
 Tracked:       {no | untracked now (deletion staged — commit it) | still tracked (declined) | still tracked (no answer — command printed) | n/a (not a git repo)}
 
 Tip: Edit the "Review Context" section to add project-specific instructions.
-     Change issue_tracker: in the frontmatter to switch trackers (github-project, github, none).
-     Re-run this setup anytime to reconfigure.
+     Run /config-flags anytime to browse or change issue_tracker, nudge_todowrite,
+     and every other flag this plugin offers — no need to re-run setup just to flip one.
+     Re-run this setup anytime to reconfigure agents/stack detection from scratch.
      Run /lifecycle-doctor anytime to verify the lifecycle board is wired correctly.
 ```

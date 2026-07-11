@@ -7,7 +7,7 @@ AI-powered development tools that get smarter with every use. Make each unit of 
 | Component | Count |
 |-----------|-------|
 | Agents | 30 |
-| Commands | 26 |
+| Commands | 27 |
 | Skills | 27 |
 | MCP Servers | 1 |
 
@@ -135,6 +135,7 @@ stub → brainstormed → planned → in_progress → in_review → shipped
 | `/analyze-source` | Evaluate any external resource (X post, blog, repo, tool) and return one verdict — author locally, track upstream, new plugin, install-alongside, or skip |
 | `/lifecycle-doctor` | Verify the lifecycle board setup — toolchain, repo shape, board schema, delivery topology — and answer "ready for first work item: yes/no" (`--live` for the end-to-end probe) |
 | `/deploy-docs` | Validate and prepare documentation for GitHub Pages deployment |
+| `/config-flags` | Browse and toggle every opt-in configuration flag the plugin offers for this repo, with current value vs. default |
 
 ## Skills
 

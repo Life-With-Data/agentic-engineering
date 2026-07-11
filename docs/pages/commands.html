@@ -49,7 +49,7 @@
           <h3>On This Page</h3>
           <ul>
             <li><a href="#workflow-commands">Workflow (7)</a></li>
-            <li><a href="#utility-commands">Utility (19)</a></li>
+            <li><a href="#utility-commands">Utility (20)</a></li>
           </ul>
         </div>
       </nav>
@@ -144,7 +144,7 @@
         </section>
 
         <section id="utility-commands">
-          <h2><i class="fa-solid fa-screwdriver-wrench"></i> Utility Commands (19)</h2>
+          <h2><i class="fa-solid fa-screwdriver-wrench"></i> Utility Commands (20)</h2>
           <div class="command-detail" id="agent-native-audit">
             <div class="command-detail-header">
               <code class="command-detail-name">/agent-native-audit</code>
@@ -179,6 +179,15 @@
             <p class="command-detail-description">Diagnose and fix failing CI checks on a pull request</p>
             <div class="card-code-block">
               <pre><code>/ci-resolve-workflow-issues</code></pre>
+            </div>
+          </div>
+          <div class="command-detail" id="config-flags">
+            <div class="command-detail-header">
+              <code class="command-detail-name">/config-flags</code>
+            </div>
+            <p class="command-detail-description">Browse and toggle every opt-in configuration flag the plugin offers for this repo — current value vs. default, with a guided flip. Named config-flags (not config) to avoid colliding with Claude Code's built-in /config.</p>
+            <div class="card-code-block">
+              <pre><code>/config-flags</code></pre>
             </div>
           </div>
           <div class="command-detail" id="create-agent-skill">
