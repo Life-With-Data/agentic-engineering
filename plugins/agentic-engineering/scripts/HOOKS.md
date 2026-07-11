@@ -103,6 +103,48 @@ its YAML frontmatter — unless the plan opts out with `issue_tracker: none`.
 **Why:** Plans that aren't linked to a tracked issue get orphaned. This keeps
 `/workflows:plan` output connected to whatever issue tracker the repo uses.
 
+## `sdd-cache-pre.py` / `sdd-cache-post.py` — PreToolUse / PostToolUse (WebFetch), opt-in
+
+**Off by default.** Unlike the guards above, this pair is a *performance* hook,
+not a safety net, and it is **inert unless the environment sets
+`AGENTIC_SDD_CACHE=1`**. When enabled it caches `WebFetch` results on disk under
+`.claude/sdd-cache/` (gitignored) and serves a page back to the agent instead of
+re-fetching it — but **only after the origin server confirms the page is
+unchanged.** Adapted from
+[`addyosmani/agent-skills`](https://github.com/addyosmani/agent-skills)'s
+`sdd-cache` hooks, ported from bash to python3 (stdlib only).
+
+**The 304-only guarantee:** there is **no TTL**. On a `WebFetch`, the pre hook
+looks up the cached entry by `sha256(url)` and, if it stored an `ETag` /
+`Last-Modified`, sends a conditional `HEAD` (`If-None-Match` / `If-Modified-Since`,
+5s timeout, follows redirects) to that same URL. The cached body is served (and
+the fetch blocked via exit 2, the same deny signal `block-no-verify.py` uses)
+**only** when the origin answers `304 Not Modified` — a live re-verification, not
+a memory read. Any other answer (`200` = changed, an error, a timeout, or an
+entry with no validator) lets the real `WebFetch` proceed. So the "verify against
+current docs" property that `WebFetch` gives you is never weakened; you only skip
+the byte transfer when the server itself says nothing moved.
+
+**Why:** agents that consult the same official docs across many sessions re-fetch
+identical pages constantly. A naive TTL cache would speed that up at the cost of
+silently serving stale docs — the opposite of what a docs-verification workflow
+wants. Delegating freshness to the origin's own validators keeps every served
+hit as trustworthy as a fresh fetch.
+
+**The post hook** records the result after a fetch: it `HEAD`s the URL to capture
+the current `ETag` / `Last-Modified` from the final redirect hop and writes
+`{url, prompt, etag, last_modified, content, fetched_at}` atomically. A response
+with **no** validator is never cached (it could never be revalidated), and any
+stale entry for that URL is removed.
+
+**Fail-open:** any error in either hook (bad stdin, unreadable cache, network
+failure) resolves to "let the fetch proceed" — a broken cache can never block a
+legitimate `WebFetch`.
+
+**Enable it:** export `AGENTIC_SDD_CACHE=1` in the environment you launch Claude
+Code from (a per-machine choice — an env var, unlike a committed config flag,
+can't ride a PR and flip caching on for every clone). Unset it to disable.
+
 ## Testing hooks
 
 Each PreToolUse hook reads a JSON payload on stdin and signals its decision via
@@ -121,6 +163,8 @@ Automated regression tests live in [`../tests/`](../tests) and run in CI via
 - [`block_slack_webhook_test.py`](../tests/block_slack_webhook_test.py)
 - [`plan_tracker_guard_test.py`](../tests/plan_tracker_guard_test.py)
 - [`nudge_todowrite_to_tracker_test.py`](../tests/nudge_todowrite_to_tracker_test.py)
+- [`sdd_cache_pre_test.py`](../tests/sdd_cache_pre_test.py)
+- [`sdd_cache_post_test.py`](../tests/sdd_cache_post_test.py)
 
 These pin the tricky false-positive / false-negative edges (prose that mentions
 a flag, chained command segments, branches named like `main`) so the regex
