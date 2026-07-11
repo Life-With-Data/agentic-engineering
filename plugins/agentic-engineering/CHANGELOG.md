@@ -5,6 +5,12 @@ All notable changes to the agentic-engineering plugin will be documented in this
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.4] - 2026-07-11
+
+### Fixed
+
+- **Caught one landing-page stat the previous release missed** — a "Delegate" pillar tool-tag still read "29 specialized agents". Converted it to a nested `data-stat="agents"` span so the generator fills it (now 30) like every other stat. Completes the drift-proofing from v3.17.3.
+
 ## [3.17.3] - 2026-07-11
 
 ### Fixed
