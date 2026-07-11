@@ -8,7 +8,7 @@ AI-powered development tools that get smarter with every use. Make each unit of 
 |-----------|-------|
 | Agents | 30 |
 | Commands | 27 |
-| Skills | 32 |
+| Skills | 33 |
 | MCP Servers | 1 |
 
 > 📊 **[FLOWS.md](FLOWS.md)** — mermaid diagrams of every workflow (brainstorm → plan → work → review → compound) and how `/workflows:orchestrate` drives them.
@@ -146,6 +146,7 @@ One skill is designed to be **always-on**: `operating-principles` ships a paste-
 | Skill | Description |
 |-------|-------------|
 | `agent-native-architecture` | Build AI agents using prompt-native architecture |
+| `api-and-interface-design` | Author stable, hard-to-misuse API and interface contracts at design time (Hyrum's Law, One-Version Rule, branded types, status-code and naming tables) — the design-time complement to the review-time `architecture-strategist` and `integration-boundary-reviewer` agents |
 
 ### Development Tools
 
