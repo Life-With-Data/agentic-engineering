@@ -226,7 +226,7 @@ Specialized Agent Reviews (Auto-Triggered):
   ✓ performance-oracle: Validated query optimization approach
   ✓ kieran-rails-reviewer: Code examples meet Rails standards
   ✓ code-simplicity-reviewer: Solution is appropriately minimal
-  ✓ every-style-editor: Documentation style verified
+  ✓ editorial-style-editor: Documentation style verified
 
 File created:
 - docs/solutions/performance-issues/n-plus-one-brief-generation.md
@@ -289,7 +289,7 @@ Based on problem type, these agents can enhance documentation:
 
 ### Enhancement & Documentation
 - **best-practices-researcher**: Enriches solution with industry best practices
-- **every-style-editor**: Reviews documentation style and clarity
+- **editorial-style-editor**: Reviews documentation style and clarity
 - **framework-docs-researcher**: Links to Rails/gem documentation references
 
 ### When to Invoke

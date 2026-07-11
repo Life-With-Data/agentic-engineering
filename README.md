@@ -9,7 +9,7 @@ Most codebases drift the other way. Every feature adds complexity, every shortcu
 
 It works in Claude Code first, and converts to a dozen other AI coding tools (OpenCode, Codex, Cursor, Droid, Gemini, Copilot, and more).
 
-> Built on the compounding-engineering philosophy from [Every](https://every.to/source-code/my-ai-had-already-fixed-the-code-before-i-saw-it). This is an independent fork that adds tracker-aware workflows, a steering orchestrator, and cross-tool conversion.
+> Grounded in the compounding-engineering philosophy. This is an independent project — tracker-aware workflows, a steering orchestrator, and cross-tool conversion, built as our own.
 
 ## The loop
 
@@ -120,5 +120,5 @@ The split is roughly **80% planning and review, 20% execution.** Plan thoroughly
 
 ## Learn more
 
-- [Compound engineering: how Every codes with agents](https://every.to/chain-of-thought/compound-engineering-how-every-codes-with-agents)
-- [The story behind compounding engineering](https://every.to/source-code/my-ai-had-already-fixed-the-code-before-i-saw-it)
+- [Documentation site](https://life-with-data.github.io/agentic-engineering/) — full agent, command, and skill reference
+- [FLOWS.md](plugins/agentic-engineering/FLOWS.md) — mermaid diagrams of every workflow and where the orchestrator pauses for you

@@ -1,6 +1,6 @@
-# Every Style Guide
+# Editorial Style Guide
 
-## Quick-and-dirty Every style guide
+## Quick-and-dirty style guide
 
 Always use the following style guide, go though the items one by one and suggest edits.
 
@@ -40,7 +40,7 @@ Always use the following style guide, go though the items one by one and suggest
 
 ## Our grammar and mechanics
 
-Every generally follows Merriam-Webster and the AP Stylebook.
+We generally follow Merriam-Webster and the AP Stylebook.
 
 ### Abbreviations and acronyms
 
@@ -102,7 +102,7 @@ Pieces written by guest authors include a biography for the author at the bottom
 
 #### Guest Author Introduction
 
-Pieces written by guest authors also include an introduction from an Every staff member that identifies the author, their background, the subject of the piece, and why we recommend it. The introduction is signed by the staff member who wrote it. Use italics: *When I was coming up in tech, the conventional wisdom was that working at or investing in software companies was a great way to make money, while doing so with companies that took on scientific risk or produced hardware components were a wonderful way to lose every cent to your name. This has always struck me as, you know, wrong, which is why this piece by venture capitalist Leo Polovets resonated with me. He takes a data-driven approach to understanding how deep tech companies can produce superior financial returns. If you're on the fence with your career—perhaps facing temptation to do something relatively safe in B2B SaaS—take this piece as a rational encouragement to dream bigger. —[Evan](https://twitter.com/itsurboyevan)*
+Pieces written by guest authors also include an introduction from a staff member that identifies the author, their background, the subject of the piece, and why we recommend it. The introduction is signed by the staff member who wrote it. Use italics: *When I was coming up in tech, the conventional wisdom was that working at or investing in software companies was a great way to make money, while doing so with companies that took on scientific risk or produced hardware components were a wonderful way to lose every cent to your name. This has always struck me as, you know, wrong, which is why this piece by venture capitalist Leo Polovets resonated with me. He takes a data-driven approach to understanding how deep tech companies can produce superior financial returns. If you're on the fence with your career—perhaps facing temptation to do something relatively safe in B2B SaaS—take this piece as a rational encouragement to dream bigger. —[Evan](https://twitter.com/itsurboyevan)*
 
 ### Capitalization
 
@@ -112,7 +112,7 @@ Use common sense. When in doubt, don't capitalize. Do not capitalize these words
 
 #### Job Titles
 
-Do not capitalize job titles, whether on their own or preceding names, unless they're very unusual: He accepted the position of director of business operations. Director of business operations Lucas Crespo manages Every's ad sales. Lucas Crespo, director of business operations, manages Every's ad sales. Chief Happiness Officer
+Do not capitalize job titles, whether on their own or preceding names, unless they're very unusual: He accepted the position of director of business operations. Director of business operations Lucas Crespo manages the company's ad sales. Lucas Crespo, director of business operations, manages the company's ad sales. Chief Happiness Officer
 
 #### Colons
 
@@ -138,11 +138,11 @@ Capitalize the first word of a caption, and end with a period, whether or not th
 
 #### Identifying Names
 
-When a caption consists of nothing but an identifying name, however, omit the end punctuation. If the identifying caption includes any language beyond just a name, though, use the final punctuation: Dan Shipper. Dan Shipper, Every CEO.
+When a caption consists of nothing but an identifying name, however, omit the end punctuation. If the identifying caption includes any language beyond just a name, though, use the final punctuation: Dana Rivera. Dana Rivera, CEO.
 
 #### Image Credits
 
-When a caption includes an image credit, the credit should be formatted as DALL-E/Every illustration.
+When a caption includes an image credit, the credit should be formatted as DALL-E illustration.
 
 ### Commas
 
@@ -152,11 +152,11 @@ Use the serial or Oxford comma before the conjunction in a series: x, y, and z
 
 #### Independent vs Dependent Clauses
 
-Use a comma to separate independent clauses but not dependent clauses: He helped trouble-shoot an issue, and she wrote code. She signed up for Every and became a subscriber.
+Use a comma to separate independent clauses but not dependent clauses: He helped trouble-shoot an issue, and she wrote code. She signed up for the newsletter and became a subscriber.
 
 #### Restrictive Elements
 
-Set off nonrestrictive elements with commas; don't set off restrictive elements. The most frequent example is the that/which difference: The piece, which garnered 15,000 readers, is one of Every's most successful. The piece that garnered 15,000 readers is one of Every's most successful.
+Set off nonrestrictive elements with commas; don't set off restrictive elements. The most frequent example is the that/which difference: The piece, which garnered 15,000 readers, is one of our most successful. The piece that garnered 15,000 readers is one of our most successful.
 
 #### Too Usage
 
@@ -290,7 +290,7 @@ Include only links you need and make the links as useful as possible. Keep the l
 
 #### URL Format
 
-URLs included in print should appear as is (i.e., not shortened by a URL shortener). The URL should be all lowercase, unless adding camel caps would increase readability. Don't include "www." or anything preceding it: You can read more on every.to. She's the founder of GetOutTheVoteNewYork.com.
+URLs included in print should appear as is (i.e., not shortened by a URL shortener). The URL should be all lowercase, unless adding camel caps would increase readability. Don't include "www." or anything preceding it: You can read more on example.com. She's the founder of GetOutTheVoteNewYork.com.
 
 ### Lists
 
@@ -414,10 +414,6 @@ Use the terms "he/him pronouns" and "she/her pronouns" when referring to a perso
 
 ### Proper nouns and names
 
-#### Every Capitalization
-
-"Every" is always capitalized. The only times Every appears in lowercase are in social media handles and URLs.
-
 #### Geography
 
 Capitalize place names, but use lowercase for general directions or regions: the East (world and U.S.), the West (world and U.S.), the South, the North, Western United States, Southeast Asia, Northern Hemisphere, eastern Long Island, the Bay Area, Westerner, Easterner, Northerner, Southerner, the Midwest, Midwestern, Southwestern (referring to style of art), southwestern (all other uses), Western Europe, Eastern Europe, southern California, northern California, west Texas, east Tennessee, south Florida, the South of France, Continental Europe, Washington State
@@ -456,7 +452,7 @@ Place periods and commas inside quotation marks. If a question mark or exclamati
 
 #### Introducing Quotes
 
-If the text preceding a quote introduces the quote, include a comma before the quote. If the text before the quote leads directly into the quote, don't include a comma. Capitalize the first letter in the quote when it's a full sentence or when following "said," "says," or other introductory language. Generally avoid using a colon to introduce a quote unless it's more than two sentences long: When doing strategic planning for the year, "it's important to carve out time to solicit everyone' feedback," she says. Every's mission is "to feed the minds and hearts of the people who build the internet," says Shipper. He recalls, "We had no choice but to start from scratch."
+If the text preceding a quote introduces the quote, include a comma before the quote. If the text before the quote leads directly into the quote, don't include a comma. Capitalize the first letter in the quote when it's a full sentence or when following "said," "says," or other introductory language. Generally avoid using a colon to introduce a quote unless it's more than two sentences long: When doing strategic planning for the year, "it's important to carve out time to solicit everyone' feedback," she says. The company's mission is "to serve the people who build the internet," says the founder. He recalls, "We had no choice but to start from scratch."
 
 #### Multi-Paragraph Quotes
 
@@ -512,7 +508,7 @@ Abbreviate time zones within the continental United States, and spell out the re
 
 #### Collective Nouns
 
-Collective nouns can be construed as plural if you want to emphasize the individuals forming the group, but most often they should be treated as singular. Subsequent pronouns should agree with the verb tense chosen. The Every trivia squad is considered one of the league's strongest teams. But: The lucky trio are collecting their Amazon gift cards. The Grammys are coming to Los Angeles.
+Collective nouns can be construed as plural if you want to emphasize the individuals forming the group, but most often they should be treated as singular. Subsequent pronouns should agree with the verb tense chosen. The office trivia squad is considered one of the league's strongest teams. But: The lucky trio are collecting their Amazon gift cards. The Grammys are coming to Los Angeles.
 
 #### Fewer vs Less
 

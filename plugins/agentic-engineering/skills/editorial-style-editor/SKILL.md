@@ -1,19 +1,19 @@
 ---
-name: every-style-editor
-description: This skill should be used when reviewing or editing copy to ensure adherence to Every's style guide. It provides a systematic line-by-line review process for grammar, punctuation, mechanics, and style guide compliance.
+name: editorial-style-editor
+description: This skill should be used when reviewing or editing copy to ensure adherence to our editorial style guide. It provides a systematic line-by-line review process for grammar, punctuation, mechanics, and style guide compliance.
 ---
 
-# Every Style Editor
+# Editorial Style Editor
 
-This skill provides a systematic approach to reviewing copy against Every's comprehensive style guide. It transforms Claude into a meticulous line editor and proofreader specializing in grammar, mechanics, and style guide compliance.
+This skill provides a systematic approach to reviewing copy against our comprehensive editorial style guide. It transforms Claude into a meticulous line editor and proofreader specializing in grammar, mechanics, and style guide compliance.
 
 ## When to Use This Skill
 
 Use this skill when:
 - Reviewing articles, blog posts, newsletters, or any written content
-- Ensuring copy follows Every's specific style conventions
+- Ensuring copy follows our specific style conventions
 - Providing feedback on grammar, punctuation, and mechanics
-- Flagging deviations from the Every style guide
+- Flagging deviations from the style guide
 - Preparing clean copy for human editorial review
 
 ## Skill Overview
@@ -42,9 +42,9 @@ Review each paragraph systematically, checking for:
 - Punctuation usage (commas, semicolons, em dashes, etc.)
 - Capitalization rules (especially job titles, headlines)
 - Word choice and usage (overused words, passive voice)
-- Adherence to Every style guide rules
+- Adherence to our style guide rules
 
-Reference the complete [EVERY_WRITE_STYLE.md](./references/EVERY_WRITE_STYLE.md) for specific rules when in doubt.
+Reference the complete [EDITORIAL_STYLE.md](./references/EDITORIAL_STYLE.md) for specific rules when in doubt.
 
 ### Step 3: Mechanical Review
 
@@ -99,7 +99,7 @@ FINAL RECOMMENDATIONS
 
 ## Style Guide Reference
 
-The complete Every style guide is included in [EVERY_WRITE_STYLE.md](./references/EVERY_WRITE_STYLE.md). Key areas to focus on:
+The complete style guide is included in [EDITORIAL_STYLE.md](./references/EDITORIAL_STYLE.md). Key areas to focus on:
 
 - **Quick Rules**: Title case for headlines, sentence case elsewhere
 - **Tone**: Active voice, avoid overused words (actually, very, just), be specific
@@ -120,7 +120,7 @@ The complete Every style guide is included in [EVERY_WRITE_STYLE.md](./reference
 
 ## Common Areas to Focus On
 
-Based on Every's style guide, pay special attention to:
+Based on our style guide, pay special attention to:
 
 - Punctuation (comma usage, semicolons, apostrophes, quotation marks)
 - Capitalization (proper nouns, titles, sentence starts)

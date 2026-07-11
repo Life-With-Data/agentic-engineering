@@ -337,7 +337,7 @@ Schedule periodic reviews:
 <examples>
 ## Real Example: The Feed Gap
 
-**Before:** Every Reader had a feed where insights appeared, but no agent tool to publish there.
+**Before:** A reader app had a feed where insights appeared, but no agent tool to publish there.
 
 ```
 User: "Write something about Catherine the Great in my reading feed"
