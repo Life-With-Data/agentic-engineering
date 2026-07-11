@@ -112,9 +112,9 @@ component confers no trust on v2.
 - visibility: public
 - scan: auto
 - adopted:
+  - skill/interview-me (upstream: skills/interview-me/SKILL.md@4e8bd9fde4a38cd009053e649f4cdc7cd36b568b, adapted) — PR #<N> — @aagnone3 2026-07-10
 - deferred:
   - skill/doubt-driven-development — shortlisted for adoption: in-flight adversarial fresh-context review (CLAIM/EXTRACT/DOUBT/RECONCILE/STOP) complementing the post-hoc verification-loop; retarget its agent-roster and orchestration-patterns references to local components — @aagnone3 2026-07-10
-  - skill/interview-me — shortlisted for adoption: confidence-gated intent-extraction interview with falsifiable per-question guesses; self-contained, no local equivalent, sits upstream of brainstorming — @aagnone3 2026-07-10
   - skill/observability-and-instrumentation — shortlisted for adoption: RED/USE selection tables, cardinality denylist, symptom-vs-cause alerting; genuine gap, co-locate the upstream observability checklist as skill references — @aagnone3 2026-07-10
   - skill/security-and-hardening — shortlisted for adoption: build-time hardening playbook (STRIDE per boundary, SSRF with TOCTOU caveat, OWASP LLM Top 10) complementing the audit-time security-sentinel agent; co-locate the security checklist — @aagnone3 2026-07-10
   - skill/test-driven-development — shortlisted for adoption: test-authoring discipline (Prove-It, test-size resource model, double preference order) complementing the review-time test-strategy-reviewer; co-locate testing-patterns — @aagnone3 2026-07-10

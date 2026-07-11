@@ -8,7 +8,7 @@ AI-powered development tools that get smarter with every use. Make each unit of 
 |-----------|-------|
 | Agents | 30 |
 | Commands | 27 |
-| Skills | 27 |
+| Skills | 28 |
 | MCP Servers | 1 |
 
 > 📊 **[FLOWS.md](FLOWS.md)** — mermaid diagrams of every workflow (brainstorm → plan → work → review → compound) and how `/workflows:orchestrate` drives them.
@@ -169,6 +169,7 @@ One skill is designed to be **always-on**: `operating-principles` ships a paste-
 | `every-style-editor` | Review copy for Every's style guide compliance |
 | `file-todos` | File-based todo tracking system |
 | `git-worktree` | Manage Git worktrees for parallel development |
+| `interview-me` | Extract the user's true intent via a one-question-at-a-time interview (each with a falsifiable guess) to ~95% confidence before any spec, plan, or code — runs upstream of `brainstorming` |
 | `land-docs` | Ship compounded knowledge (docs-only markdown) as its own PR and merge it on green — the autonomous data lane that closes out a session after the code PR lands |
 | `land-pr` | Drive an open PR through CI, review threads, and approval to merge |
 | `lifecycle` | The shared work-item lifecycle vocabulary — 9 stages, writer contracts, entry gates, claim semantics, and security invariants for the GitHub Projects v2 board |
