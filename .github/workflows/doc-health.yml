@@ -74,10 +74,13 @@ jobs:
         if: steps.key.outputs.present == 'true'
         uses: anthropics/claude-code-action@v1
         with:
-          # Pass both; the action uses whichever is non-empty. Prefer the
-          # subscription token to bill against Pro/Max quota, not API credits.
+          # Subscription token only. Do NOT also pass anthropic_api_key here:
+          # secrets.ANTHROPIC_API_KEY resolves to an empty string when unset, and
+          # an empty auth input breaks credential resolution (the SDK exits 1
+          # before running). Pass exactly the one credential you use. For an API
+          # key instead, swap this line for:
+          #   anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
           # Load the skill from this very marketplace — dogfooding.
           plugin_marketplaces: https://github.com/Life-With-Data/agentic-engineering.git
