@@ -7,7 +7,7 @@ AI-powered development tools that get smarter with every use. Make each unit of 
 | Component | Count |
 |-----------|-------|
 | Agents | 30 |
-| Commands | 27 |
+| Commands | 28 |
 | Skills | 35 |
 | MCP Servers | 1 |
 
@@ -85,7 +85,8 @@ Core workflow commands use `workflows:` prefix to avoid collisions with built-in
 | `/workflows:review` | Run comprehensive code reviews |
 | `/workflows:work` | Execute work items systematically (uses deterministic repo preflight script) |
 | `/workflows:compound` | Document solved problems to compound team knowledge |
-| `/workflows:orchestrate` | Drive the full pipeline (brainstorm → plan → work → review → land → compound) as the orchestrator — delegating implementation to sub-agents, reviewing their work, surfacing only blockers and a final review |
+| `/workflows:orchestrate` | Drive the full pipeline (brainstorm → plan → work → review → land → compound) as the orchestrator — delegating implementation to sub-agents, reviewing their work, surfacing only blockers and a final review. Segment flags bifurcate the run: `--groom` stops once the item is planned; `--implement` starts from groomed work and refuses to groom |
+| `/workflows:groom` | Groom intake (an idea, bug report, or stub issue) through brainstorm → plan and **stop once the work is groomed** — Status `planned`, join-keyed plan doc, sub-issues with dependencies. The first half of the bifurcated flow; never claims, never branches, never writes code |
 | `/workflows:merge` | Land an open PR — thin entry point to the `land-pr` skill (CI wait, thread resolution, merge gate, cleanup, tracker-item close) |
 
 #### Issue tracker

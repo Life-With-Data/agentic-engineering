@@ -38,7 +38,7 @@ flowchart LR
     C -->|"docs/solutions/*.md<br/><b>compounded</b>"| done([compounded])
 ```
 
-The **bold** labels are the lifecycle stages stamped on the board's Status field as each artifact lands (see the state machine below). `/workflows:orchestrate` runs this whole chain for you — **fully autonomously by default** (merges once landable, surfaces only genuine blockers); add `--final-review` to pause once before the merge, or `--steer` for the classic checkpoint cadence.
+The **bold** labels are the lifecycle stages stamped on the board's Status field as each artifact lands (see the state machine below). `/workflows:orchestrate` runs this whole chain for you — **fully autonomously by default** (merges once landable, surfaces only genuine blockers); add `--final-review` to pause once before the merge, or `--steer` for the classic checkpoint cadence. The chain also splits into a **bifurcated flow** at the `planned` boundary: `/workflows:groom` (or `orchestrate --groom`) drives intake → groomed and stops; `orchestrate --implement` drives groomed → shipped and refuses to groom on the fly.
 
 ---
 
@@ -144,6 +144,35 @@ flowchart TD
 ‡ present **only under `--final-review`**; the default (fully autonomous) merges once landable with no gate (the packet becomes the final summary).
 
 **Autonomy dial:** `--careful` > `--steer` > `--final-review` > *default (fully autonomous)*. Each step removes gates; the default is the fully autonomous end of the dial — no Final-Review gate, no approval prompts, merges once landable. Blockers and material scope changes escalate in **every** mode, the default included — that pair is the universal floor.
+
+**Segment flags** bifurcate the run orthogonally to the autonomy dial: `--groom` runs only the intake half and stops once the item is `planned` (see the groom flow below — its spec is normative); `--implement` runs only the build half, requiring `planned` and routing un-groomed items back to groom rather than planning them mid-run.
+
+---
+
+## /workflows:groom — intake → groomed, then stop
+
+The grooming segment as a standalone flow: an idea, bug report, or stub issue goes in; a **groomed, ready-to-claim work item** comes out (Status `planned`, join-keyed plan doc, sub-issues with dependencies — the exact bar `/workflows:work`'s gate enforces at claim time). The stop is the feature: groom never claims, never branches, never writes code. Autonomous by default with a decision log; `--steer` makes it an interactive grooming session. `/workflows:orchestrate --implement` picks up where groom stops.
+
+```mermaid
+flowchart TD
+    start(["/workflows:groom<br/>(idea / bug report / #issue)"]) --> read["reconcile + read board stage"]
+    read --> prov{"provenance<br/>trusted?"}
+    prov -->|untrusted| ask{{"confirm before grooming<br/>outsider-authored issue"}}
+    ask --> ladder
+    prov -->|trusted| ladder{"current stage?"}
+    ladder -->|"≥ planned"| already["report already groomed /<br/>past grooming"] --> stop([STOP — groomed packet])
+    ladder -->|"vague idea / stub"| B[["brainstorm"]]
+    ladder -->|"crisp, or bug w/ repro"| bug{"bug report?"}
+    B --> P
+    bug -->|"yes, cheap + safe"| repro["validate reproduction*<br/>(bug-reproduction-validator)"]
+    bug -->|no| P[["plan (issue + sub-issues<br/>+ deps + Status=planned)"]]
+    repro --> P
+    P --> verify["verify postcondition:<br/>stage ≥ planned ∧ plan doc"]
+    verify --> stop
+
+    classDef gate fill:#ffe8cc,stroke:#e8590c,stroke-width:2px;
+    class ask gate
+```
 
 ---
 

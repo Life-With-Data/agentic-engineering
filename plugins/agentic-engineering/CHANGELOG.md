@@ -5,6 +5,17 @@ All notable changes to the agentic-engineering plugin will be documented in this
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.18.0] - 2026-07-11
+
+### Added
+
+- **New `/workflows:groom` command** — the grooming segment of the pipeline as a first-class flow, supporting the standard bifurcated workflow (intake → groomed work; groomed work → implemented work). It drives an idea, bug report, or stub issue through brainstorm → plan and **stops once the work is groomed**: Status `planned` on the board, a join-keyed plan doc, and sub-issues with dependencies — exactly the bar `/workflows:work`'s entry gate enforces before a claim. Autonomous by default with a decision log (`--steer` for an interactive grooming session), idempotent on already-groomed items (re-runs report and stop; later stages are never re-groomed or regressed), provenance-gated for outsider-authored issues, and hard-stopped: it never claims, never branches, never writes product code, never opens a PR. It owns no lifecycle transition of its own — it sequences the existing `/workflows:brainstorm` and `/workflows:plan` writers and reads state through the `orchestrate` gate (a pure state read), so the one-writer-per-transition table is unchanged. Bug reports get grooming-specific handling: optional reproduction validation via `bug-reproduction-validator` when cheap and side-effect-free, with "can't reproduce" treated as a legitimate grooming outcome rather than a failure. Command count 27 → 28.
+
+### Changed
+
+- **`/workflows:orchestrate` gains pipeline-segment flags**, orthogonal to the autonomy flags: `--groom` runs only intake → groomed and stops (the `/workflows:groom` spec is normative — same ladder, same hard stop, same groomed packet), while `--implement` starts from groomed work and **refuses to groom on the fly** — an item below `planned`, or one whose plan doc is missing, routes to `/workflows:groom` instead of being silently planned mid-run, so grooming can be reviewed separately before code gets written. `--implement` with empty input pulls from `--ready-work` as before (its items are groomed by definition). The default end-to-end behavior is unchanged.
+- `/workflows:plan`'s pipeline-mode note and the `lifecycle` skill's description/gate section now name `groom` alongside `orchestrate` as a pipeline driver; `FLOWS.md` documents the groom flow and the bifurcation boundary at `planned`.
+
 ## [3.17.7] - 2026-07-11
 
 ### Changed

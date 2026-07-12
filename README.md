@@ -5,7 +5,7 @@
 
 A Claude Code plugin built on one idea: **each unit of engineering work should make the next one easier — not harder.**
 
-Most codebases drift the other way. Every feature adds complexity, every shortcut adds debt, and the work gets slower over time. This plugin inverts that by turning a deliberate loop — explore, plan, build, review, and *capture what you learned* — into first-class tooling: **30 agents, 27 commands, and 35 skills** that compound on each other.
+Most codebases drift the other way. Every feature adds complexity, every shortcut adds debt, and the work gets slower over time. This plugin inverts that by turning a deliberate loop — explore, plan, build, review, and *capture what you learned* — into first-class tooling: **30 agents, 28 commands, and 35 skills** that compound on each other.
 
 It works in Claude Code first, and converts to a dozen other AI coding tools (OpenCode, Codex, Cursor, Droid, Gemini, Copilot, and more).
 
@@ -31,6 +31,11 @@ Run the loop without babysitting it:
 
 - **`/workflows:orchestrate`** — fully autonomous by default: drives the entire pipeline, delegates implementation to sub-agents and reviews their work, merges once the PR is landable, and surfaces *only* genuine blockers (a material scope change, or something branch protection requires). Built for unattended runs — cron routines, overnight loops.
 - **`/workflows:orchestrate --final-review`** — the same hands-off run, but it pauses once before the merge and presents a review packet for your go. Add `--steer` instead for the classic checkpoint cadence (approach, plan approval, findings triage, merge).
+
+Or run it bifurcated, splitting grooming from implementation at the `planned` boundary:
+
+- **`/workflows:groom`** — turn an idea, bug report, or stub issue into a **groomed, ready-to-claim work item** (brainstorm → plan → sub-issues) and *stop there*. Groom the backlog overnight, review the plans in the morning.
+- **`/workflows:orchestrate --implement`** — start from groomed work and drive it to shipped (work → review → land → compound). It refuses to groom on the fly: an un-groomed item routes back to `/workflows:groom` instead of being planned mid-run.
 
 📊 **[See FLOWS.md](plugins/agentic-engineering/FLOWS.md)** for mermaid diagrams of every flow and where the orchestrator pauses for you.
 
@@ -108,7 +113,7 @@ Syncs personal skills from `~/.claude/skills/` (as symlinks, so edits reflect im
 | Component | Count |
 |-----------|-------|
 | Specialized agents | 30 |
-| Commands | 27 |
+| Commands | 28 |
 | Skills | 35 |
 | MCP servers | 1 |
 
