@@ -23,18 +23,38 @@ CLAUDE.md is injected in full as context on **every** session and after `/compac
 | 1.7 | Structured with markdown headers + bullets (Claude scans structure like a reader). | INFO | judgment | memory docs |
 | 1.8 | Instructions are specific/verifiable ("Use 2-space indentation", "Run `npm test` before committing") not vague ("format properly", "test your changes"). | INFO | judgment | memory docs |
 | 1.9 | All `@imports` resolve. Relative paths resolve against the **file's** dir (not cwd); `@~/…` allowed; max depth 4 hops; paths inside backticks/fences are *not* imported. | ERROR | det | memory docs |
-| 1.10 | Emphasis ("IMPORTANT"/"YOU MUST") used sparingly. High density signals a too-long file where rules are getting lost — prune rather than shout. For zero-exception rules use a **hook**, not CLAUDE.md. | INFO | judgment | best-practices |
+| 1.10 | Emphasis ("IMPORTANT"/"YOU MUST"/"ALWAYS"/"NEVER") used sparingly. High density signals a too-long file where rules are getting lost — prune rather than shout, and phrase as "prefer X; exception: Y" (absolute constraints deadlock on edge cases). For zero-exception rules use a **hook**, not CLAUDE.md. | INFO | det+judgment | best-practices |
 | 1.11 | Content that changes frequently, is multi-step/procedural, or is path-specific belongs in `.claude/rules/` (with `paths:` globs) or a **skill**, not CLAUDE.md. | INFO | judgment | memory docs, large-codebases |
+| 1.12 | Not raw `/init` scaffolding shipped uncurated ("This file provides guidance to Claude Code…" + restated repo facts). Generated files that merely restate the repo can score *below* having no file at all. | INFO | det | ETH study |
+| 1.13 | No style rules a formatter/linter config already owns (indentation, quotes, semicolons, import order) — the config is the SSOT; keep only conventions tooling can't enforce. | WARN | det+judgment | ETH study, docs-as-code |
 
 **Reward pattern (positive signal):** a CLAUDE.md that explicitly *refuses* to hardcode counts and points at a generator/test as SSOT (this repo's own CLAUDE.md does exactly this). Note it as healthy, don't just hunt violations.
 
 **Maintainer-note trick:** block-level HTML comments (`<!-- … -->`) are stripped before injection — use them for human-only notes ("counts auto-generated; do not hand-edit") at zero token cost.
+
+**Empirical grounding (2026).** ETH Zurich's controlled evaluation of repo context files (arXiv 2602.11988) found they **do not generally improve task success while adding >20% inference cost**; LLM-generated files that merely restate the repo can score below no file at all, and concise human-curated ones help only modestly. Vercel's evals found **skills go un-invoked without explicit triggers** (never fired in 56% of cases → no improvement over baseline; 79% with a prompt hint; an always-loaded compact docs index scored 100%). Two design consequences: curate anything `/init` generates before shipping it, and when moving content out of CLAUDE.md match the mechanism to the content — must-know constraints stay in the (lean) always-loaded file, user-triggered vertical workflows become skills *with strong trigger phrasing*, and bulk reference becomes an on-demand index.
+
+---
+
+## Layer 1b — Cross-tool agent context (AGENTS.md & per-tool configs)
+
+`AGENTS.md` ([agents.md](https://agents.md) spec) is the cross-tool standard read natively by most other coding agents (Codex, Copilot, Gemini CLI, Cursor, …). **Claude Code does not read AGENTS.md natively.** The official bridge when both exist: keep shared instructions in AGENTS.md and make CLAUDE.md `@AGENTS.md` plus any Claude-specific rules below the import — or a symlink (`ln -s AGENTS.md CLAUDE.md`; Windows needs admin/Developer Mode for symlinks, so prefer the import there). `/init` in a repo with AGENTS.md or legacy configs reads and merges them.
+
+| # | Check | Sev | Kind | Source |
+|---|-------|-----|------|--------|
+| 1b.1 | If CLAUDE.md **and** AGENTS.md both exist, CLAUDE.md is a bridge (import or symlink) — independent copies WILL drift. | WARN | det | memory docs (AGENTS.md) |
+| 1b.2 | AGENTS.md with no CLAUDE.md: add the one-line bridge so Claude Code sees the same instructions. | INFO | det | memory docs |
+| 1b.3 | Legacy per-tool configs coexisting with CLAUDE.md/AGENTS.md (`.cursorrules`, `.windsurfrules`, `.clinerules`, `GEMINI.md`, `.github/copilot-instructions.md`, `.cursor/rules/`) — consolidate. | INFO | det | memory docs |
+| 1b.4 | The canonical file passes the Layer-1 bar (ceiling, counts, secrets, filler) — a bridged AGENTS.md **is** launch-loaded context. | WARN/ERROR | det | — |
+| 1b.5 | No contradictions across tool configs mid-migration (same rule, different phrasing per tool = drift already happened). | WARN | judgment | — |
 
 ---
 
 ## Layer 2 — Nested / directory-scoped CLAUDE.md
 
 Discovery: on launch Claude loads every CLAUDE.md from cwd **up** to the filesystem root (broadest first, most-specific last → local wins by recency). **Child/subdirectory CLAUDE.md files are NOT loaded at launch** — they load on demand the first time Claude reads a file in that subdir, and (unlike the root file) are **not re-injected after `/compact`**. This lazy loading is the main lever for keeping context lean in a large repo.
+
+Two more launch-loaded surfaces get the same hygiene bar: the project file may live at `./CLAUDE.md` **or** `./.claude/CLAUDE.md`; and a git-ignored `CLAUDE.local.md` beside either holds personal overrides (sandbox URLs, test data), appended **after** its CLAUDE.md at the same level so personal wins by recency. In monorepos where other teams' files get picked up, `claudeMdExcludes` (settings) skips them by glob.
 
 | # | Check | Sev | Kind | Source |
 |---|-------|-----|------|--------|
@@ -43,6 +63,29 @@ Discovery: on launch Claude loads every CLAUDE.md from cwd **up** to the filesys
 | 2.3 | Nested files owned by/versioned with their directory. | INFO | judgment | large-codebases |
 | 2.4 | Choose nested CLAUDE.md when directory owners maintain their own; choose central `.claude/rules/*.md` (paths-scoped) when you want one location. Don't mix both for the same rules. | INFO | judgment | memory docs |
 | 2.5 | `@import` is for organization, **not** token savings (imports expand in full at launch). To actually reduce context, use nested files / path-scoped rules / skills. | INFO | judgment | memory docs |
+| 2.6 | `CLAUDE.local.md` is git-ignored and never tracked — tracked means one dev's personal overrides are shipping to the whole team. | WARN | det | memory docs |
+| 2.7 | No personal preferences, sandbox URLs, or editor setup in the **team** CLAUDE.md — move them to `CLAUDE.local.md` or `~/.claude/CLAUDE.md`. | WARN | judgment | memory docs |
+| 2.8 | `.claude/rules/*.md` **without** `paths:` frontmatter load at launch, same cost as CLAUDE.md — scope them. The ~200-line ceiling applies to the whole always-loaded set (root + local + unscoped rules + bridged AGENTS.md). | INFO | det | memory docs |
+
+---
+
+## CLAUDE.md lifecycle — when to add, when to delete, how to verify
+
+Static checks catch structure; these keep the *content* honest over time.
+
+**Adding — the two-strike rule.** Don't append a rule after a single model error; add it when Claude makes the same mistake a **second** time (official guidance), or when a code review catches something Claude should have known about this codebase. One-off errors are noise; repeated ones are missing context.
+
+**Pruning.**
+- A rule the agent demonstrably follows without being told (it learned the pattern from the codebase itself) is a deletion candidate — confirm with the noise-reduction test below.
+- On a dependency/framework upgrade or swap, purge the rules that referenced the old one immediately — stale instructions cause debugging cycles, not just wasted tokens.
+
+**Behavioral verification — test the file like software** (fresh session each; read-only for the repo):
+1. **Cold-start test** — "Describe this project's architecture, key conventions, and how to run the tests." The agent should answer from CLAUDE.md without exploratory spelunking.
+2. **Constraint test** — request a forbidden action (e.g. "push the schema change directly"). Expect a refusal that cites the rule; compliance means the rule is too weak or drowned out.
+3. **Command test** — "Run the project's validation suite." Expect the exact documented command on the first try, no guessing.
+4. **Noise-reduction test** — remove a suspected-redundant rule; if output quality doesn't change across a few tasks, delete it permanently.
+
+**Debugging what actually loads.** `/memory` lists every CLAUDE.md / CLAUDE.local.md / rules file in the session; the `InstructionsLoaded` hook logs which instruction files loaded and why (invaluable for path-scoped rules). If an instruction *must* fire every time, it belongs in a hook, not prose.
 
 ---
 
@@ -188,7 +231,9 @@ Reserve the skill's own logic for what nothing else does well: **section presenc
 
 ## Sources
 
-**CLAUDE.md** — Claude Code memory docs (code.claude.com/docs/en/memory) · best-practices (code.claude.com/docs/en/best-practices) · large-codebases (code.claude.com/docs/en/large-codebases) · Anthropic blog "Using CLAUDE.md files" (claude.com/blog/using-claude-md-files) · AI Codex anti-patterns · awesome-claude-code / awesome-claude-md.
+**CLAUDE.md** — Claude Code memory docs, incl. the AGENTS.md and CLAUDE.local.md sections (code.claude.com/docs/en/memory) · best-practices (code.claude.com/docs/en/best-practices) · large-codebases (code.claude.com/docs/en/large-codebases) · Anthropic blog "Using CLAUDE.md files" (claude.com/blog/using-claude-md-files) · AI Codex anti-patterns · awesome-claude-code / awesome-claude-md.
+
+**Cross-tool & empirical** — agents.md spec (agents.md) · Gloaguen et al., "Evaluating AGENTS.md: Are Repository-Level Context Files Helpful for Coding Agents?" (arXiv 2602.11988, ETH Zurich SRI) · Vercel, "AGENTS.md outperforms skills in our agent evals" (vercel.com/blog/agents-md-outperforms-skills-in-our-agent-evals).
 
 **README** — Standard-Readme spec (github.com/RichardLitt/standard-readme) · Make a README (makeareadme.com) · Art of README (github.com/noffle/art-of-readme) · GitHub About READMEs · Google dev-docs style guide (google.github.io/styleguide/docguide) · markdownlint · doctoc · lychee.
 

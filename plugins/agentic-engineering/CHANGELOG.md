@@ -5,6 +5,12 @@ All notable changes to the agentic-engineering plugin will be documented in this
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.7] - 2026-07-11
+
+### Changed
+
+- **`documentation-health` now audits the cross-tool agent-context layer and the CLAUDE.md lifecycle.** Sourced from a deep-research review of CLAUDE.md-management practices, with every load-bearing claim verified against primary sources before adoption (official memory docs, ETH Zurich's arXiv:2602.11988, Vercel's skills-vs-AGENTS.md evals). The scanner gains deterministic checks for: unbridged `CLAUDE.md`+`AGENTS.md` pairs (Claude Code doesn't read AGENTS.md natively — the official bridge is a thin `@AGENTS.md` import or symlink), `AGENTS.md` with no bridge at all, legacy per-tool configs (`.cursorrules`, `.windsurfrules`, `GEMINI.md`, `.cursor/rules/`, …), tracked or un-gitignored `CLAUDE.local.md`, `.claude/rules/*.md` hygiene plus unscoped rules (no `paths:`) feeding a new combined launch-context budget, raw `/init` boilerplate shipped uncurated, shouted-emphasis density, and style rules in prose when a formatter/linter config owns them; `./.claude/CLAUDE.md` is now correctly treated as root-level. `reference.md` adds Layer 1b (cross-tool context), CLAUDE.local.md/rules checks, a "CLAUDE.md lifecycle" section (two-strike add rule, adherence-based pruning, upgrade-triggered purges, and four behavioral verification tests: cold-start / constraint / command / noise-reduction), and an empirical-grounding note (context files add >20% inference cost without generally improving success; skills went un-invoked in 56% of Vercel's eval cases without triggers). Rejected from the same source doc after verification: a wrong import-depth claim (it said five hops; official docs say four, as the skill already stated), a misquoted eval number (94% vs the actual 56%), and rumor-tier content ("KAIROS" daemon, "Auto Dream" internals). No component counts change.
+
 ## [3.17.6] - 2026-07-11
 
 ### Added

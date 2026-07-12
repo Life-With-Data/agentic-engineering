@@ -1,6 +1,6 @@
 ---
 name: documentation-health
-description: Audit and repair the informational health of a repository's documentation — root & nested CLAUDE.md, root & nested README, internal-facing docs, and external-facing docs. Use to run a periodic docs-health check, before a release, when onboarding a repo, when docs feel stale or bloated, or when asked to "check/fix/maintain the docs". Encodes cited best practices (Anthropic memory docs, Standard-Readme, Diátaxis, docs-as-code, GitHub community-health) as concrete checkable rules plus a repair workflow.
+description: Audit and repair the informational health of a repository's documentation — root & nested CLAUDE.md plus cross-tool agent context (AGENTS.md, CLAUDE.local.md, .claude/rules/, legacy tool configs), root & nested README, internal-facing docs, and external-facing docs. Use to run a periodic docs-health check, before a release, when onboarding a repo, when docs feel stale or bloated, or when asked to "check/fix/maintain the docs". Encodes cited best practices (Anthropic memory docs, Standard-Readme, Diátaxis, docs-as-code, GitHub community-health, the ETH Zurich & Vercel context-file evals) as concrete checkable rules plus a repair workflow.
 allowed-tools:
   - Read
   - Edit
@@ -33,6 +33,8 @@ This is a maintenance skill you run **repeatedly** on any repo. It does not assu
 
 The audiences are distinct and the checks enforce the separation — **README ≠ CLAUDE.md ≠ /docs.** README describes the project to a human; CLAUDE.md tells an agent *how to behave here*; /docs holds reference/how-to/explanation. They cross-reference; they never clone.
 
+The CLAUDE.md layers include the **cross-tool agent context**: AGENTS.md (Claude Code does *not* read it natively — bridge with a one-line `@AGENTS.md` import or a symlink), git-ignored `CLAUDE.local.md` for personal overrides, `.claude/rules/` (rules without `paths:` load at launch, same cost as CLAUDE.md), and legacy per-tool configs (`.cursorrules`, …). Unbridged parallel copies drift — see [reference.md](reference.md) Layer 1b.
+
 ## Quick start
 
 ```bash
@@ -43,7 +45,7 @@ python3 ${CLAUDE_PLUGIN_ROOT}/skills/documentation-health/scripts/doc_health_che
 python3 .../doc_health_check.py <repo-dir> --json --strict
 ```
 
-The script does the **deterministic** checks (line counts, missing sections, placeholder rot, broken `@imports`, hardcoded counts, community-health completeness, ADR/CODEOWNERS presence, leak markers). It shells out to `lychee` (links), `doctoc` (TOC drift), and `markdownlint` (format) when installed, and skips them gracefully when not. The **judgment** checks (duplication, Diátaxis mode-mixing, stale commands, README↔CLAUDE.md drift, signal-to-noise) are yours — the script tells you which files to open.
+The script does the **deterministic** checks (line counts + a combined launch-context budget, missing sections, placeholder rot, broken `@imports`, hardcoded counts, unbridged CLAUDE.md↔AGENTS.md pairs, legacy tool configs, tracked/un-ignored `CLAUDE.local.md`, unscoped `.claude/rules`, raw `/init` boilerplate, emphasis density, linter-owned style rules, community-health completeness, ADR/CODEOWNERS presence, leak markers). It shells out to `lychee` (links), `doctoc` (TOC drift), and `markdownlint` (format) when installed, and skips them gracefully when not. The **judgment** checks (duplication, Diátaxis mode-mixing, stale commands, README↔CLAUDE.md drift, cross-tool contradictions, signal-to-noise) are yours — the script tells you which files to open.
 
 ## Workflow
 
@@ -63,6 +65,8 @@ Run the deterministic scan, then do the **judgment pass** by opening flagged fil
 - **Stale commands** — do the README's install/usage commands still exist (`package.json` scripts, `Makefile`, CLI `--help`)?
 - **Diátaxis mode-mixing** — a single doc page trying to be tutorial *and* reference *and* explanation at once.
 - **Leak risk** — can any internal-tagged page reach the published bundle?
+- **Cross-tool contradictions** — the same rule phrased differently in CLAUDE.md vs AGENTS.md vs legacy configs.
+- **Behavioral spot-checks (optional, repo-read-only)** — in a fresh session, run the cold-start / constraint / command tests from [reference.md](reference.md)'s lifecycle section to verify CLAUDE.md actually steers the agent.
 
 ### 3. Report
 Produce a scored report grouped by layer and severity (**ERROR / WARN / INFO** — see below). Lead with what's genuinely broken; separate "must fix" from "nice to have". Name the specific file and line for each finding and the concrete fix.
@@ -74,6 +78,7 @@ Apply fixes in dependency order. See the **Repair playbook** below. Prefer the *
 Turn the audit into a standing guardrail so drift can't silently return — this is what makes health *continuous* rather than a one-time cleanup:
 - Add `doc_health_check.py --strict` (or `lychee`/`doctoc --dryrun`) to CI.
 - For agent-instruction drift, consider a `Stop` hook that proposes CLAUDE.md updates from the session.
+- Adopt the CLAUDE.md add/prune policy ([reference.md](reference.md) lifecycle): add a rule on the *second* occurrence of a mistake, prune rules the agent demonstrably internalized, purge rules the moment a dependency they describe is swapped.
 - Record any repo-specific documentation rule you had to reason out into the repo's own CLAUDE.md so the next pass starts smarter. Pairs with the **reflect-for-skill-updates** skill.
 
 ## Severity model
@@ -88,7 +93,10 @@ Turn the audit into a standing guardrail so drift can't silently return — this
 
 | Finding | Structural fix (preferred) |
 |---------|---------------------------|
-| CLAUDE.md over ~200 lines | Move path-specific rules into `.claude/rules/*.md` with `paths:` globs, or into a skill; delete generic filler and file-by-file maps. Imports do **not** save context — only on-demand mechanisms do. |
+| CLAUDE.md over ~200 lines | Move path-specific rules into `.claude/rules/*.md` with `paths:` globs, or into a skill; delete generic filler and file-by-file maps. Imports do **not** save context — only on-demand mechanisms do. Match mechanism to content: skills go un-invoked without strong triggers (56% never fired in Vercel's evals), so must-know constraints stay in the lean always-loaded file. |
+| CLAUDE.md and AGENTS.md diverged | Canonicalize AGENTS.md; reduce CLAUDE.md to `@AGENTS.md` + Claude-specific rules (symlink works on macOS/Linux; use the import on Windows). Fold in legacy `.cursorrules`/`.windsurfrules` too (`/init` merges them). |
+| Style rules a linter already owns | Delete them — the formatter/linter config is the SSOT; keep only conventions tooling can't enforce. |
+| Personal prefs / sandbox URLs in team CLAUDE.md | Move to a git-ignored `CLAUDE.local.md` (or `~/.claude/CLAUDE.md`); ensure `.gitignore` covers it. |
 | Hardcoded count/version/date in CLAUDE.md or README | Replace with a sentence pointing at the generator/test/manifest that owns it; if a generator exists, generate the value between `<!-- GENERATED -->` markers instead of hand-editing. |
 | README missing required section | Add Title / one-line description (<120 chars) / Install / Usage-Quickstart / License, in Standard-Readme order. |
 | README bloated into a manual | Move reference/how-to/deep-dive content into `/docs`; leave an index + quickstart that links out. |
@@ -101,7 +109,7 @@ Turn the audit into a standing guardrail so drift can't silently return — this
 
 ## Anti-patterns to flag (quick reference)
 
-- **CLAUDE.md:** dumping everything into root; duplicating the README; file-by-file maps; frequently-changing facts (counts/versions/dates); generic best-practice filler; secrets; assuming `@import` reduces context (it doesn't).
+- **CLAUDE.md:** dumping everything into root; duplicating the README; file-by-file maps; frequently-changing facts (counts/versions/dates); generic best-practice filler; secrets; assuming `@import` reduces context (it doesn't); raw `/init` output shipped uncurated; prose restating linter-owned style; personal config in the team file (belongs in git-ignored `CLAUDE.local.md`); ALWAYS/NEVER walls (prefer "prefer X; exception: Y"; hooks for zero-exception rules); an unbridged AGENTS.md twin.
 - **README:** written for the maintainer instead of the newcomer; growing into a manual; placeholder/template text; dead badges/links; a hand-maintained fact a generator could own.
 - **Docs:** a single page mixing Diátaxis modes; internal notes one static-site build away from publication; a decision log that went silent; hand-maintained reference that should be generated; load-bearing GitHub Wiki (bypasses PR review, CODEOWNERS, and CI).
 
@@ -119,4 +127,4 @@ Turn the audit into a standing guardrail so drift can't silently return — this
 - **reflect-for-skill-updates** — when a docs gap let a mistake happen, codify the fix here or in CLAUDE.md.
 - **create-agent-skills** — conventions for the CLAUDE.md/rules/skills split this skill enforces.
 
-**Activation keywords:** documentation health, docs audit, check my docs, maintain docs, CLAUDE.md too long / bloated, README missing sections, stale docs, doc drift, docs review, community health files, ADR, Diátaxis, internal vs external docs, doc rot, informational health.
+**Activation keywords:** documentation health, docs audit, check my docs, maintain docs, CLAUDE.md too long / bloated, README missing sections, stale docs, doc drift, docs review, community health files, ADR, Diátaxis, internal vs external docs, doc rot, informational health, AGENTS.md drift, cursorrules, agent context files, CLAUDE.local.md, cross-tool agent configs.

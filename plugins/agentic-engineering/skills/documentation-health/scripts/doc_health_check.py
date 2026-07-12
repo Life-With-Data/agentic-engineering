@@ -97,6 +97,40 @@ LEAK_MARKERS = [
     r"audience:\s*internal", r"published:\s*false", r"\bCONFIDENTIAL\b",
 ]
 
+# Other tools' agent-context files. AGENTS.md (agents.md spec) is the
+# cross-tool standard; Claude Code does NOT read it natively — when both files
+# exist they must be bridged (CLAUDE.md = `@AGENTS.md` import, or a symlink)
+# or they drift. Legacy per-tool configs are consolidation candidates
+# (`/init` reads and merges them).
+LEGACY_AGENT_CONFIGS = [
+    ".cursorrules", ".windsurfrules", ".clinerules", "GEMINI.md",
+    os.path.join(".github", "copilot-instructions.md"),
+]
+LEGACY_AGENT_CONFIG_DIRS = [
+    os.path.join(".cursor", "rules"), os.path.join(".devin", "rules"),
+]
+
+# Raw `/init` scaffolding marker. Machine-generated context files that merely
+# restate the repo measurably hurt agent success while adding cost
+# (arXiv:2602.11988) — fine as a draft, a smell if shipped uncurated.
+INIT_BOILERPLATE_RE = re.compile(r"This file provides guidance to Claude Code")
+
+# Shouted emphasis: high density means rules are competing, not landing.
+EMPHASIS_RE = re.compile(r"\b(IMPORTANT|CRITICAL|NEVER|ALWAYS|YOU MUST)\b")
+EMPHASIS_MAX = 8
+
+# Formatter/linter configs own style; style rules in CLAUDE.md prose then
+# duplicate them (SSOT violation — the config is the authority).
+LINTER_CONFIG_GLOBS = [
+    ".prettierrc*", "prettier.config.*", ".eslintrc*", "eslint.config.*",
+    "biome.json*", ".rubocop.yml", "ruff.toml", ".ruff.toml", ".flake8",
+    "rustfmt.toml", ".clang-format",
+]
+STYLE_RULE_RE = re.compile(
+    r"(?i)\b(indent(ation)?|semicolons?|single quotes|double quotes|"
+    r"trailing commas?|import (order|sorting)|line (length|width)|"
+    r"tabs? (vs\.?|or) spaces)\b")
+
 SEVERITY_ORDER = {"ERROR": 0, "WARN": 1, "INFO": 2}
 
 
@@ -187,23 +221,11 @@ def tool_available(name: str) -> bool:
 # --------------------------------------------------------------------------
 # Layer checks
 # --------------------------------------------------------------------------
-def check_claude_md(root: Path, path: Path, is_root: bool, rep: Report):
-    layer = "root-claude" if is_root else "nested-claude"
-    md = read(path)
-    lines = md.count("\n") + 1
+def content_checks(root: Path, path: Path, md: str, layer: str, rep: Report,
+                   check_imports: bool = True, linter_configs=()):
+    """Hygiene checks shared by every launch-loaded agent-context file:
+    CLAUDE.md, a bridged AGENTS.md, and .claude/rules/*.md."""
     rp = rel(root, path)
-
-    if lines > CLAUDE_ERROR_LINES:
-        rep.add("ERROR", layer, rp,
-                f"{lines} lines — well over the ~{CLAUDE_WARN_LINES}-line ceiling; "
-                "bloat reduces instruction adherence.",
-                "Prune, or move path-specific rules into .claude/rules/*.md "
-                "(paths: globs) or a skill so they load on demand.")
-    elif lines > CLAUDE_WARN_LINES:
-        rep.add("WARN", layer, rp,
-                f"{lines} lines — over the ~{CLAUDE_WARN_LINES}-line soft ceiling.",
-                "Consider trimming or scoping detail into nested files / rules.")
-
     scan = strip_code_and_comments(md)
 
     counts = {mo.group(0).strip() for mo in HARDCODED_COUNT_RE.finditer(scan)}
@@ -226,32 +248,25 @@ def check_claude_md(root: Path, path: Path, is_root: bool, rep: Report):
                 "Claude already knows dilutes real rules.",
                 "Delete self-evident guidance; keep only project-specific deltas.")
 
-    # file-by-file map heuristic: many "path — description" bullet lines
-    map_lines = len(re.findall(r"^\s*[-*]\s+`?[\w./-]+`?\s+[—:-]\s+\S", md, re.M))
-    if map_lines >= 12:
-        rep.add("WARN", layer, rp,
-                f"~{map_lines} file/dir description lines look like a file-by-file "
-                "map (an explicit anti-pattern).",
-                "Give orientation, not a manifest — Claude can read the tree.")
-
-    # broken @imports
-    for mo in re.finditer(r"(?m)(?:^|\s)@([^\s`]+)", scan):
-        target = mo.group(1)
-        if target.startswith("~"):
-            resolved = Path(os.path.expanduser(target))
-        elif target.startswith("/"):
-            resolved = Path(target)
-        else:
-            resolved = (path.parent / target)
-        if not resolved.exists():
-            rep.add("ERROR", layer, rp,
-                    f"Broken @import: `@{target}` does not resolve.",
-                    "Fix the path or remove the import.")
+    # broken @imports (skipped for files no tool actually expands)
+    if check_imports:
+        for mo in re.finditer(r"(?m)(?:^|\s)@([^\s`]+)", scan):
+            target = mo.group(1)
+            if target.startswith("~"):
+                resolved = Path(os.path.expanduser(target))
+            elif target.startswith("/"):
+                resolved = Path(target)
+            else:
+                resolved = (path.parent / target)
+            if not resolved.exists():
+                rep.add("ERROR", layer, rp,
+                        f"Broken @import: `@{target}` does not resolve.",
+                        "Fix the path or remove the import.")
 
     for pat, label in SECRET_PATTERNS:
         if re.search(pat, md):
             rep.add("ERROR", layer, rp,
-                    f"Possible secret in CLAUDE.md ({label}).",
+                    f"Possible secret in {path.name} ({label}).",
                     "Remove it immediately and rotate the credential.")
             break
 
@@ -260,6 +275,209 @@ def check_claude_md(root: Path, path: Path, is_root: bool, rep: Report):
         rep.add("INFO", layer, rp,
                 f"Placeholder/TODO rot ({len(placeholders)} pattern(s)).",
                 "Resolve or delete leftover scaffolding text.")
+
+    if INIT_BOILERPLATE_RE.search(md):
+        rep.add("INFO", layer, rp,
+                "Looks like raw `/init` scaffolding (\"This file provides "
+                "guidance to Claude Code…\").",
+                "Curate it — generated context files that restate the repo "
+                "measurably hurt agent success and add cost (arXiv:2602.11988); "
+                "keep only rules the agent can't infer from the code.")
+
+    n_emph = len(EMPHASIS_RE.findall(scan))
+    if n_emph > EMPHASIS_MAX:
+        rep.add("INFO", layer, rp,
+                f"{n_emph} shouted-emphasis markers (IMPORTANT/NEVER/ALWAYS/"
+                "YOU MUST) — at this density rules compete instead of landing.",
+                "Prune or demote; phrase as \"prefer X; exception: Y\", and use "
+                "a hook (enforced) for zero-exception rules.")
+
+    if linter_configs:
+        style = sorted({mo.group(0).lower() for mo in STYLE_RULE_RE.finditer(scan)})
+        if style:
+            rep.add("INFO", layer, rp,
+                    "Style rules in prose (" + ", ".join(style[:4]) + ") while a "
+                    f"formatter/linter config exists ({linter_configs[0]}).",
+                    "The linter config is the SSOT for style — keep only "
+                    "conventions tooling can't enforce.")
+
+
+def check_claude_md(root: Path, path: Path, is_root: bool, rep: Report,
+                    linter_configs=()):
+    layer = "root-claude" if is_root else "nested-claude"
+    md = read(path)
+    lines = md.count("\n") + 1
+    rp = rel(root, path)
+
+    if lines > CLAUDE_ERROR_LINES:
+        rep.add("ERROR", layer, rp,
+                f"{lines} lines — well over the ~{CLAUDE_WARN_LINES}-line ceiling; "
+                "bloat reduces instruction adherence.",
+                "Prune, or move path-specific rules into .claude/rules/*.md "
+                "(paths: globs) or a skill so they load on demand.")
+    elif lines > CLAUDE_WARN_LINES:
+        rep.add("WARN", layer, rp,
+                f"{lines} lines — over the ~{CLAUDE_WARN_LINES}-line soft ceiling.",
+                "Consider trimming or scoping detail into nested files / rules.")
+
+    # file-by-file map heuristic: many "path — description" bullet lines
+    map_lines = len(re.findall(r"^\s*[-*]\s+`?[\w./-]+`?\s+[—:-]\s+\S", md, re.M))
+    if map_lines >= 12:
+        rep.add("WARN", layer, rp,
+                f"~{map_lines} file/dir description lines look like a file-by-file "
+                "map (an explicit anti-pattern).",
+                "Give orientation, not a manifest — Claude can read the tree.")
+
+    content_checks(root, path, md, layer, rep, linter_configs=linter_configs)
+
+
+def check_cross_tool_configs(root: Path, rep: Report, linter_configs=()) -> int:
+    """AGENTS.md and legacy per-tool configs. Claude Code does not read
+    AGENTS.md natively — when both files exist, CLAUDE.md must be a bridge
+    (`@AGENTS.md` import or symlink) or the two copies drift.
+
+    Returns AGENTS.md's line count when it is import-bridged (those lines
+    expand into launch context), else 0.
+    """
+    agents = root / "AGENTS.md"
+    claude = root / "CLAUDE.md"
+
+    legacy = [f for f in LEGACY_AGENT_CONFIGS if (root / f).exists()]
+    legacy += [d + "/" for d in LEGACY_AGENT_CONFIG_DIRS if (root / d).is_dir()]
+    if legacy:
+        rep.add("INFO", "cross-tool", "-",
+                "Per-tool agent config(s) present: " + ", ".join(legacy) + ".",
+                "Consolidate into CLAUDE.md/AGENTS.md (`/init` reads and merges "
+                "legacy configs) — parallel copies of the same rules drift.")
+
+    if not agents.exists():
+        return 0
+
+    symlinked = False
+    if claude.is_symlink():
+        try:
+            symlinked = claude.resolve() == agents.resolve()
+        except OSError:
+            symlinked = False
+
+    imported = False
+    if claude.exists() and not symlinked:
+        body = strip_code_and_comments(read(claude))
+        imported = re.search(r"(?m)(?:^|\s)@\.?/?AGENTS\.md\b", body) is not None
+
+    if not claude.exists():
+        rep.add("INFO", "cross-tool", "AGENTS.md",
+                "AGENTS.md present but no CLAUDE.md — Claude Code does not read "
+                "AGENTS.md natively.",
+                "Bridge it: a CLAUDE.md containing `@AGENTS.md` (plus any "
+                "Claude-specific rules), or a symlink (symlinks need admin/"
+                "Developer Mode on Windows — prefer the import there).")
+    elif not (symlinked or imported):
+        rep.add("WARN", "cross-tool", "CLAUDE.md",
+                "CLAUDE.md and AGENTS.md are independent files — cross-tool "
+                "context drift risk.",
+                "Keep shared instructions in AGENTS.md and reduce CLAUDE.md to "
+                "`@AGENTS.md` plus Claude-specific rules (or symlink them).")
+
+    # A bridged AGENTS.md IS launch-loaded context; an unbridged one still
+    # steers other tools — either way it gets the same hygiene bar. Skip the
+    # symlink case (already scanned as CLAUDE.md). Only validate @imports when
+    # Claude actually expands the file (other tools give @ no meaning).
+    if symlinked:
+        return 0
+    md = read(agents)
+    lines = md.count("\n") + 1
+    if lines > CLAUDE_ERROR_LINES:
+        rep.add("ERROR", "cross-tool", "AGENTS.md",
+                f"{lines} lines — well over the ~{CLAUDE_WARN_LINES}-line "
+                "ceiling that applies to launch-loaded agent context.",
+                "Trim it like a CLAUDE.md: move detail into on-demand "
+                "mechanisms instead of one giant file.")
+    elif lines > CLAUDE_WARN_LINES:
+        rep.add("WARN", "cross-tool", "AGENTS.md",
+                f"{lines} lines — over the ~{CLAUDE_WARN_LINES}-line soft "
+                "ceiling for launch-loaded agent context.",
+                "Trim or move detail into on-demand mechanisms.")
+    content_checks(root, agents, md, "cross-tool", rep,
+                   check_imports=imported, linter_configs=linter_configs)
+    return lines if imported else 0
+
+
+def check_claude_local(root: Path, rep: Report):
+    """CLAUDE.local.md holds personal, per-machine overrides (sandbox URLs,
+    test data). Official guidance: add it to .gitignore."""
+    local_files = sorted(iter_files(root, "CLAUDE.local.md"))
+    if not local_files or not (root / ".git").exists():
+        return
+    for p in local_files:
+        rp = rel(root, p)
+        try:
+            tracked = subprocess.run(
+                ["git", "-C", str(root), "ls-files", "--error-unmatch", rp],
+                capture_output=True, timeout=10).returncode == 0
+            ignored = subprocess.run(
+                ["git", "-C", str(root), "check-ignore", "-q", rp],
+                capture_output=True, timeout=10).returncode == 0
+        except Exception:
+            return
+        if tracked:
+            rep.add("WARN", "local-claude", rp,
+                    "CLAUDE.local.md is tracked by git — it exists to hold "
+                    "personal, per-machine overrides.",
+                    "`git rm --cached` it and add `CLAUDE.local.md` to "
+                    ".gitignore; fold anything team-relevant into CLAUDE.md.")
+        elif not ignored:
+            rep.add("INFO", "local-claude", rp,
+                    "CLAUDE.local.md is not gitignored — a future `git add -A` "
+                    "would commit it.",
+                    "Add `CLAUDE.local.md` to .gitignore.")
+
+
+def check_rules(root: Path, rep: Report, linter_configs=()):
+    """.claude/rules/*.md get the same hygiene bar as CLAUDE.md. Rules WITHOUT
+    `paths:` frontmatter load at launch (same cost as CLAUDE.md itself).
+
+    Returns [(label, lines)] for unscoped rules, for the launch budget."""
+    rules_dir = root / ".claude" / "rules"
+    if not rules_dir.is_dir():
+        return []
+    unscoped = []
+    for p in sorted(rules_dir.rglob("*.md")):
+        md = read(p)
+        content_checks(root, p, md, "rules", rep, linter_configs=linter_configs)
+        fm = re.match(r"^---\s*\n(.*?)\n---(\s*\n|\s*$)", md, re.S)
+        if not (fm and re.search(r"(?m)^paths\s*:", fm.group(1))):
+            unscoped.append((rel(root, p), md.count("\n") + 1))
+    if unscoped:
+        names = ", ".join(n for n, _ in unscoped[:6])
+        rep.add("INFO", "rules", rel(root, rules_dir),
+                f"{len(unscoped)} rule file(s) load at launch (no `paths:` "
+                f"frontmatter): {names}.",
+                "Rules scoped with `paths:` globs load only when matching "
+                "files are touched — scope them where possible.")
+    return unscoped
+
+
+def check_launch_budget(root: Path, rep: Report, extra_parts):
+    """The ~200-line ceiling applies to the WHOLE always-loaded set — root
+    CLAUDE.md (either location) + CLAUDE.local.md + unscoped rules + a bridged
+    AGENTS.md — not just the root file. Fires only when no single file tripped
+    the per-file warning but the sum does."""
+    parts = []
+    for p in (root / "CLAUDE.md", root / ".claude" / "CLAUDE.md",
+              root / "CLAUDE.local.md"):
+        if p.exists():
+            parts.append((rel(root, p), read(p).count("\n") + 1))
+    parts += [pt for pt in extra_parts if pt[1]]
+    total = sum(n for _, n in parts)
+    biggest = max((n for _, n in parts), default=0)
+    if len(parts) > 1 and biggest <= CLAUDE_WARN_LINES < total:
+        rep.add("WARN", "root-claude", "-",
+                f"Launch-loaded agent context totals ~{total} lines across "
+                f"{len(parts)} files ({', '.join(n for n, _ in parts)}).",
+                f"The ~{CLAUDE_WARN_LINES}-line ceiling applies to the whole "
+                "always-loaded set — scope rules with `paths:` globs and move "
+                "detail to skills/nested files (imports don't save context).")
 
 
 def check_readme(root: Path, path: Path, is_root: bool, rep: Report,
@@ -504,6 +722,9 @@ def scan(root: Path, args) -> Report:
     license_exists = any((root / n).exists() for n in ("LICENSE", "LICENSE.md", "LICENSE.txt")) \
         or any((root / ".github" / n).exists() for n in ("LICENSE", "LICENSE.md"))
 
+    linter_configs = sorted({p.name for g in LINTER_CONFIG_GLOBS
+                             for p in root.glob(g)})
+
     claude_files = sorted(iter_files(root, "CLAUDE.md"))
     readme_files = sorted(iter_files(root, "README.md"))
 
@@ -513,7 +734,18 @@ def scan(root: Path, args) -> Report:
                 "If an AI agent works in this repo, add a lean CLAUDE.md of "
                 "non-obvious commands/conventions/guardrails.")
     for p in claude_files:
-        check_claude_md(root, p, is_root=(p.parent == root), rep=rep)
+        # ./.claude/CLAUDE.md is an official alternate project-root location
+        check_claude_md(root, p,
+                        is_root=(p.parent == root or p.parent == root / ".claude"),
+                        rep=rep, linter_configs=linter_configs)
+
+    launch_extras = []
+    bridged_agents_lines = check_cross_tool_configs(root, rep, linter_configs)
+    if bridged_agents_lines:
+        launch_extras.append(("AGENTS.md (imported)", bridged_agents_lines))
+    check_claude_local(root, rep)
+    launch_extras += check_rules(root, rep, linter_configs)
+    check_launch_budget(root, rep, launch_extras)
 
     if not any(p.parent == root for p in readme_files):
         rep.add("ERROR", "root-readme", "-", "No root README.md.",
@@ -566,7 +798,8 @@ def render(rep: Report) -> str:
     out.append("")
     out.append("Deterministic scan only. Next: open the flagged files and run the "
                "judgment checks in reference.md (duplication, Diataxis mode-mixing,")
-    out.append("stale commands/counts, README↔CLAUDE.md drift).")
+    out.append("stale commands/counts, README↔CLAUDE.md drift, cross-tool "
+               "contradictions).")
     return "\n".join(out)
 
 
