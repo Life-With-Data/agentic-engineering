@@ -5,7 +5,7 @@
 
 A Claude Code plugin built on one idea: **each unit of engineering work should make the next one easier — not harder.**
 
-Most codebases drift the other way. Every feature adds complexity, every shortcut adds debt, and the work gets slower over time. This plugin inverts that by turning a deliberate loop — explore, plan, build, review, and *capture what you learned* — into first-class tooling: **30 agents, 27 commands, and 34 skills** that compound on each other.
+Most codebases drift the other way. Every feature adds complexity, every shortcut adds debt, and the work gets slower over time. This plugin inverts that by turning a deliberate loop — explore, plan, build, review, and *capture what you learned* — into first-class tooling: **30 agents, 27 commands, and 35 skills** that compound on each other.
 
 It works in Claude Code first, and converts to a dozen other AI coding tools (OpenCode, Codex, Cursor, Droid, Gemini, Copilot, and more).
 
@@ -109,7 +109,7 @@ Syncs personal skills from `~/.claude/skills/` (as symlinks, so edits reflect im
 |-----------|-------|
 | Specialized agents | 30 |
 | Commands | 27 |
-| Skills | 34 |
+| Skills | 35 |
 | MCP servers | 1 |
 
 → **[Full component reference](plugins/agentic-engineering/README.md)** — every agent, command, and skill.

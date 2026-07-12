@@ -5,6 +5,12 @@ All notable changes to the agentic-engineering plugin will be documented in this
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.6] - 2026-07-11
+
+### Added
+
+- **New `documentation-health` skill** — audits and repairs the informational health of a repository's documentation across all six layers (root & nested `CLAUDE.md`, root & nested `README.md`, internal-facing docs, external-facing docs). It encodes cited best practices — Anthropic's CLAUDE.md memory guidance (~200-line ceiling, no drifting counts, `@import` vs on-demand loading), the Standard-Readme required-section spec, Diátaxis mode-separation, docs-as-code hygiene, and GitHub community-health/ADR/CODEOWNERS conventions — as a concrete rule set anchored by one principle: *any fact that lives elsewhere (a count, version, date, command) must be referenced or generated, never hand-copied.* Ships a **Discover → Audit → Report → Repair → Codify** workflow (`SKILL.md`), a full cited per-layer checklist (`reference.md`), and a zero-dependency Python scanner (`scripts/doc_health_check.py`) that runs on any repo and shells out to `lychee`/`doctoc`/`markdownlint` when present. Skill count 34 → 35.
+
 ## [3.17.5] - 2026-07-11
 
 ### Changed
