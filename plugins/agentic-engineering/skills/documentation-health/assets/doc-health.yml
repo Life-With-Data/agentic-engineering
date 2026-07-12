@@ -78,10 +78,12 @@ jobs:
           path: doc-health.json
 
   # ---------------------------------------------------------------- tier 2
-  # The judgment pass + proposed repairs. Requires an ANTHROPIC_API_KEY secret.
-  # Posts AS Claude (via the official Claude GitHub App identity), and FAILS the
-  # check when its judgment finds a genuine must-fix — while only proposing
-  # repairs, never pushing. Remove this job for a deterministic-only gate.
+  # The judgment pass + proposed repairs. Needs credentials: a Claude Pro/Max
+  # subscription token (CLAUDE_CODE_OAUTH_TOKEN, from `claude setup-token`) or a
+  # direct ANTHROPIC_API_KEY. Posts AS Claude (via the official Claude GitHub App
+  # identity), and FAILS the check when its judgment finds a genuine must-fix —
+  # while only proposing repairs, never pushing. Remove this job for a
+  # deterministic-only gate.
   audit:
     runs-on: ubuntu-latest
     # Don't burn agent minutes on every push; gate it behind a label or dispatch.
@@ -96,6 +98,9 @@ jobs:
         id: audit
         uses: anthropics/claude-code-action@v1
         with:
+          # Use a Pro/Max subscription token (preferred; bills against your
+          # subscription) or a direct API key. Pass both; the non-empty one wins.
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
           # Install this marketplace so the skill (and its scanner) are available.
