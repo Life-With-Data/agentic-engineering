@@ -198,6 +198,8 @@ After planning the issue structure, run SpecFlow Analyzer to validate and refine
 
 Select how comprehensive you want the issue to be, simpler is mostly better.
 
+**Canonical templates:** the three tiers below are the plan-doc bodies that become the **parent** issue. The reusable source of truth for both the parent-issue and sub-issue bodies — every standard section, including **Overview**, **Acceptance Criteria**, and **Validation** — lives in [`scripts/templates/issue-template.md`](../../scripts/templates/issue-template.md) and [`scripts/templates/sub-issue-template.md`](../../scripts/templates/sub-issue-template.md). Step 7 copies the sub-issue template for each `<task_body_file>`. Whichever tier you pick, keep a **Validation** section that states how a reviewer proves the work behaves (exact commands + expected result), not merely that it compiles.
+
 **Tracker-ID frontmatter contract (applies to all three templates below):**
 
 Every plan exiting `/workflows:plan` must record the sole tracker join key:
@@ -237,6 +239,10 @@ github_issue: 123        # REQUIRED — see "Tracker-ID frontmatter contract" in
 
 - [ ] Core requirement 1
 - [ ] Core requirement 2
+
+## Validation
+
+[How to prove it works — the exact command(s) and expected result, e.g. `bun test path/to.test.ts`, plus any manual step to observe the real behavior.]
 
 ## Context
 
@@ -329,6 +335,14 @@ If the feature is purely internal (no third-party config, no env vars beyond def
 - [ ] Detailed requirement 1
 - [ ] Detailed requirement 2
 - [ ] Testing requirements
+
+## Validation
+
+**How a reviewer proves this behaves — not that it compiles.** Give the exact commands and their expected result, plus manual steps and a rollback path.
+
+- **Automated:** [tests / lint / typecheck that must pass, with the command]
+- **Manual:** [steps to drive the real flow and what to observe]
+- **Rollback:** [how to revert safely if it misbehaves]
 
 ## Success Metrics
 
@@ -468,6 +482,16 @@ If the feature is purely internal (no third-party config, no env vars beyond def
 - [ ] Test coverage requirements
 - [ ] Documentation completeness
 - [ ] Code review approval
+
+## Validation
+
+**How a reviewer proves this behaves end-to-end** — the same checks that gate the PR. Cover each acceptance-criteria group above.
+
+- **Automated:** [test suites / lint / typecheck / CI jobs that must pass, with commands]
+- **Integration:** [cross-layer scenario(s) to run and expected outcome — see Integration Test Scenarios above]
+- **Manual:** [steps to drive the real flow in a running environment and what to observe]
+- **External wiring check:** [the provider-side test event that proves external config is live, or "N/A — no external wiring"]
+- **Rollback:** [how to revert safely and verify the revert]
 
 ## Success Metrics
 
@@ -664,9 +688,11 @@ The board is the source of truth. Perform the full `→ planned` transition:
 
    Capture the parent issue number `<N>` and write `github_issue: <N>` back into the plan frontmatter.
 
-2. **Decompose into sub-issues** — for each actionable task in the plan, create a sub-issue under the parent, and express ordering with dependencies where the plan sequences tasks:
+2. **Decompose into sub-issues** — for each actionable task in the plan, create a sub-issue under the parent, and express ordering with dependencies where the plan sequences tasks. Write each `<task_body_file>` from the canonical sub-issue template so every task carries the same standard sections (Overview, Context, Implementation Notes, Acceptance Criteria, **Validation**, Dependencies):
 
    ```bash
+   # start each sub-issue body from the template, then fill it in for the task
+   cp "${CLAUDE_PLUGIN_ROOT}/scripts/templates/sub-issue-template.md" <task_body_file>
    gh issue create --repo "$ORIGIN" --parent <N> --title "<task title>" --body-file <task_body_file>
    # add a dependency when a task must follow another:
    gh issue edit <sub-issue> --repo "$ORIGIN" --add-blocked-by <prerequisite-sub-issue>

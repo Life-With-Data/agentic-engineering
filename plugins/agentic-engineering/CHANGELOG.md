@@ -5,6 +5,16 @@ All notable changes to the agentic-engineering plugin will be documented in this
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.18.1] - 2026-07-12
+
+### Added
+
+- **Canonical issue and sub-issue body templates for the eng workflow** — [`scripts/templates/issue-template.md`](scripts/templates/issue-template.md) (parent) and [`scripts/templates/sub-issue-template.md`](scripts/templates/sub-issue-template.md) (task unit) codify best-practice structure with standard sections: **Overview**, Problem Statement / Context, Proposed Solution / Implementation Notes, Scope, System-Wide Impact, External System Wiring, Task Breakdown, **Acceptance Criteria**, **Validation** (how a reviewer proves it *behaves*, not merely compiles — exact commands + expected result, plus manual and rollback steps), and Dependencies & Risks. `/workflows:plan` Step 7 now copies the sub-issue template for every `<task_body_file>` it creates under a parent, so decomposed tasks share one standard shape instead of an undefined ad-hoc body.
+
+### Changed
+
+- **`/workflows:plan`'s three plan-doc tiers (MINIMAL / MORE / A LOT) now each carry a `Validation` section** alongside Acceptance Criteria, and Step 4 points at the canonical templates as the reusable source of truth for both parent and sub-issue bodies. Closes the gap where "done" was asserted via acceptance criteria but never tied to a concrete verification the reviewer could run. No component counts change (templates are supporting assets, not agents/commands/skills).
+
 ## [3.18.0] - 2026-07-11
 
 ### Added
