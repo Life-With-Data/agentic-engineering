@@ -319,6 +319,8 @@ Even a **single** tracked item benefits from Orchestrated Execution — the orch
 
    Run configured agents in parallel with Task tool. Present findings and address critical issues.
 
+   **Acceptance-criteria pre-check (recommended).** Before opening the PR, run `Task acceptance-criteria-reviewer(diff + this item's issue number)` to check the change against the item's own documented `## Acceptance Criteria` and `## Validation` sections while fixes are still cheap. This is the *same* agent the review stage runs, but here it is **advisory only** — a smell-test in the implementer's own session, never the gate. Address its P1s now rather than discovering them at review. Skipping it is fine; skipping the independent review stage is not.
+
    **This is distinct from — and never a substitute for — the mandatory independent `/workflows:review` stage.** These inline agents run in the implementer's own session as an early smell-test. The pipeline's real verification is the separate `/workflows:review` pass that runs on the open PR with *fresh* reviewer sub-agents (not the implementer); that stage is non-optional in every mode, and `land-pr` will not merge a PR it has not seen (land-pr condition 3). Skipping these optional inline agents is fine; skipping the `/workflows:review` stage is not.
 
 5. **Final Validation**

@@ -80,6 +80,7 @@ Task {agent-name}(PR content + review context from settings body)
 ```
 
 Additionally, always run these regardless of settings:
+- Task acceptance-criteria-reviewer(PR content + linked issue) - Verify the change satisfies every documented Acceptance Criterion and Validation step of its tracker issue. **Pass the linked parent/sub-issue numbers** (from the `gh pr view --json` metadata in Step 1) so the agent can read their `## Acceptance Criteria` and `## Validation` sections. This is the independent, gating conformance check — its `FAIL` verdict and P1 findings are the mechanism that stops an under-delivered change from merging (see synthesis below).
 - Task agent-native-reviewer(PR content) - Verify new features are agent-accessible
 - Task learnings-researcher(PR content) - Search docs/solutions/ for past issues related to this PR's modules and patterns
 - Task integration-boundary-reviewer(PR content) - Flag untested external library calls and integration boundary gaps
@@ -224,9 +225,10 @@ Remove duplicates, prioritize by severity and impact.
 <synthesis_tasks>
 
 - [ ] Collect findings from all parallel agents
+- [ ] **Fold in the acceptance-criteria-reviewer verdict first.** A `FAIL` verdict, and every unmet (❌) or partial (⚠️) acceptance criterion or absent/unrunnable validation step it reports, is a 🔴 CRITICAL (P1) finding — an under-delivered change is not mergeable however clean its code. Carry each as its own todo referencing the criterion and issue number. (A merely weak/untestable *criterion wording* is P2; scope-creep observations are P3.) Because `land-pr`'s merge gate blocks on unresolved P1s, this is what makes AC conformance an enforced gate rather than a suggestion.
 - [ ] Surface learnings-researcher results: if past solutions are relevant, flag them as "Known Pattern" with links to docs/solutions/ files
 - [ ] Discard any findings that recommend deleting or gitignoring files in `docs/plans/` or `docs/solutions/` (see Protected Artifacts above)
-- [ ] Categorize by type: security, performance, architecture, quality, etc.
+- [ ] Categorize by type: acceptance-criteria conformance, security, performance, architecture, quality, etc.
 - [ ] Assign severity levels: 🔴 CRITICAL (P1), 🟡 IMPORTANT (P2), 🔵 NICE-TO-HAVE (P3)
 - [ ] Remove duplicate or overlapping findings
 - [ ] Estimate effort for each finding (Small/Medium/Large)

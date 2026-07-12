@@ -5,6 +5,17 @@ All notable changes to the agentic-engineering plugin will be documented in this
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.19.0] - 2026-07-12
+
+### Added
+
+- **New `acceptance-criteria-reviewer` agent** — a focused reviewer whose sole job is to hold a change against the **documented Acceptance Criteria and Validation steps** of its tracker issue, criterion by criterion, and emit a `PASS` / `FAIL` / `INCOMPLETE` verdict with `file:line` evidence. It deliberately ignores code style, security, performance, and architecture (other agents own those) — the narrow scope and separate context window are the point: an independent verifier, not the author, decides whether "done" is actually done. A criterion is met only when the diff demonstrably makes it true; "can't tell" and "CI is green but no test covers the criterion" both count as *not met*. Review agent count 16 → 17; total agents 30 → 31.
+
+### Changed
+
+- **`/workflows:review` now runs the acceptance-criteria-reviewer on every pass as the gating conformance check.** Its `FAIL` verdict and each unmet/partial criterion or absent validation step fold into synthesis as **P1 findings** — and because `land-pr`'s merge gate already blocks on unresolved P1s, acceptance-criteria conformance becomes an *enforced* gate rather than implementer self-attestation. This closes the loop opened in 3.18.1, where the criteria and Validation sections were documented but no independent review step evaluated or gated on them.
+- **`/workflows:work` Phase 3 gains an optional acceptance-criteria pre-check** — the *same* agent, invoked in the implementer's own session before opening the PR, but **advisory only** (a smell-test, never the gate), so AC gaps are cheap to fix before the PR exists. This mirrors the repo's existing two-tier pattern: inline pre-check for focus/speed, independent stage for enforcement. Context separation is preserved because the authority to gate lives only with the independent review stage, never with the party being evaluated.
+
 ## [3.18.1] - 2026-07-12
 
 ### Added
