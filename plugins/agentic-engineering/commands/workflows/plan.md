@@ -608,7 +608,7 @@ Use the Write tool to save the complete plan to `docs/plans/YYYY-MM-DD-<type>-<d
 
 Confirm: "Plan written to docs/plans/[filename]"
 
-**Pipeline mode:** If invoked from an automated workflow (`/workflows:orchestrate`, or any `disable-model-invocation` context), skip all AskUserQuestion calls. Make decisions automatically and proceed to writing the plan without interactive prompts.
+**Pipeline mode:** If invoked from an automated workflow (`/workflows:orchestrate`, `/workflows:groom`, or any `disable-model-invocation` context), skip all AskUserQuestion calls. Make decisions automatically and proceed to writing the plan without interactive prompts.
 
 ## Output Format
 

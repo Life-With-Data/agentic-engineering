@@ -1,6 +1,6 @@
 ---
 name: lifecycle
-description: The shared vocabulary for the unified work-item lifecycle on GitHub Projects v2 — the 9 stages, the one-writer-per-transition rules, the entry-gate verdict enum, claim semantics, modes, and security invariants. Load this whenever a workflow command (triage, brainstorm, plan, work, orchestrate, compound, land-pr, upstream-scan) needs to read or move lifecycle state, so every command speaks one vocabulary and routes through one engine.
+description: The shared vocabulary for the unified work-item lifecycle on GitHub Projects v2 — the 9 stages, the one-writer-per-transition rules, the entry-gate verdict enum, claim semantics, modes, and security invariants. Load this whenever a workflow command (triage, brainstorm, groom, plan, work, orchestrate, compound, land-pr, upstream-scan) needs to read or move lifecycle state, so every command speaks one vocabulary and routes through one engine.
 user-invocable: false
 ---
 
@@ -71,7 +71,7 @@ Every command runs one idempotent entry gate on entry and routes around complete
 python3 "${CLAUDE_PLUGIN_ROOT}/scripts/lifecycle_board.py" --gate <command> [--issue N]
 ```
 
-`<command>` is one of `brainstorm | plan | work | compound | orchestrate`. The result carries `{stage, issue, plan_doc, brainstorm_doc, verdict, route, provenance}`. There are **two closed enums**, each with its own routing table: the **gate enum** (returned by `--gate`) and the **claim enum** (returned only by `--claim`). The gate never reads assignees, so a claim verdict can never come out of `--gate`.
+`<command>` is one of `brainstorm | plan | work | compound | orchestrate`. The result carries `{stage, issue, plan_doc, brainstorm_doc, verdict, route, provenance}`. (`orchestrate` is the pure state read for pipeline drivers: its verdict is always `proceed` and the caller applies its own ladder — `/workflows:orchestrate` and `/workflows:groom` both consume it; groom owns no transition of its own, it drives the brainstorm/plan writers and stops at `planned`.) There are **two closed enums**, each with its own routing table: the **gate enum** (returned by `--gate`) and the **claim enum** (returned only by `--claim`). The gate never reads assignees, so a claim verdict can never come out of `--gate`.
 
 **Gate enum** — the five values in `lifecycle_board.VERDICTS` that `--gate` may return:
 

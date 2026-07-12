@@ -1,7 +1,7 @@
 ---
 name: workflows:orchestrate
-description: Drive the brainstorm → plan → work → review → land → compound pipeline as the orchestrator — delegating implementation to sub-agents, reviewing their work, and running fully autonomously by default (surfacing only genuine blockers; --final-review adds one pre-merge check)
-argument-hint: "[feature idea, or path to an existing brainstorm/plan] [--final-review | --steer | --careful]"
+description: Drive the brainstorm → plan → work → review → land → compound pipeline as the orchestrator — delegating implementation to sub-agents, reviewing their work, and running fully autonomously by default (surfacing only genuine blockers; --final-review adds one pre-merge check). Segment flags bifurcate the run — --groom stops once the item is planned; --implement starts from groomed work and refuses to groom.
+argument-hint: "[feature idea, or path to an existing brainstorm/plan] [--groom | --implement] [--final-review | --steer | --careful]"
 disable-model-invocation: true
 ---
 
@@ -50,7 +50,17 @@ Parse the input:
 | `--steer` | **Steer mode** (the classic cadence). Stop at the defined checkpoints below (approach, plan approval, findings triage, merge) and at blockers. Auto-handle all menial transitions. |
 | `--careful` | Pause for a quick confirmation at **every** stage boundary, plus all steer-mode checkpoints. |
 
-Autonomy ordering (most to least human involvement): `--careful` > `--steer` > `--final-review` > _(default, fully autonomous)_. Each step removes gates; the default removes the last one (Final-Review), leaving only the universal blocker floor. `--auto` is accepted as an explicit alias for the default. Announce the resolved mode in your opening status line.
+Autonomy ordering (most to least human involvement): `--careful` > `--steer` > `--final-review` > _(default, fully autonomous)_. Each step removes gates; the default removes the last one (Final-Review), leaving only the universal blocker floor. `--auto` is accepted as an explicit alias for the default. Announce the resolved mode (and segment, if any) in your opening status line.
+
+**Pipeline segment flag** (optional, orthogonal to the autonomy flags — at most one):
+
+| Flag | Segment |
+|------|---------|
+| _(default)_ | The full pipeline, end to end. |
+| `--groom` | **Intake → groomed, then stop.** Run only the grooming segment (brainstorm → plan) and end the run once the item is `planned` with a join-keyed plan doc and sub-issues. `/workflows:groom` is the standalone form of this segment and its spec is **normative** here — same routing ladder, same hard-stop contract, same groomed packet. Items already at or past `planned` report as already-groomed / past-grooming and stop. |
+| `--implement` | **Groomed → shipped.** Require the item to already be groomed: if the board stage resolves below `planned` — or Status says `planned` but no join-keyed plan doc exists — **stop and route to `/workflows:groom`**. An implement run never grooms as a side effect; the bifurcation exists so grooming can be reviewed (or supervised) separately before code gets written. From `planned`, run the remaining pipeline exactly as the default does (plan self-review at pickup, then work → review → land → compound). |
+
+Segment flags compose with autonomy flags: `--groom --steer` is an interactive grooming session; `--implement` alone is the classic unattended build from a ready backlog. Under `--groom` there is no merge, so `--final-review` is a no-op. Together the pair supports the standard bifurcated flow — groom intake into a ready backlog first, implement from it later: `--implement` with empty input pulls from `--ready-work` as usual, whose items (`planned ∧ unassigned ∧ unblocked`) are groomed by definition.
 
 ## How You Operate
 
@@ -153,6 +163,8 @@ Map the board `stage` to a resume point (this replaces the artifact-heuristic la
 | `compounded` | pipeline **complete** — report and stop |
 | `abandoned` | report the item is abandoned and **stop** (no further pipeline runs on it) |
 
+**Segment bounds (when a segment flag is set).** Under `--groom`, the ladder is truncated at grooming: `stub`/`brainstormed` resume as shown, and `planned` (with its plan doc) or any later stage reports already-groomed / past-grooming and **stops** — the groomed packet replaces the final summary. Under `--implement`, it is truncated from below: `stub`/`brainstormed` — or `planned` whose plan doc is missing — **stop and route to `/workflows:groom`**; `planned` and later resume as shown.
+
 **`in_review` sub-detection (PR-based, unchanged).** Once the board says `in_review`, the finer position within review → land is still read from the PR — keep the existing gh-based checks (use explicit `--repo`/`--owner` on every invocation):
 
 - `gh pr view --repo <owner>/<repo> …` reports **MERGED**, stage not yet advanced → the merge automation is mid-flight; the reconciler in step 1 stamps `shipped` — re-read and resume at **compound**.
@@ -188,11 +200,11 @@ Used **only** when `--gate` reports `mode: no_board` / `verdict: no_board` (plai
 ## The Main Loop
 
 ```
-resolve autonomy mode + input
+resolve autonomy mode + segment + input
 run repo preflight (AUTO) → print tracker banner
-detect current stage (State Detection)
+detect current stage (State Detection; apply segment bounds)
 
-loop until pipeline complete:
+loop until pipeline complete (or the segment's terminal stage is reached):
     emit status banner: "▶ Stage: <name> — <one line of what's happening>"
     run the stage's sub-command, applying the Decision Policy:
         - auto-answer menial prompts with the documented defaults
@@ -372,5 +384,6 @@ Next: <if merged> done — PR #<n> is in <default-branch>.  <if --final-review o
 - **Irreversible / outward-facing actions** beyond the expected pipeline (force-push, closing others' PRs, deleting unrelated branches, anything touching the default branch directly) → always a blocker, never auto. The exceptions are the pipeline's own expected outward steps: opening the PR (`/workflows:work` Phase 4) and, **in the default (fully autonomous) mode**, the `land-pr` merge — which squash-merges and deletes *its own just-merged feature branch* only after CI is green, the upstream independent review ran with P1s resolved, threads are resolved, and the PR is mergeable. (This is not a human-approval wait — see the Land rows above. Under `--final-review`, and in `--steer`/`--careful`, the merge additionally waits on a gate.)
 - **Honor every sub-command's own gates** — the tracker-issue gate in `/workflows:plan`, the P1-blocks-merge rule in `/workflows:review`, and the entry gates + writer contracts in every command (one writer per transition; the reconciler's closed repair set). You orchestrate them; you don't override them.
 - **Never bypass a verb.** Orchestrate reads board state through `--gate`/`--ready-work` and moves it through the sub-commands' own `--claim`/`--set-status` writers — never a raw `gh project item-edit`, raw item mutation, or hand-assembled board write of its own.
+- **Segment bounds are hard.** Under `--groom`, reaching `planned` ends the run — the groomed packet is the final output; never roll into work "to be helpful." Under `--implement`, an un-groomed item is a routing stop (→ `/workflows:groom`), never an invitation to groom inline.
 - **Stay resumable.** Drive state from artifacts, not memory. If interrupted, a fresh `/workflows:orchestrate` must be able to pick up exactly where this left off.
 - **One blocker batch at a time.** Don't drip-feed questions. Collect everything that needs the user, ask once, then run.
