@@ -195,7 +195,7 @@ skill: create-agent-skills</code></pre>
             <div class="skill-detail-header">
               <h3>documentation-health</h3>
             </div>
-            <p class="skill-detail-description">Audit and repair the informational health of a repository's documentation — root &amp; nested CLAUDE.md, root &amp; nested README, internal-facing docs, and external-facing docs. Use to run a periodic docs-health check, before a release, when onboarding a repo, when docs feel stale or bloated, or when asked to "check/fix/maintain the docs". Encodes cited best practices (Anthropic memory docs, Standard-Readme, Diátaxis, docs-as-code, GitHub community-health) as concrete checkable rules plus a repair workflow.</p>
+            <p class="skill-detail-description">Audit and repair the informational health of a repository's documentation — root &amp; nested CLAUDE.md plus cross-tool agent context (AGENTS.md, CLAUDE.local.md, .claude/rules/, legacy tool configs), root &amp; nested README, internal-facing docs, and external-facing docs. Use to run a periodic docs-health check, before a release, when onboarding a repo, when docs feel stale or bloated, or when asked to "check/fix/maintain the docs". Encodes cited best practices (Anthropic memory docs, Standard-Readme, Diátaxis, docs-as-code, GitHub community-health, the ETH Zurich &amp; Vercel context-file evals) as concrete checkable rules plus a repair workflow.</p>
             <div class="card-code-block">
               <pre><code>skill: documentation-health</code></pre>
             </div>
