@@ -11,8 +11,10 @@
 #                PR/review comment — never a push to a protected branch.
 #
 # The scanner is a single self-contained file. Rather than depend on the
-# plugin being installed in CI, this template fetches it at a PINNED ref.
-# Replace REF with a tag/commit SHA you trust, and (if you forked) the repo.
+# plugin being installed in CI, this template fetches it at a ref you choose.
+# This marketplace ships as a ROLLING RELEASE off `main` (no version tags),
+# so `main` is the default and always resolves. For a reproducible gate that
+# can't change under you, pin DOCS_HEALTH_REF to a commit SHA instead.
 
 name: documentation-health
 
@@ -27,9 +29,10 @@ permissions:
   pull-requests: write     # `audit` posts a review/opens a PR
 
 env:
-  # Pin these. A moving ref means your gate silently changes under you.
   DOCS_HEALTH_REPO: Life-With-Data/agentic-engineering
-  DOCS_HEALTH_REF: v3.18.1
+  # `main` tracks latest (rolling release). Swap for a commit SHA to freeze the
+  # gate — a moving ref means your gate can change under you between runs.
+  DOCS_HEALTH_REF: main
   SCRIPT_PATH: plugins/agentic-engineering/skills/documentation-health/scripts/doc_health_check.py
 
 jobs:
