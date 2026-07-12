@@ -1,0 +1,112 @@
+name: Documentation health
+
+# The skill dogfooded on its own marketplace. Two tiers:
+#   scan  — deterministic gate; runs the in-repo scanner, fails on ERROR.
+#   audit — agent-in-the-loop; runs the documentation-health skill via
+#           claude-code-action, posts a review AS Claude (GitHub App), and
+#           FAILS THE CHECK when its judgment finds a genuine must-fix — while
+#           only proposing repairs, never pushing to a protected branch.
+#
+# Because we're testing the skill against its own repo, the scanner is used
+# straight from the checkout (no pinned curl — that's for external consumers;
+# see skills/documentation-health/assets/doc-health.yml for that template).
+
+on:
+  pull_request:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 9 * * 1"
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  # ---------------------------------------------------------------- tier 1
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+      - name: Deterministic scan (fail on ERROR)
+        run: |
+          python3 plugins/agentic-engineering/skills/documentation-health/scripts/doc_health_check.py \
+            . --fail-on error
+      - name: JSON report artifact
+        if: always()
+        run: |
+          python3 plugins/agentic-engineering/skills/documentation-health/scripts/doc_health_check.py \
+            . --json > doc-health.json || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: doc-health-report
+          path: doc-health.json
+
+  # ---------------------------------------------------------------- tier 2
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      # The agent tier needs an API key. Without one (e.g. forks, or before the
+      # secret is added) skip gracefully rather than fail — secrets can't be
+      # read in job/step `if:` directly, so map to env and branch on it.
+      - name: Detect API key
+        id: key
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          if [ -n "$ANTHROPIC_API_KEY" ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::ANTHROPIC_API_KEY not set — skipping the agent audit tier."
+          fi
+
+      - name: Documentation-health audit (propose only, fail on must-fix)
+        id: audit
+        if: steps.key.outputs.present == 'true'
+        uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          # Load the skill from this very marketplace — dogfooding.
+          plugin_marketplaces: https://github.com/Life-With-Data/agentic-engineering.git
+          plugins: agentic-engineering@agentic-engineering
+          # Structured output is the pass/fail signal the next step reads.
+          claude_args: >-
+            --json-schema
+            {"type":"object","properties":{"must_fix":{"type":"boolean"},"summary":{"type":"string"}},"required":["must_fix","summary"]}
+          prompt: |
+            Use the documentation-health skill to audit this repository in
+            NON-INTERACTIVE CI mode, then judge the results.
+
+            - Run the deterministic scanner, then do the judgment pass
+              (duplication, Diátaxis mode-mixing, stale commands, README↔
+              CLAUDE.md drift, cross-tool contradictions). Distinguish genuine
+              problems from scanner false positives — do NOT treat a raw WARN as
+              a must-fix if judgment shows it's noise.
+            - PROPOSE ONLY. Post ONE pull-request review summarizing findings by
+              layer/severity with file:line and the concrete fix. Do NOT edit
+              files, do NOT commit, do NOT push to any branch.
+            - Set structured output `must_fix` to true if and only if you found
+              at least one genuinely broken/dangerous issue (an ERROR-class
+              finding your judgment confirms — e.g. a real secret, a broken
+              link/import, forked-and-unbridged agent-context files). Put a
+              one-line rationale in `summary`.
+
+      - name: Enforce must-fix (fail the check)
+        if: steps.key.outputs.present == 'true'
+        env:
+          STRUCTURED: ${{ steps.audit.outputs.structured_output }}
+        run: |
+          MUST_FIX=$(printf '%s' "$STRUCTURED" | jq -r '.must_fix // false')
+          SUMMARY=$(printf '%s' "$STRUCTURED" | jq -r '.summary // ""')
+          if [ "$MUST_FIX" = "true" ]; then
+            echo "::error::Documentation health found a must-fix issue: ${SUMMARY}"
+            exit 1
+          fi
+          echo "No must-fix issues. ${SUMMARY}"

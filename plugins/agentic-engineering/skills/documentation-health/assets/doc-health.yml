@@ -30,9 +30,11 @@ permissions:
 
 env:
   DOCS_HEALTH_REPO: Life-With-Data/agentic-engineering
-  # `main` tracks latest (rolling release). Swap for a commit SHA to freeze the
-  # gate — a moving ref means your gate can change under you between runs.
-  DOCS_HEALTH_REF: main
+  # Pin to an immutable ref. The marketplace auto-tags `v<version>` on release,
+  # so a version tag is the recommended pin (a commit SHA is equally valid and
+  # even stricter). Avoid `main` for a gate — a moving ref can change the gate
+  # under you between runs.
+  DOCS_HEALTH_REF: v3.18.1
   SCRIPT_PATH: plugins/agentic-engineering/skills/documentation-health/scripts/doc_health_check.py
 
 jobs:
@@ -77,7 +79,9 @@ jobs:
 
   # ---------------------------------------------------------------- tier 2
   # The judgment pass + proposed repairs. Requires an ANTHROPIC_API_KEY secret.
-  # Remove this job if you only want the deterministic gate.
+  # Posts AS Claude (via the official Claude GitHub App identity), and FAILS the
+  # check when its judgment finds a genuine must-fix — while only proposing
+  # repairs, never pushing. Remove this job for a deterministic-only gate.
   audit:
     runs-on: ubuntu-latest
     # Don't burn agent minutes on every push; gate it behind a label or dispatch.
@@ -88,27 +92,48 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Documentation-health audit (propose only)
+      - name: Documentation-health audit (propose only, fail on must-fix)
+        id: audit
         uses: anthropics/claude-code-action@v1
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
           # Install this marketplace so the skill (and its scanner) are available.
-          plugins: ${{ env.DOCS_HEALTH_REPO }}@${{ env.DOCS_HEALTH_REF }}
+          # `plugins` is plugin-name@marketplace-id; `plugin_marketplaces` is the
+          # registry git URL.
+          plugin_marketplaces: https://github.com/${{ env.DOCS_HEALTH_REPO }}.git
+          plugins: agentic-engineering@agentic-engineering
+          # Structured output is the machine-readable pass/fail signal.
+          claude_args: >-
+            --json-schema
+            {"type":"object","properties":{"must_fix":{"type":"boolean"},"summary":{"type":"string"}},"required":["must_fix","summary"]}
           prompt: |
             Use the documentation-health skill to audit this repository in
-            NON-INTERACTIVE CI mode.
+            NON-INTERACTIVE CI mode, then judge the results.
 
-            1. Run the deterministic scanner, then do the judgment pass
-               (duplication, Diátaxis mode-mixing, stale commands, README↔
-               CLAUDE.md drift, cross-tool contradictions).
-            2. Do NOT write to the working tree on a protected branch and do
-               NOT push. Instead:
-                 - On a pull_request run, post a single review summarizing
-                   findings grouped by layer/severity, with file:line and the
-                   concrete fix for each.
-                 - On a scheduled/dispatch run, open a draft PR containing the
-                   structural repairs (prefer pointing hardcoded facts at their
-                   generator over just correcting the number).
-            3. Lead with what is genuinely broken; separate must-fix from
-               nice-to-have. Keep it terse.
+            - Run the deterministic scanner, then do the judgment pass
+              (duplication, Diátaxis mode-mixing, stale commands, README↔
+              CLAUDE.md drift, cross-tool contradictions). Separate genuine
+              problems from scanner false positives — a raw WARN that judgment
+              shows is noise is NOT a must-fix.
+            - PROPOSE ONLY. Post ONE pull-request review grouped by layer/
+              severity with file:line and the concrete fix. Do NOT edit files,
+              commit, or push to any branch.
+            - Set structured output `must_fix` to true iff you confirmed at
+              least one genuinely broken/dangerous issue (ERROR-class — a real
+              secret, broken link/import, forked-and-unbridged agent context).
+              One-line rationale in `summary`.
+
+      # Turn the agent's verdict into a red/green check. With branch protection
+      # marking this job Required, a must-fix blocks merge.
+      - name: Enforce must-fix
+        env:
+          STRUCTURED: ${{ steps.audit.outputs.structured_output }}
+        run: |
+          MUST_FIX=$(printf '%s' "$STRUCTURED" | jq -r '.must_fix // false')
+          SUMMARY=$(printf '%s' "$STRUCTURED" | jq -r '.summary // ""')
+          if [ "$MUST_FIX" = "true" ]; then
+            echo "::error::Documentation health found a must-fix issue: ${SUMMARY}"
+            exit 1
+          fi
+          echo "No must-fix issues. ${SUMMARY}"
