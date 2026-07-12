@@ -198,6 +198,25 @@ A static-site generator publishes *whatever is in the source tree* — internal 
 
 ---
 
+## Continuous integration
+
+Health is *continuous* only when a gate enforces it on every change. The skill ships an example GitHub Actions workflow — [assets/doc-health.yml](assets/doc-health.yml) — with two independent tiers. Prefer a GitHub Action over a pre-commit hook: it runs the same way for every contributor, can post PR reviews, and can host the agent tier (a pre-commit hook is local, easy to `--no-verify` past, and can't call an LLM cleanly).
+
+**Tier 1 — deterministic gate (`scan`).** Fetches the zero-dependency scanner at a pinned ref and runs it. The strictness is a dial, not a fixed policy — set `--fail-on` to what the team will actually sustain:
+
+| `--fail-on` | Exit 1 when… | Use for |
+|-------------|--------------|---------|
+| `error` | any ERROR (broken/dangerous) | the default PR gate — blocks only real breakage |
+| `warn` | any ERROR **or** WARN | teams that also want drift (hardcoded counts, missing Usage) blocked |
+| `info` | any finding at all | rarely a gate; a report-everything pass |
+| `never` | never (report only) | scheduled sweeps that upload the `--json` artifact without blocking |
+
+Start at `error` on PRs and, once the WARNs are burned down, ratchet to `warn` — a gate that's red on day one gets disabled. `--strict` remains a back-compat alias for `--fail-on error`.
+
+**Tier 2 — agent in the loop (`audit`).** The deterministic gate covers maybe half the value; the judgment checks (duplication, Diátaxis mode-mixing, stale commands, README↔CLAUDE.md drift, cross-tool contradictions) need a reasoning pass. This tier runs the skill inside `anthropics/claude-code-action`, gated behind a label or `workflow_dispatch`/`schedule` so it doesn't spend agent minutes on every push. **The non-interactive confirmation rule:** with no human to confirm Phase 4, the agent *proposes only* — posts a PR review, or opens a **draft** PR with structural repairs — and never pushes to a protected branch. The review is the human gate. Give the action `pull-requests: write`, and an `ANTHROPIC_API_KEY` secret.
+
+---
+
 ## Cross-cutting: the audience-separation matrix
 
 The single most common structural failure is collapsing distinct audiences into one file. Enforce:

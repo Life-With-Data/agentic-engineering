@@ -41,8 +41,11 @@ The CLAUDE.md layers include the **cross-tool agent context**: AGENTS.md (Claude
 # Deterministic scan (zero dependencies; runs on any repo)
 python3 ${CLAUDE_PLUGIN_ROOT}/skills/documentation-health/scripts/doc_health_check.py <repo-dir>
 
-# JSON for tooling / CI; --strict exits 1 on any ERROR
-python3 .../doc_health_check.py <repo-dir> --json --strict
+# JSON for tooling / CI. --fail-on tunes the gate's strictness:
+#   error → fail only on ERROR   warn → ERROR or WARN
+#   info  → any finding          never → report only, exit 0 (default)
+python3 .../doc_health_check.py <repo-dir> --json --fail-on error
+# (--strict is a back-compat alias for --fail-on error)
 ```
 
 The script does the **deterministic** checks (line counts + a combined launch-context budget, missing sections, placeholder rot, broken `@imports`, hardcoded counts, unbridged CLAUDE.md↔AGENTS.md pairs, legacy tool configs, tracked/un-ignored `CLAUDE.local.md`, unscoped `.claude/rules`, raw `/init` boilerplate, emphasis density, linter-owned style rules, community-health completeness, ADR/CODEOWNERS presence, leak markers). It shells out to `lychee` (links), `doctoc` (TOC drift), and `markdownlint` (format) when installed, and skips them gracefully when not. The **judgment** checks (duplication, Diátaxis mode-mixing, stale commands, README↔CLAUDE.md drift, cross-tool contradictions, signal-to-noise) are yours — the script tells you which files to open.
@@ -76,7 +79,7 @@ Apply fixes in dependency order. See the **Repair playbook** below. Prefer the *
 
 ### 5. Codify (compound)
 Turn the audit into a standing guardrail so drift can't silently return — this is what makes health *continuous* rather than a one-time cleanup:
-- Add `doc_health_check.py --strict` (or `lychee`/`doctoc --dryrun`) to CI.
+- **Add a CI gate.** Drop in the example workflow [assets/doc-health.yml](assets/doc-health.yml) — a two-tier GitHub Actions template. Tier 1 (`scan`) is the deterministic gate: pick a `--fail-on` level to match how strict the team wants it (`error` for PRs, `warn` to also block drift, `never` to report-only). Tier 2 (`audit`) is the **agent in the loop** — it runs this skill via `anthropics/claude-code-action` to do the judgment pass and *propose* fixes as a PR/review, never a push. See [reference.md](reference.md) "Continuous integration".
 - For agent-instruction drift, consider a `Stop` hook that proposes CLAUDE.md updates from the session.
 - Adopt the CLAUDE.md add/prune policy ([reference.md](reference.md) lifecycle): add a rule on the *second* occurrence of a mistake, prune rules the agent demonstrably internalized, purge rules the moment a dependency they describe is swapped.
 - Record any repo-specific documentation rule you had to reason out into the repo's own CLAUDE.md so the next pass starts smarter. Pairs with the **reflect-for-skill-updates** skill.
@@ -117,12 +120,14 @@ Turn the audit into a standing guardrail so drift can't silently return — this
 
 - Audit is read-only; **never write during Phases 1–3.** Get explicit confirmation before repairs.
 - Adding community-health files, opening PRs, or publishing docs are outward-facing — confirm before doing them.
+- **In non-interactive CI (the `audit` tier) there is no human to confirm, so the standing gate replaces it: propose, never apply in place.** Post a review or open a *draft* PR; never push repairs to a protected branch. The PR review *is* the confirmation step.
 - Don't mandate structure a repo doesn't need. Diátaxis is a *compass, not a filing cabinet*: flag mode-mixing within a page, but don't force four literal folders onto a small project. A thin CLAUDE.md section is better deleted than padded.
 
 ## Reference & related
 
 - Full cited per-layer checklist and thresholds: [reference.md](reference.md)
 - Scanner: [scripts/doc_health_check.py](scripts/doc_health_check.py)
+- Example CI workflow (deterministic gate + agent-in-the-loop audit): [assets/doc-health.yml](assets/doc-health.yml)
 - **compound-docs** — captures a solved problem; run this after to check the docs you touched are healthy.
 - **reflect-for-skill-updates** — when a docs gap let a mistake happen, codify the fix here or in CLAUDE.md.
 - **create-agent-skills** — conventions for the CLAUDE.md/rules/skills split this skill enforces.

@@ -5,6 +5,16 @@ All notable changes to the agentic-engineering plugin will be documented in this
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.18.1] - 2026-07-12
+
+### Added
+
+- **`documentation-health` gains first-class GitHub Actions support.** A new example workflow ([assets/doc-health.yml](skills/documentation-health/assets/doc-health.yml)) ships two independent tiers: a deterministic `scan` gate that fetches the zero-dependency scanner at a pinned ref, and an opt-in `audit` job that runs the skill inside `anthropics/claude-code-action` for the **agent-in-the-loop** judgment pass (duplication, Diátaxis mode-mixing, stale commands, README↔CLAUDE.md drift) — proposing fixes as a PR review or draft PR, never a push to a protected branch, which is how the non-interactive gate preserves the skill's confirm-before-write rule.
+
+### Changed
+
+- **The scanner (`doc_health_check.py`) gains tunable gate strictness via `--fail-on {error,warn,info,never}`** (default `never`; `--strict` is kept as a back-compat alias for `--fail-on error`). Teams can start at `error` on PRs and ratchet to `warn` once drift is burned down, or run `never` for report-only scheduled sweeps. `SKILL.md` and `reference.md` document a "Continuous integration" section covering the two tiers, the strictness dial, and the propose-only rule for CI. No component counts change.
+
 ## [3.18.0] - 2026-07-11
 
 ### Added
