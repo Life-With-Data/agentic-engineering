@@ -178,6 +178,20 @@ bash "$(git rev-parse --show-toplevel)/.worktrees/../<plugin-path>/scripts/workt
 ```
 `gc` always exits 0, so it never fails the surrounding git operation.
 
+### Session-start stale advisory (automatic)
+
+`gc` reaps merged worktrees in the background, but it can't warn a human who
+*opens or resumes a session inside* a worktree whose branch has already merged —
+a dead worktree that will never receive further changes, yet work keeps
+happening on it. The plugin's `SessionStart` hook
+(`scripts/worktree-stale-advisor.py`) closes that gap: when a session starts
+inside `.worktrees/<name>` and that branch is fully merged into the base
+(detected with `git cherry`, so squash/rebase merges are caught), it emits a
+one-line, non-blocking advisory to start fresh and how to remove the stale
+worktree. It never deletes anything, pays no cost on the main tree, stays silent
+unless the current worktree is genuinely stale, and honors `WORKTREE_GC_BASE`
+(shared with `gc`). Nothing to configure — installing the plugin activates it.
+
 ## Workflow Examples
 
 ### Code Review with Worktree

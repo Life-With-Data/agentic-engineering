@@ -103,6 +103,23 @@ its YAML frontmatter — unless the plan opts out with `issue_tracker: none`.
 **Why:** Plans that aren't linked to a tracked issue get orphaned. This keeps
 `/workflows:plan` output connected to whatever issue tracker the repo uses.
 
+## `worktree-stale-advisor.py` — SessionStart
+
+**Advises** (non-blocking) when a session starts inside a `.worktrees/<name>`
+worktree whose branch is already merged into the base — a stale worktree that
+won't receive further changes. Emits a one-line `additionalContext` note on how
+to start fresh and remove it; never deletes anything.
+
+**Why:** The `git-worktree` skill's `worktree-manager.sh gc` reaps merged
+worktrees in the background, but can't warn a human who resumes work *inside* a
+now-merged worktree. This closes that lifecycle gap.
+
+**Precision:** Only acts inside a `.worktrees/` worktree (instant no-op on the
+main tree, before any network call). Uses `git cherry`, so squash/rebase merges
+with differing SHAs are still detected; a fresh branch with no commits, or one
+with any unmerged commit, is left alone. Honors `WORKTREE_GC_BASE` (shared with
+`gc`). Only ever exits 0 — a broken advisory must never fail a session start.
+
 ## `sdd-cache-pre.py` / `sdd-cache-post.py` — PreToolUse / PostToolUse (WebFetch), opt-in
 
 **Off by default.** Unlike the guards above, this pair is a *performance* hook,

@@ -5,6 +5,12 @@ All notable changes to the agentic-engineering plugin will be documented in this
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.19.0] - 2026-07-12
+
+### Added
+
+- **Stale-worktree SessionStart advisory** (`scripts/worktree-stale-advisor.py`, wired as a `SessionStart` hook) — completes the worktree-lifecycle story that the `git-worktree` skill's `worktree-manager.sh gc` began. `gc` reaps *merged* worktrees in the background (at `git pull`/`git merge` time, or at the end of a swarm run), but nothing warned a human who **opened or resumed a session inside** a worktree whose branch had already merged — a dead worktree that will never receive further changes, yet work continues on it. This hook closes that gap: when a session starts inside `<repo>/.worktrees/<name>` and that branch is fully merged into the base (detected via `git cherry`, so squash/rebase merges with differing SHAs are caught), it emits a one-line, non-blocking advisory (`additionalContext`) to start fresh and how to remove the stale worktree — pointing at the same `gc` command for a bulk reap. It never deletes anything (a session-start delete could race a concurrent session), pays no cost on the main tree (returns before any network call), stays silent unless the current worktree is genuinely stale, and only ever exits 0. Adapted from `bluestar-intel`'s `check-stale-worktree.sh`, generalized to the plugin's `.worktrees/` layout and rewritten in dependency-free Python (no `jq`) to match the plugin's existing hook conventions. Shares the `WORKTREE_GC_BASE` base-branch override with `gc`. No component counts change (a new hook/script on an existing skill, not a new agent/command/skill). This is the plugin's first `SessionStart` hook.
+
 ## [3.18.0] - 2026-07-11
 
 ### Added
