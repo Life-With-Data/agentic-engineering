@@ -73,37 +73,6 @@ jobs:
             echo "::notice::No ANTHROPIC_API_KEY set — skipping the agent audit tier."
           fi
 
-      # TEMP (#128): install claude 2.1.207 ourselves and put a SHIM in front of it,
-      # then hand the action that shim via path_to_claude_code_executable. The shim
-      # logs the exact argv + CLAUDE/ANTHROPIC env-var NAMES (values redacted) the
-      # SDK spawns claude with, then execs the real binary. Every standalone repro of
-      # the flags I guessed SUCCEEDS, so the offending flag/env must be one the SDK
-      # adds that I haven't replicated — this reveals it.
-      - name: DIAGNOSTIC — build claude spawn-logging shim (temp, #128)
-        id: shim
-        if: steps.key.outputs.present == 'true'
-        run: |
-          set -eo pipefail
-          curl -fsSL https://claude.ai/install.sh | bash -s -- 2.1.207
-          REAL="$HOME/.local/bin/claude"
-          SHIM="${RUNNER_TEMP}/claude-shim.sh"
-          LOG="${RUNNER_TEMP}/spawn.log"
-          cat > "$SHIM" <<SHIMEOF
-          #!/usr/bin/env bash
-          {
-            echo "=== spawn @ \$(date -u +%H:%M:%S.%N) ==="
-            echo "ARGV(\$#):"
-            for a in "\$@"; do echo "  |\$a|"; done
-            echo "CLAUDE/ANTHROPIC env names:"
-            env | grep -iE '^(CLAUDE|ANTHROPIC|MCP)' | cut -d= -f1 | sort | sed 's/^/  /'
-            echo "CWD: \$(pwd)"
-          } >> "$LOG" 2>&1
-          exec "$REAL" "\$@"
-          SHIMEOF
-          chmod +x "$SHIM"
-          echo "shim=$SHIM" >> "$GITHUB_OUTPUT"
-          "$REAL" --version
-
       - name: Documentation-health audit (propose only, fail on must-fix)
         id: audit
         if: steps.key.outputs.present == 'true'
@@ -116,9 +85,6 @@ jobs:
         continue-on-error: true
         uses: anthropics/claude-code-action@v1
         with:
-          # TEMP (#128): surface the SDK's own error + log the exact spawn via shim.
-          show_full_output: true
-          path_to_claude_code_executable: ${{ steps.shim.outputs.shim }}
           # Long-lived ANTHROPIC_API_KEY (no expiry) — chosen over a `claude
           # setup-token` OAuth token, which lapses and then hard-fails this check.
           # Pass exactly ONE credential: do NOT also pass claude_code_oauth_token,
@@ -131,22 +97,21 @@ jobs:
           # Load the skill from this very marketplace — dogfooding.
           plugin_marketplaces: https://github.com/Life-With-Data/agentic-engineering.git
           plugins: agentic-engineering@agentic-engineering
-          # --setting-sources user: run WITHOUT this repo's in-repo `.claude`
-          # config (project/local). The claude-code-action SDK otherwise starts
-          # the CLI with settingSources ["user","project","local"], which loads
-          # the committed .claude/settings.json (fork-trap SessionStart/PreToolUse
-          # hooks) and .mcp.json — none of which a read-only doc audit needs, and
-          # which are the prime suspect for the immediate exit-1 the CLI throws at
-          # startup in the CI sandbox (see #128; the action's own parse-sdk-options
-          # comments recommend exactly this to "avoid in-repo configs"). The
-          # documentation-health SKILL is unaffected — it comes from the installed
+          # THE #128 FIX — the JSON-schema quotes are BACKSLASH-ESCAPED (\").
+          # claude-code-action tokenizes claude_args with the `shell-quote` parser,
+          # which strips bare double quotes: {"type":"object"} reached the CLI as
+          # {type:object} — invalid JSON — so `claude` exited 1 at startup (~0.4s)
+          # on every run the agent tier actually executed. This was NOT auth, the
+          # CLI version, or settings (all ruled out by direct-invocation repro);
+          # the argv the SDK spawned proved the quotes were gone. Escaping makes
+          # shell-quote emit literal quotes, so the CLI parses valid JSON. Verified:
+          # the audit then ran a full 53-turn pass and emitted structured output.
+          #
+          # --setting-sources user: hygiene — a read-only doc audit doesn't need
+          # this repo's in-repo `.claude` config (fork-trap hooks, .mcp.json), which
+          # the SDK would otherwise load via the default ["user","project","local"].
+          # The documentation-health SKILL is unaffected: it comes from the installed
           # plugin (user scope), not from project settingSources.
-          # Structured output is the pass/fail signal the next step reads.
-          # The JSON quotes are BACKSLASH-ESCAPED (\") on purpose: the action runs
-          # claude_args through the `shell-quote` parser, which strips bare double
-          # quotes — so {"type":"object"} reached the CLI as {type:object}, invalid
-          # JSON, and claude exited 1 at startup (#128). Escaping makes shell-quote
-          # emit literal quotes, so the CLI gets valid JSON.
           claude_args: >-
             --setting-sources user
             --json-schema
@@ -168,14 +133,6 @@ jobs:
               finding your judgment confirms — e.g. a real secret, a broken
               link/import, forked-and-unbridged agent-context files). Put a
               one-line rationale in `summary`.
-
-      # TEMP (#128) — print the child claude's own startup debug log (the stderr
-      # the SDK masks as "exited with code 1"). No secret in these logs.
-      - name: DIAGNOSTIC — dump child claude debug log (temp, #128)
-        if: always() && steps.key.outputs.present == 'true'
-        run: |
-          echo "=== EXACT SDK spawn (argv + env names) ==="
-          cat "${RUNNER_TEMP}/spawn.log" 2>&1 || echo "(no spawn log — shim never invoked)"
 
       - name: Enforce must-fix (fail the check)
         if: steps.key.outputs.present == 'true'
