@@ -154,6 +154,18 @@ class ReconcilerTest(unittest.TestCase):
                          [("merged_close_missed", "shipped")])
         self.assertEqual(flags, [])
 
+    def test_flag_in_review_with_open_subissues_never_repairs(self) -> None:
+        s = _issue(state="OPEN", stage="in_review", open_subs=[7, 9])
+        repairs, flags = lb.plan_repairs([s], "main")
+        self.assertEqual(repairs, [])  # never auto-repaired
+        self.assertEqual([(f.issue, f.flag) for f in flags],
+                         [(1, "in_review_with_open_subissues")])
+
+    def test_no_flag_when_in_review_subissues_all_closed(self) -> None:
+        s = _issue(state="OPEN", stage="in_review", open_subs=[])
+        _repairs, flags = lb.plan_repairs([s], "main")
+        self.assertEqual(flags, [])
+
     def test_rule2_not_planned_close_becomes_abandoned_with_cascade(self) -> None:
         s = _issue(state="CLOSED", state_reason="NOT_PLANNED", stage="shipped",
                    open_subs=[7, 8])
@@ -308,6 +320,33 @@ class ProjectLinkedReposTest(unittest.TestCase):
         self.assertIsNone(lb.project_linked_repos("o", 5, runner))
 
 
+class ProjectWorkflowsTest(unittest.TestCase):
+    """The built-in-workflow enabled-state reader behind the doctor's
+    item_closed_workflow check. The API exposes only name + enabled."""
+
+    @staticmethod
+    def _payload(workflows):
+        nodes = [{"name": n, "enabled": e} for n, e in workflows]
+        return json.dumps({"data": {"repositoryOwner": {"projectV2": {
+            "workflows": {"nodes": nodes}}}}})
+
+    def test_parses_name_to_enabled_map(self) -> None:
+        runner = FakeRunner([(["api", "graphql"], _ok(self._payload(
+            [("Item closed", True), ("Item reopened", False)])))])
+        self.assertEqual(lb.project_workflows("o", 5, runner),
+                         {"Item closed": True, "Item reopened": False})
+        # Owner-type-agnostic (User + Organization), like the linked-repos reader.
+        query = runner.calls[0][runner.calls[0].index("-f") + 1]
+        self.assertIn("repositoryOwner(login: $owner)", query)
+        self.assertIn("... on User", query)
+        self.assertIn("... on Organization", query)
+
+    def test_none_on_query_failure(self) -> None:
+        fail = subprocess.CompletedProcess(args=[], returncode=1, stdout="", stderr="boom")
+        runner = FakeRunner([(["api", "graphql"], fail)])
+        self.assertIsNone(lb.project_workflows("o", 5, runner))
+
+
 class CallBudgetTest(unittest.TestCase):
     """Ready-work is 2 gh calls at ANY board size (the bd-ready replacement)."""
 
@@ -346,7 +385,7 @@ class CallBudgetTest(unittest.TestCase):
 
 
 def _issue_query_response(*, number=5, assignees=(), stage="planned", blocked=0,
-                          item_id="item5", url="u"):
+                          item_id="item5", url="u", open_subs=()):
     """Build an ISSUE_QUERY graphql response with the dict-shaped blockedBy the
     new parser reads (blockedBy(first:1){totalCount})."""
     return {"data": {"repository": {"issue": {
@@ -355,10 +394,78 @@ def _issue_query_response(*, number=5, assignees=(), stage="planned", blocked=0,
         "blockedBy": {"totalCount": blocked},
         "assignees": {"nodes": [{"login": a} for a in assignees]},
         "closedByPullRequestsReferences": {"nodes": []},
-        "subIssues": {"nodes": []},
+        "subIssues": {"nodes": [{"number": n, "state": "OPEN"} for n in open_subs]},
         "projectItems": {"nodes": [{"id": item_id,
             "project": {"id": "P", "number": 1, "owner": {"login": "acme"}},
             "fieldValueByName": {"name": stage}}]}}}}}
+
+
+class SetStatusGateTest(unittest.TestCase):
+    """The in_review seam gate: verb_set_status refuses to advance a parent to
+    in_review while it has open sub-issues, unless force=True."""
+
+    def setUp(self) -> None:
+        import tempfile
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        root = self._tmp.name
+        (Path(root) / "agentic-engineering.md").write_text(
+            "---\ngithub_project_owner: acme\ngithub_project_number: 1\n---\n", encoding="utf-8")
+        self.ctx = lb.RepoContext(root=root, main_root=root, origin_owner="acme",
+                                  origin_repo="widget", default_branch="main")
+        lb.load_cache = lambda _ctx: {}
+        lb.save_cache = lambda _ctx, _cache: None
+        self._field_list = _ok(json.dumps({"fields": [{"name": "Status", "id": "F",
+            "projectId": "P", "options": [{"id": f"o_{s}", "name": s} for s in lb.STAGES]}]}))
+
+    def _runner_through_fetch(self, open_subs):
+        return FakeRunner([
+            (["project", "field-list", "1", "--owner", "acme"], self._field_list),
+            (["api", "graphql"], _ok(json.dumps(
+                _issue_query_response(stage="in_progress", open_subs=open_subs)))),
+        ])
+
+    def test_refuses_in_review_with_open_subissues(self) -> None:
+        runner = self._runner_through_fetch(open_subs=[7, 8])
+        with self.assertRaises(lb.BoardError) as caught:
+            lb.verb_set_status(5, "in_review", self.ctx, runner)
+        self.assertEqual(caught.exception.code, "open_sub_issues")
+        # Refused BEFORE any board write (no item-edit call).
+        self.assertFalse(any(c[:2] == ["project", "item-edit"] for c in runner.calls))
+
+    def test_force_bypasses_the_gate(self) -> None:
+        runner = FakeRunner([
+            (["project", "field-list", "1", "--owner", "acme"], self._field_list),
+            (["api", "graphql"], _ok(json.dumps(
+                _issue_query_response(stage="in_progress", open_subs=[7])))),
+            (["project", "item-edit", "--id", "item5", "--project-id", "P",
+              "--field-id", "F", "--single-select-option-id", "o_in_review"], _ok("{}")),
+        ])
+        result = lb.verb_set_status(5, "in_review", self.ctx, runner, force=True)
+        self.assertEqual(result["stage"], "in_review")
+
+    def test_clean_parent_advances_to_in_review(self) -> None:
+        runner = FakeRunner([
+            (["project", "field-list", "1", "--owner", "acme"], self._field_list),
+            (["api", "graphql"], _ok(json.dumps(
+                _issue_query_response(stage="in_progress", open_subs=[])))),
+            (["project", "item-edit", "--id", "item5", "--project-id", "P",
+              "--field-id", "F", "--single-select-option-id", "o_in_review"], _ok("{}")),
+        ])
+        result = lb.verb_set_status(5, "in_review", self.ctx, runner)
+        self.assertEqual(result["stage"], "in_review")
+
+    def test_other_stages_not_gated_by_open_subissues(self) -> None:
+        # Advancing to in_progress with open sub-issues is fine — only in_review is gated.
+        runner = FakeRunner([
+            (["project", "field-list", "1", "--owner", "acme"], self._field_list),
+            (["api", "graphql"], _ok(json.dumps(
+                _issue_query_response(stage="planned", open_subs=[7])))),
+            (["project", "item-edit", "--id", "item5", "--project-id", "P",
+              "--field-id", "F", "--single-select-option-id", "o_in_progress"], _ok("{}")),
+        ])
+        result = lb.verb_set_status(5, "in_progress", self.ctx, runner)
+        self.assertEqual(result["stage"], "in_progress")
 
 
 class ClaimVerbTest(unittest.TestCase):
@@ -420,6 +527,94 @@ class ClaimVerbTest(unittest.TestCase):
         self.assertEqual((result["claimed"], result["verdict"]), (False, "blocked"))
         # No assign call was ever made.
         self.assertFalse(any("--add-assignee" in c for c in runner.calls))
+
+
+class SubStatusVerbTest(unittest.TestCase):
+    """verb_sub_status drives the mutually-exclusive `status:*` labels board-free.
+    Every gh call carries an explicit --repo (in-script gh discipline)."""
+
+    def setUp(self) -> None:
+        self.ctx = lb.RepoContext(root=".", main_root=".", origin_owner="acme",
+                                  origin_repo="widget", default_branch="main")
+
+    @staticmethod
+    def _view(labels, state="OPEN"):
+        return _ok(json.dumps({"labels": [{"name": n} for n in labels], "state": state}))
+
+    def test_invalid_status_rejected_before_any_gh_call(self) -> None:
+        runner = FakeRunner([])  # any call would raise "unexpected gh call"
+        with self.assertRaises(lb.BoardError) as caught:
+            lb.verb_sub_status(7, "done_ish", self.ctx, runner)
+        self.assertEqual(caught.exception.code, "invalid_sub_status")
+        self.assertEqual(runner.calls, [])
+
+    def test_in_progress_from_bare_issue_ensures_label_and_adds_it(self) -> None:
+        runner = FakeRunner([
+            (["issue", "view", "7", "--repo", "acme/widget", "--json", "labels,state"],
+             self._view([])),
+            (["label", "create", "status:in-progress", "--repo", "acme/widget"],
+             _ok("")),
+            (["issue", "edit", "7", "--repo", "acme/widget",
+              "--add-label", "status:in-progress"], _ok("")),
+        ])
+        result = lb.verb_sub_status(7, "in_progress", self.ctx, runner)
+        self.assertEqual((result["sub_status"], result["label"]),
+                         ("in_progress", "status:in-progress"))
+        # Idempotent label upsert uses --force.
+        self.assertIn("--force", runner.calls[1])
+
+    def test_swap_removes_prior_status_label_and_adds_target(self) -> None:
+        runner = FakeRunner([
+            (["issue", "view", "8", "--repo", "acme/widget", "--json", "labels,state"],
+             self._view(["status:in-progress", "bug"])),
+            (["label", "create", "status:in-review", "--repo", "acme/widget"], _ok("")),
+            (["issue", "edit", "8", "--repo", "acme/widget",
+              "--add-label", "status:in-review",
+              "--remove-label", "status:in-progress"], _ok("")),
+        ])
+        result = lb.verb_sub_status(8, "in_review", self.ctx, runner)
+        self.assertEqual(result["removed_labels"], ["status:in-progress"])
+
+    def test_resetting_current_status_is_a_noop_edit(self) -> None:
+        # Already in_review: ensure the label but make NO issue-edit (nothing to change).
+        runner = FakeRunner([
+            (["issue", "view", "9", "--repo", "acme/widget", "--json", "labels,state"],
+             self._view(["status:in-review"])),
+            (["label", "create", "status:in-review", "--repo", "acme/widget"], _ok("")),
+        ])
+        result = lb.verb_sub_status(9, "in_review", self.ctx, runner)
+        self.assertEqual(result["sub_status"], "in_review")
+        self.assertFalse(any(c[:2] == ["issue", "edit"] for c in runner.calls))
+
+    def test_done_strips_labels_and_closes_open_issue(self) -> None:
+        runner = FakeRunner([
+            (["issue", "view", "10", "--repo", "acme/widget", "--json", "labels,state"],
+             self._view(["status:in-review"], state="OPEN")),
+            (["issue", "edit", "10", "--repo", "acme/widget",
+              "--remove-label", "status:in-review"], _ok("")),
+            (["issue", "close", "10", "--repo", "acme/widget", "--reason", "completed"], _ok("")),
+        ])
+        result = lb.verb_sub_status(10, "done", self.ctx, runner)
+        self.assertEqual((result["sub_status"], result["closed"]), ("done", True))
+
+    def test_done_on_already_closed_issue_only_reconciles_labels(self) -> None:
+        runner = FakeRunner([
+            (["issue", "view", "11", "--repo", "acme/widget", "--json", "labels,state"],
+             self._view([], state="CLOSED")),
+        ])
+        result = lb.verb_sub_status(11, "done", self.ctx, runner)
+        self.assertEqual((result["closed"], result["removed_labels"]), (False, []))
+        self.assertFalse(any(c[:2] == ["issue", "close"] for c in runner.calls))
+
+    def test_missing_issue_is_issue_not_found(self) -> None:
+        miss = subprocess.CompletedProcess(args=[], returncode=1, stdout="",
+                                           stderr="Could not resolve to an Issue with the number of 99.")
+        runner = FakeRunner([
+            (["issue", "view", "99", "--repo", "acme/widget", "--json", "labels,state"], miss),
+        ])
+        with self.assertRaises(lb.BoardError) as caught:
+            lb.verb_sub_status(99, "blocked", self.ctx, runner)
+        self.assertEqual(caught.exception.code, "issue_not_found")
 
 
 class ConfigTest(unittest.TestCase):

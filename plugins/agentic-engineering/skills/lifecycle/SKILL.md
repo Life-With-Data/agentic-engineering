@@ -49,6 +49,7 @@ Each transition has exactly one writer. Writers invoke `lifecycle_board.py` verb
 | → `deployed` | Consumer repo's deploy workflow | Comment-always / Status-best-effort (see gh-recipes) |
 | → `compounded` | `/workflows:compound` | Only when a `github_issue` join key exists; legal directly from `shipped` |
 | → `abandoned` | Humans; reconciler on close-as-not-planned | Any stage; abandoning a parent cascades to sub-issues |
+| sub-issue `status:*` | The **owning agent** (orchestrator, or the inline worker) | `--sub-status <sub> <in_progress\|in_review\|blocked\|done>`; a mutually-exclusive label, never a board stage |
 | *(repairs)* | The shared reconciler — the only other writer | The five closed repairs below; every command invokes this one `--reconcile`, never its own reconcile prose |
 
 "One writer" governs transitions, not object creation — issues legitimately originate at `stub` (triage), `brainstormed` (brainstorm), or `planned` (plan on a crisp idea).
@@ -61,7 +62,7 @@ The reconciler's repair set is **closed at five** (unit-tested as closed — any
 4. `abandoned_cascade` — parent at `abandoned` with open sub-issues → close them as not-planned.
 5. `pr_reopened` — assignee's PR open, item at `in_progress` → `in_review`.
 
-Every repair posts a one-line issue comment (the shared audit surface). The reconciler never fights a human's manual drag. Three **report-only flags** — `merged_to_non_default_branch`, `stale_join_key`, `truncated_ready_work` — emit comments + JSON but are never auto-repaired.
+Every repair posts a one-line issue comment (the shared audit surface). The reconciler never fights a human's manual drag. Four **report-only flags** — `merged_to_non_default_branch`, `stale_join_key`, `truncated_ready_work`, and `in_review_with_open_subissues` — emit comments + JSON but are never auto-repaired. The last catches a parent sitting at `in_review` with open sub-issues (an incomplete parent about to merge → ship); it is the detection half of the seam gate below.
 
 ## Entry-gate pattern
 
@@ -119,6 +120,31 @@ python3 "${CLAUDE_PLUGIN_ROOT}/scripts/lifecycle_board.py" --set-status N <stage
 ```
 
 `--set-status` owns the four-ID `gh project item-edit` flow and adds the item to the board if absent — commands never hand-assemble GraphQL or call raw `item-edit`. `--set-status` and `--reconcile` are the sanctioned operator primitives for deliberate out-of-band moves and manual reconciliation (humans and CI may call them directly).
+
+**Seam gate — `in_review` requires terminal sub-issues.** `--set-status <N> in_review` **refuses** when `<N>` has open sub-issues (`error_code: open_sub_issues`), enforcing in the engine what `/workflows:work` Phase 4 states in prose — an agent that skips the checklist still cannot mark a parent ready-for-review while its decomposed work is unfinished and then bury it under the merge → `shipped` automation. The reconciler and deliberate operator/CI moves pass through (`--force`); the `in_review_with_open_subissues` flag is the after-the-fact detector for those forced paths. This is the one place the lifecycle verifies a *predecessor step actually finished* before allowing the next transition — a snowball stop, not general hygiene.
+
+## Sub-issue status
+
+The board tracks the **parent** work item; sub-issues decompose it and roll up into the **parent's** PR, so a sub-issue never earns its own `in_review`/`shipped` stage — there is no sub-PR to open or merge. That left sub-issues with only two stakeholder-visible states — open and closed — which is too coarse to answer "what is actually happening right now." Sub-issues therefore carry a finer, board-independent status on a **mutually-exclusive `status:*` label** a business stakeholder can read straight off the issues list (alongside GitHub's native "N of M sub-issues done" rollup on the parent). One verb owns it:
+
+```
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/lifecycle_board.py" --sub-status <N> <status>
+```
+
+The status vocabulary is exactly `lifecycle_board.SUB_STATUSES`, each mapped to one label:
+
+| Status | Label | Meaning |
+|---|---|---|
+| `in_progress` | `status:in-progress` | A worker (this agent or a dispatched sub-agent) is actively implementing it. |
+| `in_review` | `status:in-review` | Implemented; awaiting the owner's verification / rolled into the parent's PR and its CI + review. This is the "complete but not yet closed" state — a sub-issue reaches done-ness without any PR of its own closing it. |
+| `blocked` | `status:blocked` | Has an open `blocked-by` dependency (or is otherwise stalled). |
+| `done` | *(none)* | Terminal: the verb **strips every `status:*` label and closes the issue** as completed. CLOSED already means done, so no residual label. |
+
+Invariants:
+
+- **At most one `status:*` label per issue.** The verb removes any other `status:*` label as it sets the target — it is a *swap*, not an *add*. Re-setting the current status is a cheap no-op.
+- **Board-free.** Labels are repo-scoped, so `--sub-status` needs no board and works in `github` mode too; it self-creates its labels (idempotent upsert, colors mirroring the stage palette).
+- **One writer — the owning agent, never the sub-agent.** The agent that owns the parent (the orchestrator, or the inline worker) writes sub-issue status at the boundaries — dispatch → `in_progress`, hand-back → `in_review`, acceptance verified → `done`, open `blocked-by` seen → `blocked`. **Dispatched sub-agents never touch GitHub state** (the same one-writer rule that keeps the board race-safe); status stays faithful whether the owner implements inline or delegates. Only *this* PR-less status uses labels — a sub-issue's forward stage machinery does not exist, so there is no second stage writer to conflict with.
 
 ## Modes and the join-key contract
 
