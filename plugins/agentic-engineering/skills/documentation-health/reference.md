@@ -198,6 +198,29 @@ A static-site generator publishes *whatever is in the source tree* — internal 
 
 ---
 
+## Continuous integration
+
+Health is *continuous* only when a gate enforces it on every change. The skill ships an example GitHub Actions workflow — [assets/doc-health.yml](assets/doc-health.yml) — with two independent tiers. Prefer a GitHub Action over a pre-commit hook: it runs the same way for every contributor, can post PR reviews, and can host the agent tier (a pre-commit hook is local, easy to `--no-verify` past, and can't call an LLM cleanly).
+
+**Tier 1 — deterministic gate (`scan`).** Fetches the zero-dependency scanner at a pinned ref and runs it. The marketplace auto-tags `v<version>` on release, so the template pins a version tag (a commit SHA is equally valid and even stricter); avoid a moving ref like `main` for a gate — it can drift under you between runs. The strictness is a dial, not a fixed policy — set `--fail-on` to what the team will actually sustain:
+
+| `--fail-on` | Exit 1 when… | Use for |
+|-------------|--------------|---------|
+| `error` | any ERROR (broken/dangerous) | the default PR gate — blocks only real breakage |
+| `warn` | any ERROR **or** WARN | teams that also want drift (hardcoded counts, missing Usage) blocked |
+| `info` | any finding at all | rarely a gate; a report-everything pass |
+| `never` | never (report only) | scheduled sweeps that upload the `--json` artifact without blocking |
+
+Start at `error` on PRs and, once the WARNs are burned down, ratchet to `warn` — a gate that's red on day one gets disabled. `--strict` remains a back-compat alias for `--fail-on error`.
+
+**Tier 2 — agent in the loop (`audit`).** The deterministic gate covers maybe half the value; the judgment checks (duplication, Diátaxis mode-mixing, stale commands, README↔CLAUDE.md drift, cross-tool contradictions) need a reasoning pass. This tier runs the skill inside `anthropics/claude-code-action` (loaded via its `plugin_marketplaces` + `plugins` inputs), gated behind a label or `workflow_dispatch`/`schedule` so it doesn't spend agent minutes on every push. The action posts **as Claude** (the official Claude GitHub App identity), not the token owner.
+
+*Propose-only, but still blocking.* Two orthogonal properties: (1) **propose-only** — the agent posts a PR review or opens a *draft* PR and never pushes to a protected branch (the review is the human gate for *applying* a fix); (2) **fail the check on a must-fix** — the agent emits a `--json-schema` structured output `{must_fix, summary}`, and a downstream step `exit 1`s when `must_fix` is true. Mark that job Required in branch protection and a judgment-confirmed must-fix *blocks merge* even though no file was written. Crucially the agent sets `must_fix` on its **judgment**, not raw scanner severity — so a WARN that's a false positive doesn't block, but a real forked-and-unbridged agent-context file does. That's the split a plain `--fail-on warn` gate can't make. Give the action `pull-requests: write` and **exactly one** credential — either a Claude Pro/Max subscription token (`CLAUDE_CODE_OAUTH_TOKEN`, from `claude setup-token`, which bills against the subscription) or a direct `ANTHROPIC_API_KEY`. Don't wire both: an unset secret expands to an empty string, and an empty auth input breaks credential resolution (the SDK exits 1 before running). (Subscription auth skips the action's inline-comment classification; irrelevant to a single-summary review.)
+
+**Pinning & releases.** Pin the fetched scanner (and the `plugins@ref`) to an immutable ref — a `v<version>` tag or a commit SHA, never a moving branch. Producing those tags is a one-time release-automation step: a `Release` workflow that reads the plugin manifest version on push to `main` and cuts `v<version>` + a GitHub Release when it's new (notes from the CHANGELOG). For a repo that already hand-bumps the manifest and maintains a changelog under test, that manifest-version-triggered auto-tag fits better than release-please/conventional-commits, which would duplicate the existing discipline.
+
+---
+
 ## Cross-cutting: the audience-separation matrix
 
 The single most common structural failure is collapsing distinct audiences into one file. Enforce:
