@@ -79,10 +79,12 @@ jobs:
       # so it's auth-independent and this stderr is guaranteed secret-free. Decision
       # tree: same exit-1 crash ⇒ auth-independent CLI startup bug; a clean "no API
       # key" message ⇒ the crash is actually gated on the (possibly invalid) key.
-      - name: DIAGNOSTIC — capture real CLI startup error (temp, #128)
+      - name: DIAGNOSTIC — is the REAL org ANTHROPIC_API_KEY valid? (temp, #128)
         if: steps.key.outputs.present == 'true'
         env:
-          ANTHROPIC_LOG: debug
+          # ANTHROPIC_LOG deliberately UNSET here (no verbose header dump). Only
+          # the model's reply or an error string is printed — never the key.
+          THE_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: |
           set +e
           echo "::group::install claude 2.1.207"
@@ -90,20 +92,10 @@ jobs:
           curl -fsSL https://claude.ai/install.sh | bash -s -- 2.1.207
           echo "::endgroup::"
           CLAUDE="$HOME/.local/bin/claude"
-          echo "=== version ==="
-          "$CLAUDE" --version; echo "version exit: $?"
-
-          echo "=== A: headless, NO creds, prompt via stdin, setting-sources user ==="
-          echo "reply with the single word OK" | "$CLAUDE" --print --setting-sources user 2>&1 | tail -60
-          echo "A exit: ${PIPESTATUS[1]}"
-
-          echo "=== B: headless, FAKE api key (safe), setting-sources user ==="
-          echo "reply with the single word OK" | ANTHROPIC_API_KEY=sk-ant-invalid-diagnostic-000 "$CLAUDE" --print --setting-sources user 2>&1 | tail -60
-          echo "B exit: ${PIPESTATUS[1]}"
-
-          echo "=== C: headless, NO creds, default setting sources (project/local too) ==="
-          echo "reply with the single word OK" | "$CLAUDE" --print 2>&1 | tail -60
-          echo "C exit: ${PIPESTATUS[1]}"
+          echo "key length: ${#THE_KEY}  prefix: ${THE_KEY:0:7}..."
+          echo "=== D: headless run with the REAL org key ==="
+          echo "Reply with exactly: OK" | ANTHROPIC_API_KEY="$THE_KEY" "$CLAUDE" --print --setting-sources user 2>&1 | tail -20
+          echo "D exit: ${PIPESTATUS[1]}"
 
       - name: Documentation-health audit (propose only, fail on must-fix)
         id: audit
