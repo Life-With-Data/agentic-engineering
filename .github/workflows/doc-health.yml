@@ -142,10 +142,15 @@ jobs:
           # documentation-health SKILL is unaffected — it comes from the installed
           # plugin (user scope), not from project settingSources.
           # Structured output is the pass/fail signal the next step reads.
+          # The JSON quotes are BACKSLASH-ESCAPED (\") on purpose: the action runs
+          # claude_args through the `shell-quote` parser, which strips bare double
+          # quotes — so {"type":"object"} reached the CLI as {type:object}, invalid
+          # JSON, and claude exited 1 at startup (#128). Escaping makes shell-quote
+          # emit literal quotes, so the CLI gets valid JSON.
           claude_args: >-
             --setting-sources user
             --json-schema
-            {"type":"object","properties":{"must_fix":{"type":"boolean"},"summary":{"type":"string"}},"required":["must_fix","summary"]}
+            {\"type\":\"object\",\"properties\":{\"must_fix\":{\"type\":\"boolean\"},\"summary\":{\"type\":\"string\"}},\"required\":[\"must_fix\",\"summary\"]}
           prompt: |
             Use the documentation-health skill to audit this repository in
             NON-INTERACTIVE CI mode, then judge the results.
