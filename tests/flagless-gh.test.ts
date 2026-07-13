@@ -1,11 +1,11 @@
-// Durable control for the "fork trap" on gh WRITES that the PreToolUse hook
-// (.claude/hooks/block-upstream-pr.sh) cannot see once they run inside a shell
-// snippet a human copies, a subagent executes, or a script wraps — the hook only
-// inspects the top-level Bash tool command. This test greps every command and
-// skill markdown file for `gh issue|gh project|gh api` invocations inside bash
-// code fences and requires each to be self-targeting: an explicit --repo/--owner
+// Durable control that every gh WRITE in a distributed command/skill is
+// SELF-TARGETING. These commands run in arbitrary users' repos, so a flagless
+// `gh issue|project|api` write relies on gh's default-repo resolution and can
+// silently land on the wrong repo. This test greps every command and skill
+// markdown file for `gh issue|gh project|gh api` invocations inside bash code
+// fences and requires each to be self-targeting: an explicit --repo/--owner
 // (literal or documented variable form like `--repo "$REPORT_REPO"`), OR a
-// read-only subcommand (reads can't leak a write to upstream), OR an entry in the
+// read-only subcommand (reads can't mutate the wrong repo), OR an entry in the
 // ALLOWLIST below.
 //
 // If this fails: a new flagless gh WRITE was added to a command/skill. Either add
@@ -15,7 +15,7 @@
 //
 // Scope note: this scans .md files only. Shell scripts under skills/**/scripts/
 // are not markdown and are covered by their own in-script --repo/--owner
-// discipline (Security invariant 7); the hook + this grep are backstops.
+// discipline (Security invariant 7).
 
 import { describe, expect, test } from "bun:test"
 import { existsSync, readdirSync, readFileSync } from "fs"
@@ -26,7 +26,7 @@ const PLUGIN = path.join(ROOT, "plugins/agentic-engineering")
 
 // ---- allowlist: known-legitimate flagless gh invocations --------------------
 // Keyed by "<relpath-from-plugin>:<line>". Each entry is a legacy or placeholder
-// snippet that is NOT a live upstream-write risk. Keep this list small and
+// snippet that is NOT a live wrong-repo-write risk. Keep this list small and
 // current — every entry is a debt the lifecycle rewrite (Phase 3) is expected to
 // pay down (these two are the pre-rewrite `github` plain-mode issue writers).
 const ALLOWLIST: Record<string, string> = {
@@ -41,7 +41,7 @@ const ALLOWLIST: Record<string, string> = {
 const BASH_LANGS = new Set(["bash", "sh", "shell", "console", ""])
 // A gh issue|project|api invocation (word-boundary; skips e.g. `github`).
 const GH_CALL = /\bgh\s+(issue|project|api)\b/
-// Read-only subcommands that cannot leak a write to upstream.
+// Read-only subcommands that cannot mutate any repo.
 const READ_ONLY =
   /\bgh\s+(?:issue\s+(?:list|view|status)|project\s+(?:list|view|item-list|field-list)|api\s+graphql|api\b)/
 // A gh api call is a WRITE only if it names an explicit write method.
@@ -100,8 +100,8 @@ function collectGhCalls(file: string): Hit[] {
 }
 
 function isRead(text: string): boolean {
-  // `gh api <path>` with no write method is a read; `gh api graphql` is judged by
-  // the hook's ProjectV2-mutation leg, not this grep, so treat it as read here.
+  // `gh api <path>` with no write method is a read; `gh api graphql` node IDs are
+  // opaque to this grep, so treat it as read here (in-script --owner is the guard).
   if (/\bgh\s+api\b/.test(text) && !API_WRITE_METHOD.test(text)) return true
   return READ_ONLY.test(text) && !API_WRITE_METHOD.test(text)
 }

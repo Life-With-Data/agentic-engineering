@@ -16,32 +16,6 @@ By participating you agree to abide by our
 bun install
 ```
 
-## Where pull requests go — read this first
-
-This repository has **two remotes**:
-
-- `origin` → `Life-With-Data/agentic-engineering` — **the fork we ship from.
-  All PRs target this.**
-- `upstream` → `EveryInc/compound-engineering-plugin` — the parent. **Never
-  open PRs here.**
-
-Because no `gh` default repo is set, a **flagless** `gh pr create` resolves to
-the **parent** and would silently try to open a PR against upstream. This repo
-guards against that "fork trap" with committed hooks, but you should still be
-deliberate:
-
-```bash
-# Pin gh's default repo once (offline, local) — a SessionStart hook also does this:
-gh repo set-default Life-With-Data/agentic-engineering
-
-# ...or always be explicit:
-gh pr create --repo Life-With-Data/agentic-engineering
-```
-
-If you see a "fork-trap" denial from the `block-upstream-pr.sh` hook, run the
-`set-default` command above (or add `--repo Life-With-Data/agentic-engineering`)
-and retry. The denial message names the exact fix.
-
 ## Development workflow
 
 1. **Branch** off `main`.
