@@ -30,7 +30,7 @@ const PLUGINS_DIR = path.join(ROOT, "plugins")
 // Keyed by "<plugin>:<relpath-from-plugin>:<line>". Keep this list small and
 // current — a stale entry (no matching call at that key) fails the test.
 const ALLOWLIST: Record<string, string> = {
-  "agentic-engineering:scripts/lifecycle_board.py:936":
+  "agentic-engineering:scripts/lifecycle_board.py:948":
     "github_issue is a docs/plans/*.md plan-tracker field (read_plan_tracker_id), " +
     "not an agentic-engineering(.local).md config flag.",
 }

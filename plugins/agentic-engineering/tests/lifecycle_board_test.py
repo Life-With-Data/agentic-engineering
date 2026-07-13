@@ -154,6 +154,18 @@ class ReconcilerTest(unittest.TestCase):
                          [("merged_close_missed", "shipped")])
         self.assertEqual(flags, [])
 
+    def test_flag_in_review_with_open_subissues_never_repairs(self) -> None:
+        s = _issue(state="OPEN", stage="in_review", open_subs=[7, 9])
+        repairs, flags = lb.plan_repairs([s], "main")
+        self.assertEqual(repairs, [])  # never auto-repaired
+        self.assertEqual([(f.issue, f.flag) for f in flags],
+                         [(1, "in_review_with_open_subissues")])
+
+    def test_no_flag_when_in_review_subissues_all_closed(self) -> None:
+        s = _issue(state="OPEN", stage="in_review", open_subs=[])
+        _repairs, flags = lb.plan_repairs([s], "main")
+        self.assertEqual(flags, [])
+
     def test_rule2_not_planned_close_becomes_abandoned_with_cascade(self) -> None:
         s = _issue(state="CLOSED", state_reason="NOT_PLANNED", stage="shipped",
                    open_subs=[7, 8])
@@ -346,7 +358,7 @@ class CallBudgetTest(unittest.TestCase):
 
 
 def _issue_query_response(*, number=5, assignees=(), stage="planned", blocked=0,
-                          item_id="item5", url="u"):
+                          item_id="item5", url="u", open_subs=()):
     """Build an ISSUE_QUERY graphql response with the dict-shaped blockedBy the
     new parser reads (blockedBy(first:1){totalCount})."""
     return {"data": {"repository": {"issue": {
@@ -355,10 +367,78 @@ def _issue_query_response(*, number=5, assignees=(), stage="planned", blocked=0,
         "blockedBy": {"totalCount": blocked},
         "assignees": {"nodes": [{"login": a} for a in assignees]},
         "closedByPullRequestsReferences": {"nodes": []},
-        "subIssues": {"nodes": []},
+        "subIssues": {"nodes": [{"number": n, "state": "OPEN"} for n in open_subs]},
         "projectItems": {"nodes": [{"id": item_id,
             "project": {"id": "P", "number": 1, "owner": {"login": "acme"}},
             "fieldValueByName": {"name": stage}}]}}}}}
+
+
+class SetStatusGateTest(unittest.TestCase):
+    """The in_review seam gate: verb_set_status refuses to advance a parent to
+    in_review while it has open sub-issues, unless force=True."""
+
+    def setUp(self) -> None:
+        import tempfile
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        root = self._tmp.name
+        (Path(root) / "agentic-engineering.md").write_text(
+            "---\ngithub_project_owner: acme\ngithub_project_number: 1\n---\n", encoding="utf-8")
+        self.ctx = lb.RepoContext(root=root, main_root=root, origin_owner="acme",
+                                  origin_repo="widget", default_branch="main")
+        lb.load_cache = lambda _ctx: {}
+        lb.save_cache = lambda _ctx, _cache: None
+        self._field_list = _ok(json.dumps({"fields": [{"name": "Status", "id": "F",
+            "projectId": "P", "options": [{"id": f"o_{s}", "name": s} for s in lb.STAGES]}]}))
+
+    def _runner_through_fetch(self, open_subs):
+        return FakeRunner([
+            (["project", "field-list", "1", "--owner", "acme"], self._field_list),
+            (["api", "graphql"], _ok(json.dumps(
+                _issue_query_response(stage="in_progress", open_subs=open_subs)))),
+        ])
+
+    def test_refuses_in_review_with_open_subissues(self) -> None:
+        runner = self._runner_through_fetch(open_subs=[7, 8])
+        with self.assertRaises(lb.BoardError) as caught:
+            lb.verb_set_status(5, "in_review", self.ctx, runner)
+        self.assertEqual(caught.exception.code, "open_sub_issues")
+        # Refused BEFORE any board write (no item-edit call).
+        self.assertFalse(any(c[:2] == ["project", "item-edit"] for c in runner.calls))
+
+    def test_force_bypasses_the_gate(self) -> None:
+        runner = FakeRunner([
+            (["project", "field-list", "1", "--owner", "acme"], self._field_list),
+            (["api", "graphql"], _ok(json.dumps(
+                _issue_query_response(stage="in_progress", open_subs=[7])))),
+            (["project", "item-edit", "--id", "item5", "--project-id", "P",
+              "--field-id", "F", "--single-select-option-id", "o_in_review"], _ok("{}")),
+        ])
+        result = lb.verb_set_status(5, "in_review", self.ctx, runner, force=True)
+        self.assertEqual(result["stage"], "in_review")
+
+    def test_clean_parent_advances_to_in_review(self) -> None:
+        runner = FakeRunner([
+            (["project", "field-list", "1", "--owner", "acme"], self._field_list),
+            (["api", "graphql"], _ok(json.dumps(
+                _issue_query_response(stage="in_progress", open_subs=[])))),
+            (["project", "item-edit", "--id", "item5", "--project-id", "P",
+              "--field-id", "F", "--single-select-option-id", "o_in_review"], _ok("{}")),
+        ])
+        result = lb.verb_set_status(5, "in_review", self.ctx, runner)
+        self.assertEqual(result["stage"], "in_review")
+
+    def test_other_stages_not_gated_by_open_subissues(self) -> None:
+        # Advancing to in_progress with open sub-issues is fine — only in_review is gated.
+        runner = FakeRunner([
+            (["project", "field-list", "1", "--owner", "acme"], self._field_list),
+            (["api", "graphql"], _ok(json.dumps(
+                _issue_query_response(stage="planned", open_subs=[7])))),
+            (["project", "item-edit", "--id", "item5", "--project-id", "P",
+              "--field-id", "F", "--single-select-option-id", "o_in_progress"], _ok("{}")),
+        ])
+        result = lb.verb_set_status(5, "in_progress", self.ctx, runner)
+        self.assertEqual(result["stage"], "in_progress")
 
 
 class ClaimVerbTest(unittest.TestCase):

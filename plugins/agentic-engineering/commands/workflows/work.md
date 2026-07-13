@@ -299,7 +299,9 @@ Even a **single** tracked item benefits from Orchestrated Execution — the orch
    gh issue view <N> --repo <origin> --json subIssues
    ```
 
-   If any sub-issue is still open, either finish and close it, or (if it is genuinely out of scope for this PR) re-parent/close it deliberately — do not open the PR while the parent has open sub-issues. In the legacy flow this reduces to "all TodoWrite items checked."
+   If any sub-issue is still open, either finish and close it (`--sub-status <sub> done`), or (if it is genuinely out of scope for this PR) re-parent/close it deliberately — do not open the PR while the parent has open sub-issues. In the legacy flow this reduces to "all TodoWrite items checked."
+
+   This is not just a checklist item: the engine **enforces** it. The Phase-4 `--set-status <N> in_review` write (below) **refuses with `open_sub_issues`** if any sub-issue is still open — so skipping this check surfaces a hard error rather than silently advancing an incomplete parent. Resolve the sub-issues, then the write succeeds.
 
 3. **Integration Boundary Verification**
 

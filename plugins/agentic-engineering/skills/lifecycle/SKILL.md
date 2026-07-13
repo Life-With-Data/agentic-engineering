@@ -62,7 +62,7 @@ The reconciler's repair set is **closed at five** (unit-tested as closed — any
 4. `abandoned_cascade` — parent at `abandoned` with open sub-issues → close them as not-planned.
 5. `pr_reopened` — assignee's PR open, item at `in_progress` → `in_review`.
 
-Every repair posts a one-line issue comment (the shared audit surface). The reconciler never fights a human's manual drag. Three **report-only flags** — `merged_to_non_default_branch`, `stale_join_key`, `truncated_ready_work` — emit comments + JSON but are never auto-repaired.
+Every repair posts a one-line issue comment (the shared audit surface). The reconciler never fights a human's manual drag. Four **report-only flags** — `merged_to_non_default_branch`, `stale_join_key`, `truncated_ready_work`, and `in_review_with_open_subissues` — emit comments + JSON but are never auto-repaired. The last catches a parent sitting at `in_review` with open sub-issues (an incomplete parent about to merge → ship); it is the detection half of the seam gate below.
 
 ## Entry-gate pattern
 
@@ -120,6 +120,8 @@ python3 "${CLAUDE_PLUGIN_ROOT}/scripts/lifecycle_board.py" --set-status N <stage
 ```
 
 `--set-status` owns the four-ID `gh project item-edit` flow and adds the item to the board if absent — commands never hand-assemble GraphQL or call raw `item-edit`. `--set-status` and `--reconcile` are the sanctioned operator primitives for deliberate out-of-band moves and manual reconciliation (humans and CI may call them directly).
+
+**Seam gate — `in_review` requires terminal sub-issues.** `--set-status <N> in_review` **refuses** when `<N>` has open sub-issues (`error_code: open_sub_issues`), enforcing in the engine what `/workflows:work` Phase 4 states in prose — an agent that skips the checklist still cannot mark a parent ready-for-review while its decomposed work is unfinished and then bury it under the merge → `shipped` automation. The reconciler and deliberate operator/CI moves pass through (`--force`); the `in_review_with_open_subissues` flag is the after-the-fact detector for those forced paths. This is the one place the lifecycle verifies a *predecessor step actually finished* before allowing the next transition — a snowball stop, not general hygiene.
 
 ## Sub-issue status
 

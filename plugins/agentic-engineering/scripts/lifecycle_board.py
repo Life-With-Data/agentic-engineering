@@ -853,6 +853,18 @@ def plan_repairs(states: "list[IssueState]", default_branch: str) -> "tuple[list
                               f"'{merged_pr['baseRefName']}' (not '{default_branch}') so GitHub will not "
                               "auto-close this issue — add the issue-closer workflow from the docs, "
                               "or close it manually when it lands on the default branch"))
+
+        # Flag (never repaired): parent is ready-for-review but decomposed work
+        # is unfinished. The seam gate blocks the agent path from creating this;
+        # this catches the forced/out-of-band paths (rule 5's reality-sync, an
+        # operator `--force`, a human drag) so an incomplete parent can't quietly
+        # merge → ship. Never auto-repaired: neither closing the sub-issues nor
+        # regressing the parent is safe to do unattended.
+        if s.state == "OPEN" and s.stage == "in_review" and s.open_sub_issues:
+            flags.append(Flag(s.number, "in_review_with_open_subissues",
+                              f"reconciler: issue is in_review but has open sub-issues "
+                              f"{s.open_sub_issues} — finish/close them, or the parent may merge "
+                              "and ship with decomposed work still incomplete"))
     return repairs, flags
 
 
@@ -1001,7 +1013,8 @@ def verb_gate(command: str, issue: Optional[int], ctx: RepoContext, runner: GhRu
             "flags": flags}
 
 
-def verb_set_status(issue: int, stage: str, ctx: RepoContext, runner: GhRunner) -> dict:
+def verb_set_status(issue: int, stage: str, ctx: RepoContext, runner: GhRunner,
+                    force: bool = False) -> dict:
     if stage not in STAGES:
         raise BoardError("invalid_stage", f"{stage!r} is not a lifecycle stage",
                          f"Use one of: {', '.join(STAGES)}")
@@ -1013,6 +1026,20 @@ def verb_set_status(issue: int, stage: str, ctx: RepoContext, runner: GhRunner) 
     if state is None:
         raise BoardError("issue_not_found", f"Issue #{issue} not found in {ctx.slug}",
                          "Check the issue number / join key")
+    # Seam gate: a parent must not declare itself ready-for-review while its
+    # decomposed work is unfinished. Enforced here (not just in work.md prose)
+    # so an agent that skips the Phase-4 check cannot advance the parent and
+    # bury the unfinished sub-issues under the merge → shipped automation. The
+    # data is already in `state`; the reconciler and deliberate operator moves
+    # pass force=True. Only `in_review` is gated — the agent-driven transition
+    # that precedes the burying merge.
+    if stage == "in_review" and not force and state.open_sub_issues:
+        raise BoardError(
+            "open_sub_issues",
+            f"Issue #{issue} has open sub-issues {state.open_sub_issues} — cannot enter "
+            "in_review until they are terminal",
+            "Finish and `--sub-status <sub> done` each open sub-issue (or re-parent/close "
+            "out-of-scope ones), then retry. Deliberate override: --force")
     item_id = state.item_id
     if item_id is None:
         add = _run_gh_retry(runner, ["project", "item-add", str(board.number),
@@ -1250,7 +1277,9 @@ def verb_reconcile(ctx: RepoContext, runner: GhRunner, issue: Optional[int] = No
     for repair in repairs:
         try:
             if repair.to_stage:
-                verb_set_status(repair.issue, repair.to_stage, ctx, runner)
+                # A repair is a deliberate reality-sync (e.g. rule 5: a PR is
+                # open → in_review); bypass the open-sub-issues seam gate.
+                verb_set_status(repair.issue, repair.to_stage, ctx, runner, force=True)
             cascade_failed = None
             for sub in repair.close_sub_issues:
                 close = _run_gh_retry(runner, ["issue", "close", str(sub), "--repo", ctx.slug,
@@ -1675,7 +1704,7 @@ def main(argv: "list[str]") -> int:
             return _emit(verb_claim(args.claim, ctx, run_gh))
         if args.set_status:
             number, stage = args.set_status
-            return _emit(verb_set_status(int(number), stage, ctx, run_gh))
+            return _emit(verb_set_status(int(number), stage, ctx, run_gh, force=args.force))
         if args.sub_status:
             number, status = args.sub_status
             return _emit(verb_sub_status(int(number), status, ctx, run_gh))

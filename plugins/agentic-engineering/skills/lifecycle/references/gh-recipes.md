@@ -164,8 +164,9 @@ jobs:
             --jq '.closingIssuesReferences[].number' \
           | while read n; do
               python3 plugins/agentic-engineering/scripts/lifecycle_board.py \
-                --set-status "$n" in_review
+                --set-status "$n" in_review \
+                || echo "::warning::#$n not advanced (likely open sub-issues)"
             done
 ```
 
-The write is idempotent with the command's own Phase-4 write — both call `--set-status … in_review`, so belt-and-suspenders never double-stamps. Consumer repos that vendor the plugin elsewhere adjust the script path (or drop the checkout and call a vendored copy). Sub-issues need no analogue: they have no PR of their own, so their status is engine-written by the owning agent at dispatch/hand-back (`--sub-status`), never by a PR event.
+The write is idempotent with the command's own Phase-4 write — both call `--set-status … in_review`, so belt-and-suspenders never double-stamps. It also inherits the **`open_sub_issues` seam gate**: if the out-of-band PR was opened while the parent still has open sub-issues, the engine refuses the stamp (a premature PR should not mark the parent ready-for-review) — log it, do **not** `--force` (only the reconciler's reality-sync legitimately overrides). Consumer repos that vendor the plugin elsewhere adjust the script path (or drop the checkout and call a vendored copy). Sub-issues need no analogue: they have no PR of their own, so their status is engine-written by the owning agent at dispatch/hand-back (`--sub-status`), never by a PR event.
