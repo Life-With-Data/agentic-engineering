@@ -104,9 +104,10 @@ jobs:
           echo "Set must_fix=false and summary=hello" | "$CLAUDE" --print --setting-sources user --json-schema "$SCHEMA" 2>&1 | tail -40
           echo "G exit: ${PIPESTATUS[1]}"
 
-          echo "=== H: same as G but with default setting-sources (project/local, enable MCP) ==="
-          echo "Set must_fix=false and summary=hello" | "$CLAUDE" --print --json-schema "$SCHEMA" 2>&1 | tail -40
-          echo "H exit: ${PIPESTATUS[1]}"
+          echo "=== I: SDK-style stream-json bidirectional protocol (how the action drives claude) ==="
+          MSG='{"type":"user","message":{"role":"user","content":[{"type":"text","text":"Set must_fix=false and summary=hello"}]}}'
+          printf '%s\n' "$MSG" | "$CLAUDE" --print --verbose --input-format stream-json --output-format stream-json --setting-sources user --json-schema "$SCHEMA" 2>&1 | tail -40
+          echo "I exit: ${PIPESTATUS[1]}"
 
       - name: Documentation-health audit (propose only, fail on must-fix)
         id: audit
@@ -120,6 +121,8 @@ jobs:
         continue-on-error: true
         uses: anthropics/claude-code-action@v1
         with:
+          # TEMP (#128): surface the SDK's own error instead of the masked stack.
+          show_full_output: true
           # Long-lived ANTHROPIC_API_KEY (no expiry) — chosen over a `claude
           # setup-token` OAuth token, which lapses and then hard-fails this check.
           # Pass exactly ONE credential: do NOT also pass claude_code_oauth_token,
