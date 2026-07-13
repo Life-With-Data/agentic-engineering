@@ -73,17 +73,40 @@ jobs:
             echo "::notice::No ANTHROPIC_API_KEY set — skipping the agent audit tier."
           fi
 
+      # TEMP (#128): install claude 2.1.207 ourselves and put a SHIM in front of it,
+      # then hand the action that shim via path_to_claude_code_executable. The shim
+      # logs the exact argv + CLAUDE/ANTHROPIC env-var NAMES (values redacted) the
+      # SDK spawns claude with, then execs the real binary. Every standalone repro of
+      # the flags I guessed SUCCEEDS, so the offending flag/env must be one the SDK
+      # adds that I haven't replicated — this reveals it.
+      - name: DIAGNOSTIC — build claude spawn-logging shim (temp, #128)
+        id: shim
+        if: steps.key.outputs.present == 'true'
+        run: |
+          set -eo pipefail
+          curl -fsSL https://claude.ai/install.sh | bash -s -- 2.1.207
+          REAL="$HOME/.local/bin/claude"
+          SHIM="${RUNNER_TEMP}/claude-shim.sh"
+          LOG="${RUNNER_TEMP}/spawn.log"
+          cat > "$SHIM" <<SHIMEOF
+          #!/usr/bin/env bash
+          {
+            echo "=== spawn @ \$(date -u +%H:%M:%S.%N) ==="
+            echo "ARGV(\$#):"
+            for a in "\$@"; do echo "  |\$a|"; done
+            echo "CLAUDE/ANTHROPIC env names:"
+            env | grep -iE '^(CLAUDE|ANTHROPIC|MCP)' | cut -d= -f1 | sort | sed 's/^/  /'
+            echo "CWD: \$(pwd)"
+          } >> "$LOG" 2>&1
+          exec "$REAL" "\$@"
+          SHIMEOF
+          chmod +x "$SHIM"
+          echo "shim=$SHIM" >> "$GITHUB_OUTPUT"
+          "$REAL" --version
+
       - name: Documentation-health audit (propose only, fail on must-fix)
         id: audit
         if: steps.key.outputs.present == 'true'
-        # TEMP (#128): capture the CLAUDE child's own debug log. Direct-invocation
-        # repros of every content/flag/protocol path (key, --json-schema, plugin+MCP,
-        # stream-json) all SUCCEED, so the crash is specific to how the SDK spawns
-        # claude. CLAUDE_CODE_DEBUG_LOGS_DIR makes the child write its startup debug
-        # log to a file we print in the next step — the child stderr the SDK masks.
-        env:
-          CLAUDE_CODE_DEBUG_LOGS_DIR: ${{ runner.temp }}/ccdebug
-          ANTHROPIC_LOG: debug
         # Advisory tier: a startup/SDK crash of the agent (a bad floating
         # claude-code-action release, a settings incompatibility, a bad key)
         # must NOT fail this check — only a judgment-confirmed must_fix does,
@@ -93,8 +116,9 @@ jobs:
         continue-on-error: true
         uses: anthropics/claude-code-action@v1
         with:
-          # TEMP (#128): surface the SDK's own error instead of the masked stack.
+          # TEMP (#128): surface the SDK's own error + log the exact spawn via shim.
           show_full_output: true
+          path_to_claude_code_executable: ${{ steps.shim.outputs.shim }}
           # Long-lived ANTHROPIC_API_KEY (no expiry) — chosen over a `claude
           # setup-token` OAuth token, which lapses and then hard-fails this check.
           # Pass exactly ONE credential: do NOT also pass claude_code_oauth_token,
@@ -145,14 +169,8 @@ jobs:
       - name: DIAGNOSTIC — dump child claude debug log (temp, #128)
         if: always() && steps.key.outputs.present == 'true'
         run: |
-          DIR="${RUNNER_TEMP}/ccdebug"
-          echo "listing $DIR"; ls -la "$DIR" 2>&1 || echo "(no debug dir)"
-          for f in "$DIR"/*; do
-            [ -f "$f" ] || continue
-            echo "::group::$f"; tail -120 "$f"; echo "::endgroup::"
-          done
-          echo "=== execution-output.json (SDK) tail ==="
-          cat "${RUNNER_TEMP}/claude-execution-output.json" 2>/dev/null | tail -40 || echo "(none)"
+          echo "=== EXACT SDK spawn (argv + env names) ==="
+          cat "${RUNNER_TEMP}/spawn.log" 2>&1 || echo "(no spawn log — shim never invoked)"
 
       - name: Enforce must-fix (fail the check)
         if: steps.key.outputs.present == 'true'
