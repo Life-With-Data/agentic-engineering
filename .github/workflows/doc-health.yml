@@ -76,6 +76,13 @@ jobs:
       - name: Documentation-health audit (propose only, fail on must-fix)
         id: audit
         if: steps.key.outputs.present == 'true'
+        # Advisory tier: a startup/SDK crash of the agent (a bad floating
+        # claude-code-action release, a settings incompatibility, a bad key)
+        # must NOT fail this check — only a judgment-confirmed must_fix does,
+        # and the "Enforce must-fix" step below owns that gate. Without this, an
+        # agent that dies before producing structured output hard-fails the
+        # check on unrelated PRs; the deterministic `scan` job still gates docs.
+        continue-on-error: true
         uses: anthropics/claude-code-action@v1
         with:
           # Long-lived ANTHROPIC_API_KEY (no expiry) — chosen over a `claude
