@@ -95,13 +95,18 @@ jobs:
           export ANTHROPIC_API_KEY="$THE_KEY"
           SCHEMA='{"type":"object","properties":{"must_fix":{"type":"boolean"},"summary":{"type":"string"}},"required":["must_fix","summary"]}'
 
-          echo "=== E: real key + --json-schema (the flag the action adds) ==="
-          echo "Set must_fix=false and summary=hello" | "$CLAUDE" --print --setting-sources user --json-schema "$SCHEMA" 2>&1 | tail -30
-          echo "E exit: ${PIPESTATUS[1]}"
+          echo "::group::install plugin marketplace + plugin (as the action does)"
+          "$CLAUDE" plugin marketplace add https://github.com/Life-With-Data/agentic-engineering.git 2>&1 | tail -10
+          "$CLAUDE" plugin install agentic-engineering@agentic-engineering 2>&1 | tail -10
+          echo "::endgroup::"
 
-          echo "=== F: real key + --json-schema + --output-format json ==="
-          echo "Set must_fix=false and summary=hello" | "$CLAUDE" --print --setting-sources user --output-format json --json-schema "$SCHEMA" 2>&1 | tail -30
-          echo "F exit: ${PIPESTATUS[1]}"
+          echo "=== G: real key + --json-schema + plugin installed (full action repro) ==="
+          echo "Set must_fix=false and summary=hello" | "$CLAUDE" --print --setting-sources user --json-schema "$SCHEMA" 2>&1 | tail -40
+          echo "G exit: ${PIPESTATUS[1]}"
+
+          echo "=== H: same as G but with default setting-sources (project/local, enable MCP) ==="
+          echo "Set must_fix=false and summary=hello" | "$CLAUDE" --print --json-schema "$SCHEMA" 2>&1 | tail -40
+          echo "H exit: ${PIPESTATUS[1]}"
 
       - name: Documentation-health audit (propose only, fail on must-fix)
         id: audit
