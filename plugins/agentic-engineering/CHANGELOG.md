@@ -5,6 +5,12 @@ All notable changes to the agentic-engineering plugin will be documented in this
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.21.2] - 2026-07-13
+
+### Fixed
+
+- **`documentation-health` CI template crashed the agent audit tier at startup (#128).** The `audit` job's `--json-schema` value in `claude_args` used bare double quotes. `claude-code-action` tokenizes `claude_args` with the `shell-quote` parser, which strips those quotes, so `{"type":"object",…}` reached the CLI as `{type:object,…}` — invalid JSON — and `claude` exited 1 within ~0.4s, before running the scanner, doing the judgment pass, or posting a review. This masqueraded as an auth/version/settings crash (all ruled out by direct-invocation repro; the SDK-spawned argv proved the quotes were gone). Backslash-escaping the quotes (`\"`) makes `shell-quote` emit literal quotes so the CLI parses valid JSON. Fixed in both the consumer template (`skills/documentation-health/assets/doc-health.yml`) and this repo's own workflow; verified the audit then runs a full multi-turn pass and emits structured output.
+
 ## [3.21.1] - 2026-07-13
 
 ### Changed

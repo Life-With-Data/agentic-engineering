@@ -112,9 +112,13 @@ jobs:
           plugin_marketplaces: https://github.com/${{ env.DOCS_HEALTH_REPO }}.git
           plugins: agentic-engineering@agentic-engineering
           # Structured output is the machine-readable pass/fail signal.
+          # The JSON quotes MUST be backslash-escaped (\"): claude-code-action
+          # tokenizes claude_args with the `shell-quote` parser, which strips bare
+          # double quotes — so an unescaped {"type":"object"} reaches the CLI as
+          # {type:object}, invalid JSON, and `claude` exits 1 at startup.
           claude_args: >-
             --json-schema
-            {"type":"object","properties":{"must_fix":{"type":"boolean"},"summary":{"type":"string"}},"required":["must_fix","summary"]}
+            {\"type\":\"object\",\"properties\":{\"must_fix\":{\"type\":\"boolean\"},\"summary\":{\"type\":\"string\"}},\"required\":[\"must_fix\",\"summary\"]}
           prompt: |
             Use the documentation-health skill to audit this repository in
             NON-INTERACTIVE CI mode, then judge the results.
