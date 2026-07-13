@@ -159,6 +159,8 @@ Board identity lives in committed config (`github_project_owner:` + `github_proj
 - A **bare integer** (`github_issue: 39`) is repo-local by definition — it resolves to `owner/repo#N` under the origin remote.
 - A **qualified** key (`github_issue: owner/repo#39`) names a specific repo; the engine asserts `repo == origin` before acting.
 
+**Board granularity — one board per owner, aggregating that owner's repos.** A board belongs to an **owner** (a GitHub org or a user), and the standing assumption is **one board per owner** that aggregates all of that owner's repos, not one board per repo. This is what the engine is built for: it reads the board's linked repositories, **drops (never writes) foreign-repo items** (`_origin_issue_number`), and scopes every join key to the origin repo — so a single org board can track many repos while each command only ever acts on its own repo's issues. A dedicated per-repo board is still valid (a repo simply names its own board number), but per-owner aggregation is the default. The **owner must equal the origin owner** (Security invariant 4): an org repo points at an org-owned board, a personal repo at a personal board. The cross-owner case (e.g. a personal board tracking an org's repo) is an escape hatch that requires the out-of-band `git config agentic.trustedBoardOwners` trust store — never the config file, which a PR could set.
+
 Docs (`docs/brainstorms/`, `docs/plans/`) are **content**; the board is **state**. The join key is the only bridge — plan-doc checkboxes are non-authoritative prose; sub-issues are the tracker.
 
 ## Security invariants
