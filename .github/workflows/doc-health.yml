@@ -73,6 +73,29 @@ jobs:
             echo "::notice::No ANTHROPIC_API_KEY set — skipping the agent audit tier."
           fi
 
+      # TEMP DIAGNOSTIC (#128) — remove before merge. Installs the exact CLI the
+      # action uses (claude-code v2.1.207 native build) and runs it headless with
+      # NO credentials in the environment. The real crash is pre-network (~0.36s),
+      # so it's auth-independent and this stderr is guaranteed secret-free. Decision
+      # tree: same exit-1 crash ⇒ auth-independent CLI startup bug; a clean "no API
+      # key" message ⇒ the crash is actually gated on the (possibly invalid) key.
+      - name: DIAGNOSTIC — capture real CLI startup error (temp, #128)
+        if: steps.key.outputs.present == 'true'
+        env:
+          ANTHROPIC_LOG: debug
+        run: |
+          set +e
+          echo "::group::install claude 2.1.207"
+          set -o pipefail
+          curl -fsSL https://claude.ai/install.sh | bash -s -- 2.1.207
+          echo "::endgroup::"
+          CLAUDE="$HOME/.local/bin/claude"
+          echo "=== version ==="
+          "$CLAUDE" --version; echo "version exit: $?"
+          echo "=== headless run, no creds in env, setting-sources user ==="
+          "$CLAUDE" --print --setting-sources user --debug "reply with the single word OK" 2>&1 | tail -80
+          echo "headless exit: ${PIPESTATUS[0]}"
+
       - name: Documentation-health audit (propose only, fail on must-fix)
         id: audit
         if: steps.key.outputs.present == 'true'
