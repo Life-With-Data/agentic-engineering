@@ -1,6 +1,12 @@
 # Agent Instructions
 
-This repository contains a Bun/TypeScript CLI that converts Claude Code plugins into other agent platform formats.
+This repository is a **Claude Code plugin marketplace** that distributes the `agentic-engineering` plugin. It also includes a Bun/TypeScript CLI that converts Claude Code plugins into other agent platform formats (OpenCode, Codex, etc.). For the full picture — repository structure, versioning rules, and testing — see [CLAUDE.md](CLAUDE.md); this file is the lean, tool-agnostic companion and must not contradict it.
+
+## Critical: never target upstream (the "fork trap")
+
+This repository has two git remotes: **`origin`** = the fork we ship from (`Life-With-Data/agentic-engineering`), and **`upstream`** = the parent (`EveryInc/compound-engineering-plugin`). **All PRs, issues, and `gh` writes MUST target `origin`. NEVER target `EveryInc/compound-engineering-plugin`.**
+
+With no gh default set, *flagless* `gh pr` / `gh issue` / `gh repo` commands resolve to the **parent**, so a bare `gh pr create` silently opens a PR against upstream. Guard against it: run `gh repo set-default Life-With-Data/agentic-engineering` once, or pass `--repo Life-With-Data/agentic-engineering` explicitly. Claude Code sessions get this automatically via committed hooks in `.claude/` (see [CLAUDE.md](CLAUDE.md)); **other agents lack those hooks and must apply this discipline manually.**
 
 ## Working Agreement
 

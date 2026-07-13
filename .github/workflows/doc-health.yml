@@ -97,10 +97,25 @@ jobs:
           # Load the skill from this very marketplace — dogfooding.
           plugin_marketplaces: https://github.com/Life-With-Data/agentic-engineering.git
           plugins: agentic-engineering@agentic-engineering
-          # Structured output is the pass/fail signal the next step reads.
+          # THE #128 FIX — the JSON-schema quotes are BACKSLASH-ESCAPED (\").
+          # claude-code-action tokenizes claude_args with the `shell-quote` parser,
+          # which strips bare double quotes: {"type":"object"} reached the CLI as
+          # {type:object} — invalid JSON — so `claude` exited 1 at startup (~0.4s)
+          # on every run the agent tier actually executed. This was NOT auth, the
+          # CLI version, or settings (all ruled out by direct-invocation repro);
+          # the argv the SDK spawned proved the quotes were gone. Escaping makes
+          # shell-quote emit literal quotes, so the CLI parses valid JSON. Verified:
+          # the audit then ran a full 53-turn pass and emitted structured output.
+          #
+          # --setting-sources user: hygiene — a read-only doc audit doesn't need
+          # this repo's in-repo `.claude` config (fork-trap hooks, .mcp.json), which
+          # the SDK would otherwise load via the default ["user","project","local"].
+          # The documentation-health SKILL is unaffected: it comes from the installed
+          # plugin (user scope), not from project settingSources.
           claude_args: >-
+            --setting-sources user
             --json-schema
-            {"type":"object","properties":{"must_fix":{"type":"boolean"},"summary":{"type":"string"}},"required":["must_fix","summary"]}
+            {\"type\":\"object\",\"properties\":{\"must_fix\":{\"type\":\"boolean\"},\"summary\":{\"type\":\"string\"}},\"required\":[\"must_fix\",\"summary\"]}
           prompt: |
             Use the documentation-health skill to audit this repository in
             NON-INTERACTIVE CI mode, then judge the results.
