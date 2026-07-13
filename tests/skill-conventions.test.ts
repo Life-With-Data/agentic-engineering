@@ -150,7 +150,6 @@ const EXPECTED_USER_INVOKED_SKILLS = new Set([
   "ce-setup",
   "ce-sweep",
   "ce-test-xcode",
-  "lfg",
 ])
 
 const REQUIRED_MODEL_INVOKED_CALLEES = new Set([
@@ -173,6 +172,7 @@ const REQUIRED_MODEL_INVOKED_CALLEES = new Set([
   "ce-test-browser",
   "ce-work",
   "ce-worktree",
+  "lfg",
 ])
 
 // ---------------------------------------------------------------------------
