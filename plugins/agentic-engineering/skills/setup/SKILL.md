@@ -1,6 +1,6 @@
 ---
 name: setup
-description: Configure which review agents run for your project. Auto-detects stack, writes agentic-engineering.local.md, and offers to bootstrap the lifecycle board, install the operating-principles always-on layer into CLAUDE.md/AGENTS.md, and install the Headroom context-compression CLI.
+description: Configure which review agents run for your project. Auto-detects stack, writes agentic-engineering.local.md, and offers to bootstrap the lifecycle board, install the operating-principles always-on layer into CLAUDE.md/AGENTS.md, install the Headroom context-compression CLI, and install the documentation-health CI workflow.
 disable-model-invocation: true
 ---
 
@@ -379,6 +379,56 @@ The `[all]` extra pulls optional ONNX features that need an AVX2-capable x86/x86
 architectures (e.g. Apple Silicon without Rosetta) the install may warn or fail on those extras —
 fall back to the base package `headroom-ai` (no `[all]`), which the skill also documents.
 
+## Step 3.9: Install documentation-health CI (optional)
+
+The `documentation-health` skill ships a ready-to-commit GitHub Actions workflow that keeps a repo's
+docs healthy on every PR. Two tiers: a **deterministic `scan` gate** (zero dependencies, no secret)
+and an opt-in **agent `audit`** that runs the skill via `anthropics/claude-code-action`, posts its
+review as Claude, and fails the check on a judgment-confirmed must-fix. This step drops the workflow
+into `.github/workflows/` so adopting it is one click, not a copy-paste hunt.
+
+Idempotent — if `.github/workflows/doc-health.yml` already exists, skip this step silently.
+
+Otherwise offer with AskUserQuestion:
+
+```
+question: "Install the documentation-health CI workflow (.github/workflows/doc-health.yml)?"
+header: "Docs CI"
+options:
+  - label: "Yes, install (Recommended)"
+    description: "A scan gate (no secret) + an opt-in agent audit tier. Fails PRs on broken docs."
+  - label: "Skip"
+    description: "Leave CI unchanged. Re-run setup or copy the asset later."
+```
+
+On yes, copy the template into the repo's workflows dir:
+
+```bash
+ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+mkdir -p "$ROOT/.github/workflows"
+cp "${CLAUDE_PLUGIN_ROOT}/skills/documentation-health/assets/doc-health.yml" \
+   "$ROOT/.github/workflows/doc-health.yml"
+echo "installed=$ROOT/.github/workflows/doc-health.yml"
+```
+
+Then tell the user exactly what each tier needs — this is the obvious-path payoff, so be concrete:
+
+- **The `scan` tier works immediately** on the next PR — no secret, no account. It fails only on
+  ERROR by default; tune with `--fail-on {error,warn,info,never}` in the workflow.
+- **The `audit` (agent) tier needs one credential + the GitHub App:**
+  1. Generate a token — run `claude setup-token` locally (Claude **Pro/Max**, bills against the
+     subscription), or use an API key. Add it as a repo **or org** Actions secret named
+     `CLAUDE_CODE_OAUTH_TOKEN` (or `ANTHROPIC_API_KEY`). Set **exactly one** — an empty second
+     credential breaks auth.
+  2. Install the [Claude GitHub App](https://github.com/apps/claude) so the review posts as Claude.
+  3. To block merges on a must-fix, mark the `audit` (and `scan`) checks **Required** in branch
+     protection.
+  Without a credential the audit tier **skips gracefully** — the scan gate still runs.
+
+Record the outcome (`installed` path, or already-present/skipped) for Step 5. For an immediate,
+secret-free taste of the capability, the same scanner runs locally:
+`python3 "${CLAUDE_PLUGIN_ROOT}/skills/documentation-health/scripts/doc_health_check.py" .`
+
 ## Step 4: Build Agent List and Write File
 
 **Stack-specific agents:**
@@ -520,6 +570,7 @@ Agents:        {count} configured
                {agent list, one per line}
 Always-on:     {operating-principles layer: installed into <files> | already present | skipped}
 Headroom:      {installed now | already present | skipped | unavailable (needs uv or pip) | command printed (non-interactive)}
+Docs CI:       {installed .github/workflows/doc-health.yml | already present | skipped}
 Gitignore:     {entry present | added | failed (see warning) | n/a (not a git repo)}
 Tracked:       {no | untracked now (deletion staged — commit it) | still tracked (declined) | still tracked (no answer — command printed) | n/a (not a git repo)}
 
@@ -528,4 +579,7 @@ Tip: Edit the "Review Context" section to add project-specific instructions.
      and every other flag this plugin offers — no need to re-run setup just to flip one.
      Re-run this setup anytime to reconfigure agents/stack detection from scratch.
      Run /lifecycle-doctor anytime to verify the lifecycle board is wired correctly.
+     If you installed Docs CI, enable the agent tier by adding a CLAUDE_CODE_OAUTH_TOKEN
+     (or ANTHROPIC_API_KEY) secret and installing the Claude GitHub App — the scan gate
+     already runs without either.
 ```

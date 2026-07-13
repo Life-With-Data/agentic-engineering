@@ -168,7 +168,7 @@ One skill is designed to be **always-on**: `operating-principles` ships a paste-
 |-------|-------------|
 | `brainstorming` | Explore requirements and approaches through collaborative dialogue |
 | `document-review` | Improve documents through structured self-review |
-| `documentation-health` | Audit and repair the informational health of a repo's docs — root & nested CLAUDE.md, root & nested READMEs, and internal/external documentation — with a zero-dependency scanner and a cited best-practices checklist |
+| `documentation-health` | Audit and repair the informational health of a repo's docs — root & nested CLAUDE.md, root & nested READMEs, and internal/external documentation — with a zero-dependency scanner, a cited best-practices checklist, and a two-tier GitHub Actions workflow (deterministic gate + agent audit) that `/setup` installs |
 | `editorial-style-editor` | Review copy for our editorial style guide compliance |
 | `file-todos` | File-based todo tracking system |
 | `git-worktree` | Manage Git worktrees for parallel development |
