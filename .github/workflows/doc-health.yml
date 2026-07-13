@@ -92,9 +92,18 @@ jobs:
           CLAUDE="$HOME/.local/bin/claude"
           echo "=== version ==="
           "$CLAUDE" --version; echo "version exit: $?"
-          echo "=== headless run, no creds in env, setting-sources user ==="
-          "$CLAUDE" --print --setting-sources user --debug "reply with the single word OK" 2>&1 | tail -80
-          echo "headless exit: ${PIPESTATUS[0]}"
+
+          echo "=== A: headless, NO creds, prompt via stdin, setting-sources user ==="
+          echo "reply with the single word OK" | "$CLAUDE" --print --setting-sources user 2>&1 | tail -60
+          echo "A exit: ${PIPESTATUS[1]}"
+
+          echo "=== B: headless, FAKE api key (safe), setting-sources user ==="
+          echo "reply with the single word OK" | ANTHROPIC_API_KEY=sk-ant-invalid-diagnostic-000 "$CLAUDE" --print --setting-sources user 2>&1 | tail -60
+          echo "B exit: ${PIPESTATUS[1]}"
+
+          echo "=== C: headless, NO creds, default setting sources (project/local too) ==="
+          echo "reply with the single word OK" | "$CLAUDE" --print 2>&1 | tail -60
+          echo "C exit: ${PIPESTATUS[1]}"
 
       - name: Documentation-health audit (propose only, fail on must-fix)
         id: audit
