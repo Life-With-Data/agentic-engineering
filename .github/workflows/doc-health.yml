@@ -108,9 +108,9 @@ jobs:
           # the audit then ran a full 53-turn pass and emitted structured output.
           #
           # --setting-sources user: hygiene — a read-only doc audit doesn't need
-          # this repo's in-repo `.claude` config (fork-trap hooks, .mcp.json), which
-          # the SDK would otherwise load via the default ["user","project","local"].
-          # The documentation-health SKILL is unaffected: it comes from the installed
+          # this repo's in-repo `.claude` project config, which the SDK would
+          # otherwise load via the default ["user","project","local"]. The
+          # documentation-health SKILL is unaffected: it comes from the installed
           # plugin (user scope), not from project settingSources.
           claude_args: >-
             --setting-sources user
