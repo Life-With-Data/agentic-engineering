@@ -15,6 +15,27 @@ gh issue create --repo owner/repo \
 
 `--parent` attaches the new issue under issue #39 (native sub-issues: GA, 100 per parent, 8 levels deep). Pass the body via `--body-file`, never inline (shell hardening).
 
+## Sub-issue status (the `--sub-status` verb)
+
+`lifecycle_board.py --sub-status <N> <status>` is the one writer of a sub-issue's `status:*` label (see the skill's *Sub-issue status* section). It is board-free — pure `gh issue`/`gh label` — so it needs no `project` scope and runs in `github` mode. The gh calls it makes, for transparency:
+
+```bash
+# 1. read current labels + open/closed state (one call)
+gh issue view <N> --repo owner/repo --json labels,state
+
+# 2a. open states (in_progress | in_review | blocked): upsert the label, then swap
+gh label create status:in-progress --repo owner/repo \
+  --color 1D76DB --description "Sub-issue: actively being implemented" --force
+gh issue edit <N> --repo owner/repo \
+  --add-label status:in-progress --remove-label status:in-review   # any prior status:* label
+
+# 2b. done (terminal): strip every status:* label, then close as completed
+gh issue edit <N> --repo owner/repo --remove-label status:in-review
+gh issue close <N> --repo owner/repo --reason completed
+```
+
+Do not hand-roll these — call the verb, which enforces the at-most-one-label invariant and idempotency. Writing a `status:*` label needs only `issues: write` (plain `GITHUB_TOKEN` suffices in CI), unlike a board Status write.
+
 ## Dependencies (blocked-by)
 
 Create an issue already blocked by another, or add the dependency after the fact:
@@ -115,3 +136,36 @@ jobs:
 ```
 
 Closing the issue then triggers the built-in "Item closed" automation, which stamps `shipped`.
+
+## Native PR-opened → `in_review` (parent)
+
+`→ shipped` is already zero-UI (the built-in "Item closed" automation fires on the merge's `Closes #N`). The **opening** edge — parent → `in_review` — is written by `/workflows:work` Phase 4 when the command opens the PR. That covers every PR the workflow opens, but **not** a PR opened out-of-band (a human, or an agent outside the command). GitHub Projects has **no enable-able built-in for "a linked PR opened,"** so the portable native cover is a committed Actions workflow that maps the PR's closing issues to a board write via the one engine. It is **opt-in** (a board Status write needs a non-`GITHUB_TOKEN` secret) and **self-skips** when that secret is absent, so it never reds-out a PR before wiring:
+
+```yaml
+name: lifecycle-pr-in-review
+on:
+  pull_request:
+    types: [opened, reopened, ready_for_review]
+jobs:
+  in-review:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4          # the engine lives in-repo here
+      - env:
+          # A Projects-write token (App installation token or a machine-account
+          # PAT with project+repo). GITHUB_TOKEN CANNOT write the board. Reuses
+          # the same secret name as the lifecycle-smoke board-probe leg.
+          GH_TOKEN: ${{ secrets.LIFECYCLE_BOARD_PAT }}
+        run: |
+          if [ -z "$GH_TOKEN" ]; then echo "::warning::no LIFECYCLE_BOARD_PAT — skipping"; exit 0; fi
+          gh pr view "${{ github.event.pull_request.number }}" \
+            --repo "${{ github.repository }}" \
+            --json closingIssuesReferences \
+            --jq '.closingIssuesReferences[].number' \
+          | while read n; do
+              python3 plugins/agentic-engineering/scripts/lifecycle_board.py \
+                --set-status "$n" in_review
+            done
+```
+
+The write is idempotent with the command's own Phase-4 write — both call `--set-status … in_review`, so belt-and-suspenders never double-stamps. Consumer repos that vendor the plugin elsewhere adjust the script path (or drop the checkout and call a vendored copy). Sub-issues need no analogue: they have no PR of their own, so their status is engine-written by the owning agent at dispatch/hand-back (`--sub-status`), never by a PR event.

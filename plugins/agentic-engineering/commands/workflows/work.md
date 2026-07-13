@@ -19,12 +19,12 @@ This command takes a work document (plan, specification, or todo file) and execu
 
 ## Entry Gate
 
-**Writer contract.** This command performs **exactly two lifecycle transitions** and no others:
+**Writer contract.** This command performs **exactly two parent-stage transitions** and no others:
 
 - `planned → in_progress` — the claim (Phase 1, via `--claim`).
 - `in_progress → in_review` — PR open (Phase 4, via `--set-status <N> in_review`).
 
-It never writes any other stage, never closes the issue, and never hand-assembles board GraphQL. The built-in "Item closed" automation owns `→ shipped` when the merge closes the issue; the shared reconciler owns every repair. Sub-issues are the task tracker; TodoWrite is a disposable in-session scratchpad.
+It never writes any other parent stage, never closes the parent issue, and never hand-assembles board GraphQL. The built-in "Item closed" automation owns `→ shipped` when the merge closes the issue; the shared reconciler owns every repair. Separately, it drives its **sub-issues'** `status:*` labels via `--sub-status` (in_progress/in_review/blocked/done) — a PR-less, board-free track defined in the `lifecycle` skill; only the owning agent writes it, never a dispatched sub-agent. Sub-issues are the task tracker; TodoWrite is a disposable in-session scratchpad.
 
 **Stage semantics.** Load the `lifecycle` skill for the 9-stage enum, the writer table, and the entry-gate/verdict vocabulary — this command references those definitions rather than restating them.
 
@@ -166,24 +166,27 @@ Even a **single** tracked item benefits from Orchestrated Execution — the orch
 
 1. **Task Execution Loop** (board mode — iterate open sub-issues)
 
-   Work the claimed parent's **open sub-issues**. For multi-agent runs, each sub-issue is the claim unit — assign yourself (`gh issue edit <sub> --repo <origin> --add-assignee @me`) before starting it. Close each sub-issue when — and only when — its acceptance criteria pass.
+   Work the claimed parent's **open sub-issues**. For multi-agent runs, each sub-issue is the claim unit — assign yourself (`gh issue edit <sub> --repo <origin> --add-assignee @me`) before starting it. Drive each sub-issue's `status:*` label through `--sub-status` at the boundaries so a stakeholder sees live state, and close it (via `done`) when — and only when — its acceptance criteria pass.
 
    ```
    while (open sub-issues of <N> remain):
      - sub = next open, unblocked sub-issue (from `gh issue view <N> --repo <origin> --json subIssues`)
      - (multi-agent) claim it: gh issue edit <sub> --repo <origin> --add-assignee @me
+     - python3 "${CLAUDE_PLUGIN_ROOT}/scripts/lifecycle_board.py" --sub-status <sub> in_progress
      - Read any referenced files from the plan
      - Look for similar patterns in the codebase
      - Implement following existing conventions
      - Write tests for new functionality
      - Run System-Wide Test Check (see below)
      - Run tests after changes
-     - gh issue close <sub> --repo <origin>   # only when this sub-issue's acceptance criteria pass
+     - python3 "${CLAUDE_PLUGIN_ROOT}/scripts/lifecycle_board.py" --sub-status <sub> in_review   # code done, awaiting acceptance verification
+     - Verify acceptance criteria; when they pass:
+     - python3 "${CLAUDE_PLUGIN_ROOT}/scripts/lifecycle_board.py" --sub-status <sub> done   # strips the label AND closes the sub-issue
      - Check off the corresponding checkbox in the plan doc ([ ] → [x])  # readability only, non-authoritative
      - Evaluate for incremental commit (see below)
    ```
 
-   Never close the **parent** `<N>` here — the merge's "Item closed" automation stamps `shipped` for the parent downstream. Plan-doc checkboxes are non-authoritative doc content; still check them off so the plan reads as a living progress record, but the sub-issues (not the checkboxes) are the tracker.
+   `--sub-status … done` **replaces** the raw `gh issue close` — it strips the `status:*` label and closes the sub-issue as completed in one call. Mark a sub-issue `blocked` (`--sub-status <sub> blocked`) if you discover an open `blocked-by` while working it, and move it back to `in_progress` when unblocked. Never close the **parent** `<N>` here — the merge's "Item closed" automation stamps `shipped` for the parent downstream. Plan-doc checkboxes are non-authoritative doc content; still check them off so the plan reads as a living progress record, but the sub-issues (not the checkboxes) are the tracker.
 
    **Legacy flow** — no sub-issues exist; drive the existing **TodoWrite** loop instead:
    ```
@@ -497,15 +500,17 @@ the set is large and highly parallel.
 
 ### GitHub binding (the single tracker)
 
-All state lives on the board and its sub-issues. **Only the orchestrator** touches board/tracker state — subagents never do. Every `gh` write carries an explicit `--repo`/`--owner`.
+All state lives on the board and its sub-issues. **Only the orchestrator** touches board/tracker state — subagents never do, and that includes every `--sub-status` write. Every `gh` write carries an explicit `--repo`/`--owner`.
 
 | Action | GitHub |
 |--------|--------|
 | List ready | `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/lifecycle_board.py" --ready-work` (planned ∧ unassigned ∧ unblocked, Priority-sorted), or the open unblocked sub-issues of the claimed parent `<N>` via `gh issue view <N> --repo <origin> --json subIssues` |
 | Read one | `gh issue view <sub> --repo <origin>` |
 | Claim | assign yourself, then confirm: `gh issue edit <sub> --repo <origin> --add-assignee @me` — for the **parent**, use `--claim <N>` (it owns the full claim protocol) |
-| Close | `gh issue close <sub> --repo <origin>` (when acceptance criteria pass) |
-| Block / needs human | `gh issue edit <sub> --repo <origin> --add-blocked-by <blocker>` + `gh issue comment <sub> --repo <origin> --body "…"`, then surface the question |
+| Mark in progress | `lifecycle_board.py --sub-status <sub> in_progress` (at dispatch) |
+| Mark in review | `lifecycle_board.py --sub-status <sub> in_review` (subagent returned; awaiting your verification) |
+| Close (done) | `lifecycle_board.py --sub-status <sub> done` (when acceptance criteria pass — strips the label AND closes the sub-issue; use this instead of a raw `gh issue close`) |
+| Block / needs human | `lifecycle_board.py --sub-status <sub> blocked`, then `gh issue edit <sub> --repo <origin> --add-blocked-by <blocker>` + `gh issue comment <sub> --repo <origin> --body "…"`, and surface the question |
 | Add follow-on (gates parent) | `gh issue create --repo <origin> --parent <N> --blocked-by <sub> --title "…" --body-file …` so the new sub-issue gates the parent until it is closed |
 
 The **parent** `<N>` is never closed inside the loop — its `shipped` stamp comes from the merge's "Item closed" automation (Phase 4). Close **sub-issues** as soon as their acceptance criteria pass and gates are green.
@@ -530,21 +535,23 @@ report "done" while an open sub-issue is unstarted or a follow-on is open.
 2. **Plan waves.** A wave = sub-issues ready now (no open `blocked-by`). Within a wave,
    split **parallel-safe** (file-disjoint — the plan usually names the files) from
    **must-serialize** (same files). Announce the plan briefly before dispatching.
-3. **Dispatch.** Assign the sub-issue to yourself (`gh issue edit <sub> --repo <origin> --add-assignee @me`), then spawn one subagent per sub-issue with the brief below
+3. **Dispatch.** Assign the sub-issue to yourself (`gh issue edit <sub> --repo <origin> --add-assignee @me`), mark it in progress (`lifecycle_board.py --sub-status <sub> in_progress`), then spawn one subagent per sub-issue with the brief below
    (Task tool / `general-purpose`, or a specialist agent). Send parallel dispatches in one message.
+   The subagent implements only — **the orchestrator owns every `--sub-status` write**; the subagent never touches GitHub.
    For file-conflicting parallel work, isolate each agent in its own git worktree (`skill: git-worktree`) and reconcile on return.
    **Model tiering:** run implementation subagents on an Opus-tier model (`model: "opus"`), in the
    background for parallel waves — the orchestrator keeps the session's strongest model for the
    verify/review step, and purely mechanical chores (docs regeneration, count bumps) can drop to a
    cheaper tier.
 4. **Verify & branch** (orchestrator, per returned subagent):
+   - On return, mark it awaiting verification: `lifecycle_board.py --sub-status <sub> in_review`.
    - Review the diff vs acceptance criteria; integrate any worktree.
    - Re-run the project's quality gates at the top level (catches cross-issue breakage one agent
      can't see).
-   - **Met + clean** → `gh issue close <sub> --repo <origin>`.
+   - **Met + clean** → `lifecycle_board.py --sub-status <sub> done` (strips the label and closes the sub-issue).
    - **Met + surfaced required work** → file follow-on(s): `gh issue create --repo <origin> --parent <N> --blocked-by <sub> …`
-     so the parent can't complete early; add to the target set; then close this sub-issue.
-   - **Gates fail / criteria unmet** → loop (step 5). **Blocked** → escalate (step 5).
+     so the parent can't complete early; add to the target set; then `--sub-status <sub> done`.
+   - **Gates fail / criteria unmet** → `--sub-status <sub> in_progress` and loop (step 5). **Blocked** → `--sub-status <sub> blocked` and escalate (step 5).
 5. **Loop or escalate.**
    - *Loop:* re-dispatch the same sub-issue with the specific failure appended ("tsc error X at
      file:line", "criterion N unmet"). Max ~2 retries.

@@ -5,6 +5,17 @@ All notable changes to the agentic-engineering plugin will be documented in this
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.21.0] - 2026-07-13
+
+### Added
+
+- **Sub-issue status is now a first-class, stakeholder-readable track.** Sub-issues decompose a parent and roll up into the *parent's* PR, so they never earn their own `in_review`/`shipped` board stage — which left them with only open/closed as visible state, too coarse for a business stakeholder to read "what is happening right now." The lifecycle engine gains a **`--sub-status <N> <in_progress|in_review|blocked|done>`** verb that drives a **mutually-exclusive `status:*` label** (`status:in-progress` / `status:in-review` / `status:blocked`; `done` strips every `status:*` label and closes the issue as completed — an orchestrator close, not a PR auto-close). Labels are repo-scoped, so the verb needs **no board** and runs in `github` mode too, self-creating its labels with colors that mirror the stage palette. The invariant — at most one `status:*` label per issue — is enforced by the verb (a swap, not an add) and covered by seven new cases in [`tests/lifecycle_board_test.py`](tests/lifecycle_board_test.py). Defined in the [`lifecycle`](skills/lifecycle/SKILL.md) skill (new *Sub-issue status* section + one-writer table row) with the concrete `gh` calls in [`references/gh-recipes.md`](skills/lifecycle/references/gh-recipes.md).
+- **Native PR-opened → `in_review` automation** — a committed, opt-in [`.github/workflows/lifecycle-pr-in-review.yml`](../../.github/workflows/lifecycle-pr-in-review.yml) that maps a linked PR's `closingIssuesReferences` to the engine's `--set-status … in_review` on `opened`/`reopened`/`ready_for_review`, covering PRs opened out-of-band (a human, or an agent outside `/workflows:work`). Idempotent with the command's own Phase-4 write, and **self-skips loudly** when the `LIFECYCLE_BOARD_PAT` secret (a Projects-write token; `GITHUB_TOKEN` cannot write the board) is absent, so it never reds-out a PR before wiring. Reusable recipe documented in `gh-recipes.md`.
+
+### Changed
+
+- **`/workflows:work` and `/workflows:orchestrate` now drive sub-issue status at the execution boundaries** — dispatch → `in_progress`, hand-back → `in_review`, acceptance verified → `done` (replacing the raw `gh issue close`), open `blocked-by` → `blocked`. The **owning agent writes every `--sub-status`; dispatched sub-agents never touch GitHub state**, preserving the one-writer invariant so status stays faithful whether the owner implements inline or delegates. Component counts (agents/commands/skills) unchanged — this extends the engine and existing commands.
+
 ## [3.20.0] - 2026-07-13
 
 ### Added

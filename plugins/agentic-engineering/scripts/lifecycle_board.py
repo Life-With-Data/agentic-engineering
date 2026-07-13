@@ -91,6 +91,33 @@ VERDICTS = (
 # Claim protocol outcomes (verb_claim), disjoint from the gate VERDICTS.
 CLAIM_VERDICTS = ("proceed", "claim_conflict", "blocked")
 
+# Sub-issue status vocabulary. Sub-issues roll up into the PARENT's PR, so
+# they never earn their own `in_review`/`shipped` board stage — the board
+# tracks the parent. Their finer-grained progress rides on mutually-exclusive
+# `status:*` labels a stakeholder can read directly in the issues list, driven
+# by this same engine (never a second writer). Labels are repo-scoped, so the
+# verb needs NO board and works in `github` mode too. The invariant: an issue
+# carries at most one `status:*` label; the terminal `done` closes the issue
+# (an orchestrator close, not a PR auto-close) and strips the label, because
+# CLOSED already means done. `in_progress`/`in_review`/`blocked` describe an
+# OPEN sub-issue's live state.
+SUB_STATUSES = ("in_progress", "in_review", "blocked", "done")
+SUB_STATUS_LABELS = {
+    "in_progress": "status:in-progress",
+    "in_review": "status:in-review",
+    "blocked": "status:blocked",
+    "done": "status:done",
+}
+ALL_SUB_STATUS_LABELS = tuple(SUB_STATUS_LABELS.values())
+# (color hex without '#', description) — colors mirror the board's stage
+# palette so the two surfaces read as one system.
+SUB_STATUS_LABEL_META = {
+    "status:in-progress": ("1D76DB", "Sub-issue: actively being implemented"),
+    "status:in-review": ("FBCA04", "Sub-issue: implemented, awaiting parent-level gates/PR"),
+    "status:blocked": ("D93F0B", "Sub-issue: has an open blocked-by dependency"),
+    "status:done": ("0E8A16", "Sub-issue: acceptance criteria met"),
+}
+
 READY_WORK_LIMIT = 50
 RECONCILE_TTL_SECONDS = 600
 GH_TIMEOUT_SECONDS = 30
@@ -1006,6 +1033,74 @@ def verb_set_status(issue: int, stage: str, ctx: RepoContext, runner: GhRunner) 
     return {"issue": issue, "stage": stage, "previous_stage": state.stage, "item_id": item_id}
 
 
+def verb_sub_status(issue: int, status: str, ctx: RepoContext, runner: GhRunner) -> dict:
+    """Set a sub-issue's `status:*` label (mutually exclusive), board-free.
+
+    `in_progress`/`in_review`/`blocked` swap the single live label on an OPEN
+    sub-issue. `done` is terminal: strip every `status:*` label and close the
+    issue as completed (the orchestrator's close, distinct from a PR auto-close).
+    Idempotent — re-setting the current status is a cheap no-op edit; re-running
+    `done` on an already-closed issue only reconciles labels.
+    """
+    if status not in SUB_STATUSES:
+        raise BoardError("invalid_sub_status", f"{status!r} is not a sub-issue status",
+                         f"Use one of: {', '.join(SUB_STATUSES)}")
+    # One read for both the current labels and the open/closed state. A genuine
+    # 404 (issue absent) surfaces as issue_not_found; a transport failure raises.
+    view = _run_gh_retry(runner, ["issue", "view", str(issue), "--repo", ctx.slug,
+                                  "--json", "labels,state"])
+    if view.returncode != 0:
+        stderr = view.stderr.strip()
+        if "Could not resolve" in stderr or "not found" in stderr.lower():
+            raise BoardError("issue_not_found", f"Issue #{issue} not found in {ctx.slug}",
+                             "Check the issue number")
+        raise BoardError("gh_read_failed", f"reading issue #{issue} failed: {stderr[:200]}",
+                         "retry; check network/auth (gh auth status)")
+    payload = json.loads(view.stdout or "{}")
+    current = {lbl.get("name", "") for lbl in payload.get("labels", [])}
+    present_status = [lbl for lbl in ALL_SUB_STATUS_LABELS if lbl in current]
+    is_open = payload.get("state", "OPEN").upper() == "OPEN"
+
+    if status == "done":
+        if present_status:
+            edit = _run_gh_retry(runner, ["issue", "edit", str(issue), "--repo", ctx.slug,
+                                          *sum((["--remove-label", lbl] for lbl in present_status), [])])
+            if edit.returncode != 0:
+                raise BoardError("label_write_failed", f"remove-label failed: {edit.stderr.strip()[:200]}",
+                                 "Verify issues-write permission on the repo")
+        closed_now = False
+        if is_open:
+            close = _run_gh_retry(runner, ["issue", "close", str(issue), "--repo", ctx.slug,
+                                           "--reason", "completed"])
+            if close.returncode != 0:
+                raise BoardError("issue_close_failed", f"close failed: {close.stderr.strip()[:200]}",
+                                 "Verify issues-write permission on the repo")
+            closed_now = True
+        return {"issue": issue, "sub_status": "done", "closed": closed_now,
+                "removed_labels": present_status}
+
+    target = SUB_STATUS_LABELS[status]
+    # Upsert the label (idempotent; also self-heals color/description) before
+    # attaching it — removing labels never requires them to pre-exist here.
+    color, desc = SUB_STATUS_LABEL_META[target]
+    ensure = _run_gh_retry(runner, ["label", "create", target, "--repo", ctx.slug,
+                                    "--color", color, "--description", desc, "--force"])
+    if ensure.returncode != 0:
+        raise BoardError("label_write_failed", f"ensuring {target} failed: {ensure.stderr.strip()[:200]}",
+                         "Verify issues-write (triage) permission on the repo")
+    remove = [lbl for lbl in present_status if lbl != target]
+    add = [] if target in current else ["--add-label", target]
+    edit_args = ["issue", "edit", str(issue), "--repo", ctx.slug, *add,
+                 *sum((["--remove-label", lbl] for lbl in remove), [])]
+    if add or remove:
+        edit = _run_gh_retry(runner, edit_args)
+        if edit.returncode != 0:
+            raise BoardError("label_write_failed", f"issue-edit failed: {edit.stderr.strip()[:200]}",
+                             "Verify issues-write permission on the repo")
+    return {"issue": issue, "sub_status": status, "label": target,
+            "removed_labels": remove, "was_open": is_open}
+
+
 def verb_claim(issue: int, ctx: RepoContext, runner: GhRunner) -> dict:
     board = _require_board(ctx)
     me = _gh_me(runner)
@@ -1563,6 +1658,7 @@ def main(argv: "list[str]") -> int:
     group.add_argument("--gate", metavar="COMMAND")
     group.add_argument("--claim", type=int, metavar="N")
     group.add_argument("--set-status", nargs=2, metavar=("N", "STAGE"))
+    group.add_argument("--sub-status", nargs=2, metavar=("N", "STATUS"))
     group.add_argument("--ready-work", action="store_true")
     group.add_argument("--reconcile", action="store_true")
     group.add_argument("--doctor", action="store_true")
@@ -1580,6 +1676,9 @@ def main(argv: "list[str]") -> int:
         if args.set_status:
             number, stage = args.set_status
             return _emit(verb_set_status(int(number), stage, ctx, run_gh))
+        if args.sub_status:
+            number, status = args.sub_status
+            return _emit(verb_sub_status(int(number), status, ctx, run_gh))
         if args.ready_work:
             return _emit(verb_ready_work(ctx, run_gh))
         if args.reconcile:
