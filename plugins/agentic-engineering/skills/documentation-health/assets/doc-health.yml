@@ -80,10 +80,12 @@ jobs:
   # ---------------------------------------------------------------- tier 2
   # The judgment pass + proposed repairs. Needs credentials: a Claude Pro/Max
   # subscription token (CLAUDE_CODE_OAUTH_TOKEN, from `claude setup-token`) or a
-  # direct ANTHROPIC_API_KEY. Posts AS Claude (via the official Claude GitHub App
-  # identity), and FAILS the check when its judgment finds a genuine must-fix —
-  # while only proposing repairs, never pushing. Remove this job for a
-  # deterministic-only gate.
+  # direct ANTHROPIC_API_KEY. Posts a propose-only PR review as the identity the
+  # `github_token` resolves to — github-actions[bot] with the default GITHUB_TOKEN
+  # below, or claude[bot] if you install the Claude GitHub App and let the action
+  # mint an App token (drop the github_token line). FAILS the check when its
+  # judgment finds a genuine must-fix — while only proposing repairs, never
+  # pushing. Remove this job for a deterministic-only gate.
   audit:
     runs-on: ubuntu-latest
     # Don't burn agent minutes on every push; gate it behind a label or dispatch.

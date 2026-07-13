@@ -3,9 +3,12 @@ name: Documentation health
 # The skill dogfooded on its own marketplace. Two tiers:
 #   scan  — deterministic gate; runs the in-repo scanner, fails on ERROR.
 #   audit — agent-in-the-loop; runs the documentation-health skill via
-#           claude-code-action, posts a review AS Claude (GitHub App), and
-#           FAILS THE CHECK when its judgment finds a genuine must-fix — while
-#           only proposing repairs, never pushing to a protected branch.
+#           claude-code-action, posts a propose-only PR review (as
+#           github-actions[bot] — this job passes the default GITHUB_TOKEN; it
+#           would post as claude[bot] only if the Claude GitHub App were
+#           installed and no github_token were passed), and FAILS THE CHECK when
+#           its judgment finds a genuine must-fix — while only proposing repairs,
+#           never pushing to a protected branch.
 #
 # Because we're testing the skill against its own repo, the scanner is used
 # straight from the checkout (no pinned curl — that's for external consumers;
