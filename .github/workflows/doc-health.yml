@@ -59,14 +59,18 @@ jobs:
       - name: Detect credentials
         id: key
         env:
-          OAUTH: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           APIKEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: |
-          if [ -n "$OAUTH" ] || [ -n "$APIKEY" ]; then
+          # Gate on the SAME credential the audit step passes (ANTHROPIC_API_KEY).
+          # A long-lived API key never expires, so this check stops crying wolf
+          # the way a lapsed `claude setup-token` OAuth token did (present but
+          # invalid → SDK auth crash → hard-failed check on every PR). If the key
+          # is absent (forks, or before it's set) the tier skips, never fails.
+          if [ -n "$APIKEY" ]; then
             echo "present=true" >> "$GITHUB_OUTPUT"
           else
             echo "present=false" >> "$GITHUB_OUTPUT"
-            echo "::notice::No CLAUDE_CODE_OAUTH_TOKEN or ANTHROPIC_API_KEY set — skipping the agent audit tier."
+            echo "::notice::No ANTHROPIC_API_KEY set — skipping the agent audit tier."
           fi
 
       - name: Documentation-health audit (propose only, fail on must-fix)
@@ -74,13 +78,14 @@ jobs:
         if: steps.key.outputs.present == 'true'
         uses: anthropics/claude-code-action@v1
         with:
-          # Subscription token only. Do NOT also pass anthropic_api_key here:
-          # secrets.ANTHROPIC_API_KEY resolves to an empty string when unset, and
-          # an empty auth input breaks credential resolution (the SDK exits 1
-          # before running). Pass exactly the one credential you use. For an API
-          # key instead, swap this line for:
-          #   anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
-          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          # Long-lived ANTHROPIC_API_KEY (no expiry) — chosen over a `claude
+          # setup-token` OAuth token, which lapses and then hard-fails this check.
+          # Pass exactly ONE credential: do NOT also pass claude_code_oauth_token,
+          # because an unset secret resolves to an empty string and an empty auth
+          # input breaks credential resolution (the SDK exits 1 before running).
+          # For a Pro/Max subscription token instead, swap this line for:
+          #   claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
           # Load the skill from this very marketplace — dogfooding.
           plugin_marketplaces: https://github.com/Life-With-Data/agentic-engineering.git
