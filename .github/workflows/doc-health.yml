@@ -73,45 +73,17 @@ jobs:
             echo "::notice::No ANTHROPIC_API_KEY set — skipping the agent audit tier."
           fi
 
-      # TEMP DIAGNOSTIC (#128) — remove before merge. Installs the exact CLI the
-      # action uses (claude-code v2.1.207 native build) and runs it headless with
-      # NO credentials in the environment. The real crash is pre-network (~0.36s),
-      # so it's auth-independent and this stderr is guaranteed secret-free. Decision
-      # tree: same exit-1 crash ⇒ auth-independent CLI startup bug; a clean "no API
-      # key" message ⇒ the crash is actually gated on the (possibly invalid) key.
-      - name: DIAGNOSTIC — is the REAL org ANTHROPIC_API_KEY valid? (temp, #128)
-        if: steps.key.outputs.present == 'true'
-        env:
-          # ANTHROPIC_LOG deliberately UNSET here (no verbose header dump). Only
-          # the model's reply or an error string is printed — never the key.
-          THE_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-        run: |
-          set +e
-          echo "::group::install claude 2.1.207"
-          set -o pipefail
-          curl -fsSL https://claude.ai/install.sh | bash -s -- 2.1.207
-          echo "::endgroup::"
-          CLAUDE="$HOME/.local/bin/claude"
-          export ANTHROPIC_API_KEY="$THE_KEY"
-          SCHEMA='{"type":"object","properties":{"must_fix":{"type":"boolean"},"summary":{"type":"string"}},"required":["must_fix","summary"]}'
-
-          echo "::group::install plugin marketplace + plugin (as the action does)"
-          "$CLAUDE" plugin marketplace add https://github.com/Life-With-Data/agentic-engineering.git 2>&1 | tail -10
-          "$CLAUDE" plugin install agentic-engineering@agentic-engineering 2>&1 | tail -10
-          echo "::endgroup::"
-
-          echo "=== G: real key + --json-schema + plugin installed (full action repro) ==="
-          echo "Set must_fix=false and summary=hello" | "$CLAUDE" --print --setting-sources user --json-schema "$SCHEMA" 2>&1 | tail -40
-          echo "G exit: ${PIPESTATUS[1]}"
-
-          echo "=== I: SDK-style stream-json bidirectional protocol (how the action drives claude) ==="
-          MSG='{"type":"user","message":{"role":"user","content":[{"type":"text","text":"Set must_fix=false and summary=hello"}]}}'
-          printf '%s\n' "$MSG" | "$CLAUDE" --print --verbose --input-format stream-json --output-format stream-json --setting-sources user --json-schema "$SCHEMA" 2>&1 | tail -40
-          echo "I exit: ${PIPESTATUS[1]}"
-
       - name: Documentation-health audit (propose only, fail on must-fix)
         id: audit
         if: steps.key.outputs.present == 'true'
+        # TEMP (#128): capture the CLAUDE child's own debug log. Direct-invocation
+        # repros of every content/flag/protocol path (key, --json-schema, plugin+MCP,
+        # stream-json) all SUCCEED, so the crash is specific to how the SDK spawns
+        # claude. CLAUDE_CODE_DEBUG_LOGS_DIR makes the child write its startup debug
+        # log to a file we print in the next step — the child stderr the SDK masks.
+        env:
+          CLAUDE_CODE_DEBUG_LOGS_DIR: ${{ runner.temp }}/ccdebug
+          ANTHROPIC_LOG: debug
         # Advisory tier: a startup/SDK crash of the agent (a bad floating
         # claude-code-action release, a settings incompatibility, a bad key)
         # must NOT fail this check — only a judgment-confirmed must_fix does,
@@ -167,6 +139,20 @@ jobs:
               finding your judgment confirms — e.g. a real secret, a broken
               link/import, forked-and-unbridged agent-context files). Put a
               one-line rationale in `summary`.
+
+      # TEMP (#128) — print the child claude's own startup debug log (the stderr
+      # the SDK masks as "exited with code 1"). No secret in these logs.
+      - name: DIAGNOSTIC — dump child claude debug log (temp, #128)
+        if: always() && steps.key.outputs.present == 'true'
+        run: |
+          DIR="${RUNNER_TEMP}/ccdebug"
+          echo "listing $DIR"; ls -la "$DIR" 2>&1 || echo "(no debug dir)"
+          for f in "$DIR"/*; do
+            [ -f "$f" ] || continue
+            echo "::group::$f"; tail -120 "$f"; echo "::endgroup::"
+          done
+          echo "=== execution-output.json (SDK) tail ==="
+          cat "${RUNNER_TEMP}/claude-execution-output.json" 2>/dev/null | tail -40 || echo "(none)"
 
       - name: Enforce must-fix (fail the check)
         if: steps.key.outputs.present == 'true'
