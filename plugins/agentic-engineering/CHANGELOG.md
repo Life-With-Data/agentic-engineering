@@ -5,6 +5,12 @@ All notable changes to the agentic-engineering plugin will be documented in this
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.21.3] - 2026-07-13
+
+### Fixed
+
+- **`documentation-health` agent audit tier ran degraded — it could neither run the scanner nor post a review (follow-up to #128/#130).** After the startup-crash fix, the audit agent started but ran deny-by-default: CI's non-interactive mode denies every non-read-only tool when no allowlist is given, so the `Skill` tool and the `python3` scanner were both denied and the tier fell back to emitting `--json-schema` structured output only — it never ran the deterministic scan itself nor posted its propose-only PR review. Granting the tools has a **where-matters** wrinkle that this fix encodes: the scanner + skill grants (`Bash(python3:*)`, `Skill`, `Read`, `Glob`, `Grep`) go in the **`settings` input** (parsed as JSON — no `shell-quote` mangling — and written to user-scope `~/.claude/settings.json`, whose allow rules apply headless without a workspace-trust dialog), while the single review tool `mcp__github__create_and_submit_pull_request_review` goes in **`claude_args` as `--allowedTools`** (the action injects its GitHub MCP server only when an `mcp__github__*` tool appears there; `--allowedTools` is *additive* with the settings allowlist, not a replacement). Bash-pattern rules must stay out of `claude_args` — `shell-quote` mangles their parens/colons, the same failure class as #128. The review tool posts one body-only formal PR review as the Claude App, which works for whole-repo findings off the PR's diff (the inline-comment server is diff-line-anchored; the sticky-comment server needs a tracking comment agent mode never creates). Fixed in both this repo's workflow (`.github/workflows/doc-health.yml`) and the consumer template (`skills/documentation-health/assets/doc-health.yml`); the mechanism is documented in [`reference.md`](skills/documentation-health/reference.md) "Continuous integration".
+
 ## [3.21.2] - 2026-07-13
 
 ### Fixed

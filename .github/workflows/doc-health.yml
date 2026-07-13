@@ -97,6 +97,31 @@ jobs:
           # Load the skill from this very marketplace — dogfooding.
           plugin_marketplaces: https://github.com/Life-With-Data/agentic-engineering.git
           plugins: agentic-engineering@agentic-engineering
+          # Grant the audit ONLY the tools it needs. Without an allowlist, CI's
+          # non-interactive default denies every non-read-only tool — the Skill
+          # tool and the python3 scanner were both denied, leaving the tier
+          # structured-output-only (it could neither run the deterministic scan
+          # nor post a review). This `settings` input is parsed as JSON (NO
+          # shell-quote mangling, unlike claude_args), and the action writes it to
+          # ~/.claude/settings.json — USER scope, exactly the scope that
+          # `--setting-sources user` keeps, so these grants load while the repo's
+          # project .claude/settings.json (fork-trap hooks) stays excluded. User
+          # scope also needs no workspace-trust dialog, so the rules apply under
+          # `-p` (project allow rules are ignored headless). The single-PR-review
+          # tool is granted separately via --allowedTools below — see why there.
+          settings: |
+            {
+              "permissions": {
+                "allow": [
+                  "Read",
+                  "Glob",
+                  "Grep",
+                  "Skill",
+                  "Bash(python3:*)",
+                  "Bash(python:*)"
+                ]
+              }
+            }
           # THE #128 FIX — the JSON-schema quotes are BACKSLASH-ESCAPED (\").
           # claude-code-action tokenizes claude_args with the `shell-quote` parser,
           # which strips bare double quotes: {"type":"object"} reached the CLI as
@@ -112,22 +137,50 @@ jobs:
           # the SDK would otherwise load via the default ["user","project","local"].
           # The documentation-health SKILL is unaffected: it comes from the installed
           # plugin (user scope), not from project settingSources.
+          #
+          # --allowedTools names the ONE GitHub MCP review tool. It does two jobs:
+          # (1) it triggers the action to inject its full GitHub MCP server — the
+          # server is only wired up when an mcp__github__* tool appears in
+          # claude_args (the action's parseAllowedTools scans claude_args, NOT the
+          # settings input) — and (2) it auto-approves that tool. --allowedTools is
+          # ADDITIVE with the settings allowlist above (it grants without prompting;
+          # it does NOT replace settings — verified against the permissions docs).
+          # The tool name is all underscores/letters, so shell-quote passes it
+          # through intact — unlike a Bash(...) pattern, whose parens/colon it would
+          # mangle (the #128 class of bug), which is why the scanner/Skill grants
+          # live in the JSON `settings` input, not here. create_and_submit_pull_
+          # request_review posts ONE formal PR review as claude[bot] (the App
+          # token), body-only (no line anchors) — so it works for whole-repo
+          # findings that aren't on the PR's diff. The lighter servers can't: the
+          # inline-comment server is diff-line-anchored, and the sticky-comment
+          # server needs a tracking comment that agent mode never creates.
           claude_args: >-
             --setting-sources user
+            --allowedTools mcp__github__create_and_submit_pull_request_review
             --json-schema
             {\"type\":\"object\",\"properties\":{\"must_fix\":{\"type\":\"boolean\"},\"summary\":{\"type\":\"string\"}},\"required\":[\"must_fix\",\"summary\"]}
           prompt: |
             Use the documentation-health skill to audit this repository in
             NON-INTERACTIVE CI mode, then judge the results.
 
+            Repository: ${{ github.repository }}
+            Pull request number: ${{ github.event.pull_request.number }}
+            (The PR number is empty when this run is a schedule/dispatch rather
+            than a pull request.)
+
             - Run the deterministic scanner, then do the judgment pass
               (duplication, Diátaxis mode-mixing, stale commands, README↔
               CLAUDE.md drift, cross-tool contradictions). Distinguish genuine
               problems from scanner false positives — do NOT treat a raw WARN as
               a must-fix if judgment shows it's noise.
-            - PROPOSE ONLY. Post ONE pull-request review summarizing findings by
-              layer/severity with file:line and the concrete fix. Do NOT edit
-              files, do NOT commit, do NOT push to any branch.
+            - PROPOSE ONLY. If this run is on a pull request (the PR number above
+              is non-empty), post exactly ONE pull-request review by calling the
+              `mcp__github__create_and_submit_pull_request_review` tool ONCE:
+              owner and repo from the repository slug above, pullNumber the number
+              above, event "COMMENT", and body = your findings grouped by layer/
+              severity, each with file:line and the concrete fix. If there is no
+              PR (schedule/dispatch), skip posting and rely on the structured
+              output below. Do NOT edit files, do NOT commit, do NOT push.
             - Set structured output `must_fix` to true if and only if you found
               at least one genuinely broken/dangerous issue (an ERROR-class
               finding your judgment confirms — e.g. a real secret, a broken

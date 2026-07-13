@@ -34,7 +34,7 @@ env:
   # so a version tag is the recommended pin (a commit SHA is equally valid and
   # even stricter). Avoid `main` for a gate — a moving ref can change the gate
   # under you between runs.
-  DOCS_HEALTH_REF: v3.21.1
+  DOCS_HEALTH_REF: v3.21.3
   SCRIPT_PATH: plugins/agentic-engineering/skills/documentation-health/scripts/doc_health_check.py
 
 jobs:
@@ -111,25 +111,67 @@ jobs:
           # registry git URL.
           plugin_marketplaces: https://github.com/${{ env.DOCS_HEALTH_REPO }}.git
           plugins: agentic-engineering@agentic-engineering
+          # Grant the audit ONLY the tools it needs. Without an allowlist, CI's
+          # non-interactive default denies every non-read-only tool, so the agent
+          # can neither run the python3 scanner (Skill + Bash denied) nor post a
+          # review — the tier degrades to structured-output-only. The `settings`
+          # input is parsed as JSON (no shell-quote mangling, unlike claude_args)
+          # and lands in ~/.claude/settings.json (user scope), where its allow
+          # rules apply even in headless `-p` mode (no workspace-trust dialog).
+          # The one PR-review tool is granted separately via --allowedTools below.
+          settings: |
+            {
+              "permissions": {
+                "allow": [
+                  "Read",
+                  "Glob",
+                  "Grep",
+                  "Skill",
+                  "Bash(python3:*)",
+                  "Bash(python:*)"
+                ]
+              }
+            }
           # Structured output is the machine-readable pass/fail signal.
           # The JSON quotes MUST be backslash-escaped (\"): claude-code-action
           # tokenizes claude_args with the `shell-quote` parser, which strips bare
           # double quotes — so an unescaped {"type":"object"} reaches the CLI as
           # {type:object}, invalid JSON, and `claude` exits 1 at startup.
+          #
+          # --allowedTools names the ONE GitHub MCP review tool. This both makes
+          # the action inject its GitHub MCP server (only wired up when an
+          # mcp__github__* tool is present in claude_args) and auto-approves the
+          # tool — additively with the settings allowlist above (it grants, it does
+          # not replace). The tool name has no shell-quote-special characters, so
+          # it survives claude_args tokenization (a Bash(...) pattern would not —
+          # that is why the scanner/Skill grants live in the JSON `settings` input).
+          # create_and_submit_pull_request_review posts ONE formal PR review as the
+          # Claude App, body-only — so it works for whole-repo findings that are not
+          # on the PR's diff. (Add `--setting-sources user` here if you want the
+          # audit to ignore your repo's own project .claude config in CI.)
           claude_args: >-
+            --allowedTools mcp__github__create_and_submit_pull_request_review
             --json-schema
             {\"type\":\"object\",\"properties\":{\"must_fix\":{\"type\":\"boolean\"},\"summary\":{\"type\":\"string\"}},\"required\":[\"must_fix\",\"summary\"]}
           prompt: |
             Use the documentation-health skill to audit this repository in
             NON-INTERACTIVE CI mode, then judge the results.
 
+            Repository: ${{ github.repository }}
+            Pull request number: ${{ github.event.pull_request.number }}
+            (Empty when this run is a schedule/dispatch rather than a PR.)
+
             - Run the deterministic scanner, then do the judgment pass
               (duplication, Diátaxis mode-mixing, stale commands, README↔
               CLAUDE.md drift, cross-tool contradictions). Separate genuine
               problems from scanner false positives — a raw WARN that judgment
               shows is noise is NOT a must-fix.
-            - PROPOSE ONLY. Post ONE pull-request review grouped by layer/
-              severity with file:line and the concrete fix. Do NOT edit files,
+            - PROPOSE ONLY. If this run is on a pull request (PR number above is
+              non-empty), post exactly ONE pull-request review by calling
+              `mcp__github__create_and_submit_pull_request_review` ONCE: owner and
+              repo from the slug above, pullNumber the number above, event
+              "COMMENT", body = findings grouped by layer/severity with file:line
+              and the concrete fix. Otherwise skip posting. Do NOT edit files,
               commit, or push to any branch.
             - Set structured output `must_fix` to true iff you confirmed at
               least one genuinely broken/dangerous issue (ERROR-class — a real
