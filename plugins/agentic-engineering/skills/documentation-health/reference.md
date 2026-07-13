@@ -202,7 +202,7 @@ A static-site generator publishes *whatever is in the source tree* — internal 
 
 Health is *continuous* only when a gate enforces it on every change. The skill ships an example GitHub Actions workflow — [assets/doc-health.yml](assets/doc-health.yml) — with two independent tiers. Prefer a GitHub Action over a pre-commit hook: it runs the same way for every contributor, can post PR reviews, and can host the agent tier (a pre-commit hook is local, easy to `--no-verify` past, and can't call an LLM cleanly).
 
-**Tier 1 — deterministic gate (`scan`).** Fetches the zero-dependency scanner at a chosen ref and runs it. This marketplace ships as a rolling release off `main` (no version tags), so the template defaults `DOCS_HEALTH_REF` to `main`; pin a commit SHA for a reproducible gate that can't drift under you. The strictness is a dial, not a fixed policy — set `--fail-on` to what the team will actually sustain:
+**Tier 1 — deterministic gate (`scan`).** Fetches the zero-dependency scanner at a pinned ref and runs it. The marketplace auto-tags `v<version>` on release, so the template pins a version tag (a commit SHA is equally valid and even stricter); avoid a moving ref like `main` for a gate — it can drift under you between runs. The strictness is a dial, not a fixed policy — set `--fail-on` to what the team will actually sustain:
 
 | `--fail-on` | Exit 1 when… | Use for |
 |-------------|--------------|---------|

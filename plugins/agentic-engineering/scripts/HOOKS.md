@@ -65,6 +65,31 @@ the anti-pattern is exempt, mirroring the other guards here.
 manager instead of inlining it, or send through a connected Slack app / the
 Slack MCP tooling (`chat.postMessage`).
 
+## `block-db-push.py` — PreToolUse (Bash)
+
+**Blocks** `prisma db push` in its wrapper forms (`npx`/`pnpm`/`dotenv`
+prefixes, and `pnpm --filter <pkg> push` script aliases).
+
+**Why:** `db push` mutates the live database to match `schema.prisma` *without*
+writing a migration, so the schema silently drifts from the migration history.
+That breaks the workflows migrations are the source of truth for: tests that
+apply migrations from scratch diverge from a `push`ed dev DB, and CI/CD and
+production (which deploy by running migrations) never receive the change. This
+is the DB-safety sibling of the `prevent-main-commit` / `block-no-verify` git
+guards.
+
+**Precision:** It fires only when `prisma db push` is the actual command verb.
+Commands that merely *mention* the phrase — a quoted commit message, a shell
+comment, `grep`, `echo` — are **not** blocked (same quote-stripping as the
+other guards). Legitimate `prisma migrate dev` / `migrate deploy` / `generate`
+commands are untouched.
+
+**No-op unless relevant:** like `check-node-version.py`, it never fires unless a
+project actually runs `prisma db push`, so a non-Prisma repo pays nothing.
+
+**Correct alternative:** `prisma migrate dev --name <migration-name>` (or the
+repo's wrapper), which records a migration that keeps the DB and history in sync.
+
 ## `nudge-todowrite-to-tracker.py` — PreToolUse (TodoWrite)
 
 **Never blocks** (`exit 0` always). Opt-in only: silent unless the repo sets
@@ -161,6 +186,7 @@ Automated regression tests live in [`../tests/`](../tests) and run in CI via
 - [`block_no_verify_test.py`](../tests/block_no_verify_test.py)
 - [`prevent_main_commit_test.py`](../tests/prevent_main_commit_test.py)
 - [`block_slack_webhook_test.py`](../tests/block_slack_webhook_test.py)
+- [`block_db_push_test.py`](../tests/block_db_push_test.py)
 - [`plan_tracker_guard_test.py`](../tests/plan_tracker_guard_test.py)
 - [`nudge_todowrite_to_tracker_test.py`](../tests/nudge_todowrite_to_tracker_test.py)
 - [`sdd_cache_pre_test.py`](../tests/sdd_cache_pre_test.py)

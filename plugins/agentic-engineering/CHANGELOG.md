@@ -5,7 +5,7 @@ All notable changes to the agentic-engineering plugin will be documented in this
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [3.18.1] - 2026-07-12
+## [3.20.1] - 2026-07-13
 
 ### Added
 
@@ -16,6 +16,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - **The scanner (`doc_health_check.py`) gains tunable gate strictness via `--fail-on {error,warn,info,never}`** (default `never`; `--strict` is kept as a back-compat alias for `--fail-on error`). Teams can start at `error` on PRs and ratchet to `warn` once drift is burned down, or run `never` for report-only scheduled sweeps. `SKILL.md` and `reference.md` document a "Continuous integration" section covering the two tiers, the strictness dial, the propose-only-yet-blocking rule, and tag-based pinning. No component counts change.
+
+## [3.20.0] - 2026-07-13
+
+### Added
+
+- **New `block-db-push.py` PreToolUse hook** — blocks `prisma db push` (and its `npx`/`pnpm`/`dotenv` wrapper forms plus `pnpm --filter <pkg> push` script aliases) before it runs. `db push` mutates the live database to match `schema.prisma` *without* writing a migration, silently drifting the schema from the migration history; that breaks tests which apply migrations from scratch and means CI/CD and production (which deploy by running migrations) never receive the change. This is the DB-safety sibling of the existing `prevent-main-commit` / `block-no-verify` git guards, and like `check-node-version.py` it is inert unless a project actually runs `prisma db push`, so non-Prisma repos pay nothing. Precision-guarded (quote-stripped so prose/`grep`/`echo` mentions and legitimate `migrate dev` / `migrate deploy` / `generate` commands are never blocked) and covered by [`tests/block_db_push_test.py`](tests/block_db_push_test.py). Documented in [`scripts/HOOKS.md`](scripts/HOOKS.md). Adapted from the first-party `agent-leverage` / `bluestar-intel` repos. Component counts (agents/commands/skills) unchanged — hooks are not counted.
+
+## [3.19.0] - 2026-07-12
+
+### Added
+
+- **New `acceptance-criteria-reviewer` agent** — a focused reviewer whose sole job is to hold a change against the **documented Acceptance Criteria and Validation steps** of its tracker issue, criterion by criterion, and emit a `PASS` / `FAIL` / `INCOMPLETE` verdict with `file:line` evidence. It deliberately ignores code style, security, performance, and architecture (other agents own those) — the narrow scope and separate context window are the point: an independent verifier, not the author, decides whether "done" is actually done. A criterion is met only when the diff demonstrably makes it true; "can't tell" and "CI is green but no test covers the criterion" both count as *not met*. Review agent count 16 → 17; total agents 30 → 31.
+
+### Changed
+
+- **`/workflows:review` now runs the acceptance-criteria-reviewer on every pass as the gating conformance check.** Its `FAIL` verdict and each unmet/partial criterion or absent validation step fold into synthesis as **P1 findings** — and because `land-pr`'s merge gate already blocks on unresolved P1s, acceptance-criteria conformance becomes an *enforced* gate rather than implementer self-attestation. This closes the loop opened in 3.18.1, where the criteria and Validation sections were documented but no independent review step evaluated or gated on them.
+- **`/workflows:work` Phase 3 gains an optional acceptance-criteria pre-check** — the *same* agent, invoked in the implementer's own session before opening the PR, but **advisory only** (a smell-test, never the gate), so AC gaps are cheap to fix before the PR exists. This mirrors the repo's existing two-tier pattern: inline pre-check for focus/speed, independent stage for enforcement. Context separation is preserved because the authority to gate lives only with the independent review stage, never with the party being evaluated.
+
+## [3.18.1] - 2026-07-12
+
+### Added
+
+- **Canonical issue and sub-issue body templates for the eng workflow** — [`scripts/templates/issue-template.md`](scripts/templates/issue-template.md) (parent) and [`scripts/templates/sub-issue-template.md`](scripts/templates/sub-issue-template.md) (task unit) codify best-practice structure with standard sections: **Overview**, Problem Statement / Context, Proposed Solution / Implementation Notes, Scope, System-Wide Impact, External System Wiring, Task Breakdown, **Acceptance Criteria**, **Validation** (how a reviewer proves it *behaves*, not merely compiles — exact commands + expected result, plus manual and rollback steps), and Dependencies & Risks. `/workflows:plan` Step 7 now copies the sub-issue template for every `<task_body_file>` it creates under a parent, so decomposed tasks share one standard shape instead of an undefined ad-hoc body.
+
+### Changed
+
+- **`/workflows:plan`'s three plan-doc tiers (MINIMAL / MORE / A LOT) now each carry a `Validation` section** alongside Acceptance Criteria, and Step 4 points at the canonical templates as the reusable source of truth for both parent and sub-issue bodies. Closes the gap where "done" was asserted via acceptance criteria but never tied to a concrete verification the reviewer could run. No component counts change (templates are supporting assets, not agents/commands/skills).
 
 ## [3.18.0] - 2026-07-11
 

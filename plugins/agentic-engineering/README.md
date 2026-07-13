@@ -6,7 +6,7 @@ AI-powered development tools that get smarter with every use. Make each unit of 
 
 | Component | Count |
 |-----------|-------|
-| Agents | 30 |
+| Agents | 31 |
 | Commands | 28 |
 | Skills | 35 |
 | MCP Servers | 1 |
@@ -17,10 +17,11 @@ AI-powered development tools that get smarter with every use. Make each unit of 
 
 Agents are organized into categories for easier discovery.
 
-### Review (16)
+### Review (17)
 
 | Agent | Description |
 |-------|-------------|
+| `acceptance-criteria-reviewer` | Verify a change satisfies its issue's documented Acceptance Criteria and Validation steps |
 | `agent-native-reviewer` | Verify features are agent-native (action + context parity) |
 | `architecture-strategist` | Analyze architectural decisions and compliance |
 | `code-simplicity-reviewer` | Final pass for simplicity and minimalism |
