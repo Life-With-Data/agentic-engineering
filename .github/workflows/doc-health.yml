@@ -92,10 +92,16 @@ jobs:
           curl -fsSL https://claude.ai/install.sh | bash -s -- 2.1.207
           echo "::endgroup::"
           CLAUDE="$HOME/.local/bin/claude"
-          echo "key length: ${#THE_KEY}  prefix: ${THE_KEY:0:7}..."
-          echo "=== D: headless run with the REAL org key ==="
-          echo "Reply with exactly: OK" | ANTHROPIC_API_KEY="$THE_KEY" "$CLAUDE" --print --setting-sources user 2>&1 | tail -20
-          echo "D exit: ${PIPESTATUS[1]}"
+          export ANTHROPIC_API_KEY="$THE_KEY"
+          SCHEMA='{"type":"object","properties":{"must_fix":{"type":"boolean"},"summary":{"type":"string"}},"required":["must_fix","summary"]}'
+
+          echo "=== E: real key + --json-schema (the flag the action adds) ==="
+          echo "Set must_fix=false and summary=hello" | "$CLAUDE" --print --setting-sources user --json-schema "$SCHEMA" 2>&1 | tail -30
+          echo "E exit: ${PIPESTATUS[1]}"
+
+          echo "=== F: real key + --json-schema + --output-format json ==="
+          echo "Set must_fix=false and summary=hello" | "$CLAUDE" --print --setting-sources user --output-format json --json-schema "$SCHEMA" 2>&1 | tail -30
+          echo "F exit: ${PIPESTATUS[1]}"
 
       - name: Documentation-health audit (propose only, fail on must-fix)
         id: audit
