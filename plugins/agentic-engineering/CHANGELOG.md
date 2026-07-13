@@ -5,6 +5,16 @@ All notable changes to the agentic-engineering plugin will be documented in this
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.21.1] - 2026-07-13
+
+### Changed
+
+- **Codified the board-granularity operating assumption: one board per owner, aggregating that owner's repos** — not one board per repo. The `lifecycle` skill's "Modes and the join-key contract" section now states it explicitly: a board belongs to an owner (org or user), the engine drops/never-writes foreign-repo items and scopes join keys to origin (so a single org board can track many repos while each command acts only on its own), the owner **must** equal the origin owner, and the cross-owner case is an out-of-band `git config agentic.trustedBoardOwners` escape hatch — never the config file. Previously this was implicit in the code but undocumented.
+
+### Fixed
+
+- **This repo's board config was in an `owner_mismatch` failure state** — `agentic-engineering.md` pointed at the personal `aagnone3/projects/5` board while origin is the org `Life-With-Data`, so every board operation hard-errored (`/lifecycle-doctor` FAILed `board_config`). The board had migrated to the org (`Life-With-Data/projects/1`, which carries the full 9-stage schema) without the committed config following. Repointed to `Life-With-Data` / project `1`, aligning owner with origin per the codified assumption above. (Effective once merged to the main working tree — the engine reads committed board config from `main_root`, so the fix can't be live-verified from a worktree.)
+
 ## [3.21.0] - 2026-07-13
 
 ### Added
