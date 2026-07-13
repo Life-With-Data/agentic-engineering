@@ -5,6 +5,12 @@ All notable changes to the agentic-engineering plugin will be documented in this
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.20.0] - 2026-07-13
+
+### Added
+
+- **New `block-db-push.py` PreToolUse hook** — blocks `prisma db push` (and its `npx`/`pnpm`/`dotenv` wrapper forms plus `pnpm --filter <pkg> push` script aliases) before it runs. `db push` mutates the live database to match `schema.prisma` *without* writing a migration, silently drifting the schema from the migration history; that breaks tests which apply migrations from scratch and means CI/CD and production (which deploy by running migrations) never receive the change. This is the DB-safety sibling of the existing `prevent-main-commit` / `block-no-verify` git guards, and like `check-node-version.py` it is inert unless a project actually runs `prisma db push`, so non-Prisma repos pay nothing. Precision-guarded (quote-stripped so prose/`grep`/`echo` mentions and legitimate `migrate dev` / `migrate deploy` / `generate` commands are never blocked) and covered by [`tests/block_db_push_test.py`](tests/block_db_push_test.py). Documented in [`scripts/HOOKS.md`](scripts/HOOKS.md). Adapted from the first-party `agent-leverage` / `bluestar-intel` repos. Component counts (agents/commands/skills) unchanged — hooks are not counted.
+
 ## [3.19.0] - 2026-07-12
 
 ### Added
