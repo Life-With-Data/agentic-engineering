@@ -40,6 +40,13 @@ jobs:
             exit 0
           fi
 
+          # Annotated tags (`git tag -a`) record a tagger identity; the runner has
+          # none by default, so `git tag -a` aborts with "empty ident name not
+          # allowed" (exit 128) before we ever reach the push. Attribute the tag to
+          # the Actions bot so the release is authored consistently.
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
           # Extract this version's section from CHANGELOG.md for release notes:
           # everything between "## [VERSION]" and the next "## [".
           NOTES=$(awk -v v="${VERSION}" '

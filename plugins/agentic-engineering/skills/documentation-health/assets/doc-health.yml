@@ -34,7 +34,7 @@ env:
   # so a version tag is the recommended pin (a commit SHA is equally valid and
   # even stricter). Avoid `main` for a gate — a moving ref can change the gate
   # under you between runs.
-  DOCS_HEALTH_REF: v3.20.1
+  DOCS_HEALTH_REF: v3.21.1
   SCRIPT_PATH: plugins/agentic-engineering/skills/documentation-health/scripts/doc_health_check.py
 
 jobs:
