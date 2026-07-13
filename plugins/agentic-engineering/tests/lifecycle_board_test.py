@@ -320,6 +320,33 @@ class ProjectLinkedReposTest(unittest.TestCase):
         self.assertIsNone(lb.project_linked_repos("o", 5, runner))
 
 
+class ProjectWorkflowsTest(unittest.TestCase):
+    """The built-in-workflow enabled-state reader behind the doctor's
+    item_closed_workflow check. The API exposes only name + enabled."""
+
+    @staticmethod
+    def _payload(workflows):
+        nodes = [{"name": n, "enabled": e} for n, e in workflows]
+        return json.dumps({"data": {"repositoryOwner": {"projectV2": {
+            "workflows": {"nodes": nodes}}}}})
+
+    def test_parses_name_to_enabled_map(self) -> None:
+        runner = FakeRunner([(["api", "graphql"], _ok(self._payload(
+            [("Item closed", True), ("Item reopened", False)])))])
+        self.assertEqual(lb.project_workflows("o", 5, runner),
+                         {"Item closed": True, "Item reopened": False})
+        # Owner-type-agnostic (User + Organization), like the linked-repos reader.
+        query = runner.calls[0][runner.calls[0].index("-f") + 1]
+        self.assertIn("repositoryOwner(login: $owner)", query)
+        self.assertIn("... on User", query)
+        self.assertIn("... on Organization", query)
+
+    def test_none_on_query_failure(self) -> None:
+        fail = subprocess.CompletedProcess(args=[], returncode=1, stdout="", stderr="boom")
+        runner = FakeRunner([(["api", "graphql"], fail)])
+        self.assertIsNone(lb.project_workflows("o", 5, runner))
+
+
 class CallBudgetTest(unittest.TestCase):
     """Ready-work is 2 gh calls at ANY board size (the bd-ready replacement)."""
 

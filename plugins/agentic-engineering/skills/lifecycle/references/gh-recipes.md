@@ -137,36 +137,15 @@ jobs:
 
 Closing the issue then triggers the built-in "Item closed" automation, which stamps `shipped`.
 
-## Native PR-opened → `in_review` (parent)
+## Parent → `in_review` (no custom workflow needed)
 
-`→ shipped` is already zero-UI (the built-in "Item closed" automation fires on the merge's `Closes #N`). The **opening** edge — parent → `in_review` — is written by `/workflows:work` Phase 4 when the command opens the PR. That covers every PR the workflow opens, but **not** a PR opened out-of-band (a human, or an agent outside the command). GitHub Projects has **no enable-able built-in for "a linked PR opened,"** so the portable native cover is a committed Actions workflow that maps the PR's closing issues to a board write via the one engine. It is **opt-in** (a board Status write needs a non-`GITHUB_TOKEN` secret) and **self-skips** when that secret is absent, so it never reds-out a PR before wiring:
+`→ shipped` is already zero-UI (the built-in "Item closed" automation fires on the merge's `Closes #N`). The **opening** edge — parent → `in_review` — is covered by two existing mechanisms, so **no committed Actions workflow is required** (an earlier `lifecycle-pr-in-review.yml` was removed as redundant):
 
-```yaml
-name: lifecycle-pr-in-review
-on:
-  pull_request:
-    types: [opened, reopened, ready_for_review]
-jobs:
-  in-review:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4          # the engine lives in-repo here
-      - env:
-          # A Projects-write token (App installation token or a machine-account
-          # PAT with project+repo). GITHUB_TOKEN CANNOT write the board. Reuses
-          # the same secret name as the lifecycle-smoke board-probe leg.
-          GH_TOKEN: ${{ secrets.LIFECYCLE_BOARD_PAT }}
-        run: |
-          if [ -z "$GH_TOKEN" ]; then echo "::warning::no LIFECYCLE_BOARD_PAT — skipping"; exit 0; fi
-          gh pr view "${{ github.event.pull_request.number }}" \
-            --repo "${{ github.repository }}" \
-            --json closingIssuesReferences \
-            --jq '.closingIssuesReferences[].number' \
-          | while read n; do
-              python3 plugins/agentic-engineering/scripts/lifecycle_board.py \
-                --set-status "$n" in_review \
-                || echo "::warning::#$n not advanced (likely open sub-issues)"
-            done
-```
+1. **Command-opened PRs** — `/workflows:work` Phase 4 writes `--set-status <N> in_review` directly, immediately, and **through the `open_sub_issues` seam gate** (a PR opened with unfinished sub-issues is refused). This is the primary, deterministic, enforced path.
+2. **Out-of-band PRs by the assignee** — the reconciler's **rule 5** (`assignee's open PR on an in_progress item → in_review`) advances them at the next command entry. No token, no Actions minutes, no extra file.
 
-The write is idempotent with the command's own Phase-4 write — both call `--set-status … in_review`, so belt-and-suspenders never double-stamps. It also inherits the **`open_sub_issues` seam gate**: if the out-of-band PR was opened while the parent still has open sub-issues, the engine refuses the stamp (a premature PR should not mark the parent ready-for-review) — log it, do **not** `--force` (only the reconciler's reality-sync legitimately overrides). Consumer repos that vendor the plugin elsewhere adjust the script path (or drop the checkout and call a vendored copy). Sub-issues need no analogue: they have no PR of their own, so their status is engine-written by the owning agent at dispatch/hand-back (`--sub-status`), never by a PR event.
+A non-assignee PR is deliberately **not** auto-advanced (the yield/security model flags it for human review rather than trusting it to drive state) — which is why a blanket "any linked PR → in_review" Actions job was the wrong tool.
+
+**On GitHub's native "Pull request linked to issue" workflow:** it is enabled by default and *does* set a linked issue's Status when a `Closes #N` PR opens against the **default branch** — but its default target is **In progress** (= our `in_progress`), a harmless no-op since the issue is already `in_progress` during work. We deliberately **leave it at that default** rather than pointing it at `in_review`: a native stamp would bypass the `open_sub_issues` seam gate (built-in workflows write Status directly, never through the engine), and its config is UI-only and unverifiable via API (`ProjectV2Workflow` exposes only `name`/`enabled`; the sole mutation is `deleteProjectV2Workflow`). The `in_review_with_open_subissues` reconciler flag remains the detector for any parent that reaches `in_review` with open sub-issues by a native or out-of-band path.
+
+Sub-issues need no PR-linked analogue: they have no PR of their own, so their status is engine-written by the owning agent at dispatch/hand-back (`--sub-status`), never by a PR event.

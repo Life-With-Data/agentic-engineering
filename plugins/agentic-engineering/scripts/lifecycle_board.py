@@ -1481,6 +1481,35 @@ def project_linked_repos(owner: str, number: int, runner: GhRunner) -> "Optional
     return [n.get("nameWithOwner", "") for n in nodes if n.get("nameWithOwner")]
 
 
+PROJECT_WORKFLOWS_QUERY = (
+    "query($owner: String!, $number: Int!) {\n"
+    "  repositoryOwner(login: $owner) {\n"
+    "    ... on User { projectV2(number: $number) { workflows(first: 20) { nodes { name enabled } } } }\n"
+    "    ... on Organization { projectV2(number: $number) { workflows(first: 20) { nodes { name enabled } } } }\n"
+    "  }\n"
+    "}"
+)
+
+
+def project_workflows(owner: str, number: int, runner: GhRunner) -> "Optional[dict[str, bool]]":
+    """Return `{workflow_name: enabled}` for the board's built-in workflows, or
+    None if the query could not be read. The GraphQL API exposes only name +
+    enabled (never a workflow's trigger/action config, and there is no
+    create/enable mutation — only `deleteProjectV2Workflow`), so `enabled` is
+    the one bit the doctor can verify. Owner may be a User or an Organization."""
+    result = runner(["api", "graphql", "-f", f"query={PROJECT_WORKFLOWS_QUERY}",
+                     "-F", f"owner={owner}", "-F", f"number={number}"])
+    if result.returncode != 0:
+        return None
+    try:
+        payload = json.loads(result.stdout or "{}")
+    except json.JSONDecodeError:
+        return None
+    node = ((payload.get("data") or {}).get("repositoryOwner") or {}).get("projectV2") or {}
+    nodes = (node.get("workflows") or {}).get("nodes") or []
+    return {w.get("name", ""): bool(w.get("enabled")) for w in nodes if w.get("name")}
+
+
 # --------------------------------------------------------------------------
 # Auto-add workflow detection (for the forward-binding doctor check). The
 # built-in auto-add workflow has no API, but the `actions/add-to-project`
@@ -1631,6 +1660,25 @@ def verb_doctor(ctx: RepoContext, runner: GhRunner) -> dict:
                   "" if schema.priority_field_id else "Re-run bootstrap to add it")
         except BoardError as exc:
             check("status_options", "FAIL", str(exc), exc.fix)
+        # The one native automation the lifecycle DEPENDS ON: "Item closed" is
+        # the sole writer of `→ shipped` (no engine verb owns it). If a human
+        # disables it, merges silently stop stamping shipped — a pure snowball
+        # source. The API can read `enabled` (not the action config), so verify
+        # that one bit here; bootstrap only checks it once, the doctor re-checks.
+        if authed:
+            workflows = project_workflows(board.owner, board.number, runner)
+            if workflows is None:
+                check("item_closed_workflow", "SKIP",
+                      "could not read the board's built-in workflows")
+            elif workflows.get("Item closed"):
+                check("item_closed_workflow", "PASS",
+                      "'Item closed' automation enabled (stamps shipped on merge-close)")
+            else:
+                check("item_closed_workflow", "FAIL",
+                      "'Item closed' workflow is disabled — merged PRs will close issues but "
+                      "Status will never advance to shipped",
+                      "Re-enable it in the Project → Workflows UI (there is no API to enable "
+                      "a built-in workflow), then re-run the doctor")
         # Board <-> repo link (discoverability; a missing link never blocks work).
         if authed and ctx.origin_owner:
             linked = project_linked_repos(board.owner, board.number, runner)
