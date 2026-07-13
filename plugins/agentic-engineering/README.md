@@ -325,6 +325,8 @@ The `agent-browser` skill provides comprehensive documentation on usage.
 claude /plugin install agentic-engineering
 ```
 
+Then run **`/setup`** — the configuration flow. It auto-detects your stack and offers review agents, the lifecycle board, the operating-principles always-on layer, and the **documentation-health CI workflow** (docs-health gate + optional agent audit on every PR; works with a Claude Pro/Max subscription token). Use `/config-flags` to change individual settings later.
+
 ## Known Issues
 
 ### MCP Servers Not Auto-Loading

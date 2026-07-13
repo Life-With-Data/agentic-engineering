@@ -56,6 +56,10 @@ The workflows auto-detect how you track work — a GitHub Projects v2 lifecycle 
 /add-plugin agentic-engineering
 ```
 
+## Configure
+
+After installing, run **`/setup`** — the plugin's configuration flow. It auto-detects your stack and walks through review agents, the lifecycle board, the operating-principles always-on layer, and installing the **documentation-health CI workflow** (a zero-dependency docs-health gate plus an optional agent audit that reviews docs on every PR — usable with a Claude Pro/Max subscription token). Re-run it anytime; `/config-flags` flips individual settings and `/lifecycle-doctor` verifies the board.
+
 ## Use it in other AI tools
 
 This repo ships a Bun/TypeScript CLI (`agentic-plugin`) that converts the plugin into other tools' native formats. It runs straight from GitHub — no registry involved:
