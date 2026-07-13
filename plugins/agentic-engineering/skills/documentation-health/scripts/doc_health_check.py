@@ -13,9 +13,13 @@ exactly which files to open.
 
 Usage:
     python3 doc_health_check.py [REPO_DIR] [--json] [--claude-max N] [--readme-max N]
+                               [--fail-on {error,warn,info,never}] [--strict]
 
-Exit code is 0 unless --strict is passed, in which case any ERROR finding
-exits 1 (useful as a CI gate).
+Exit codes: 2 on bad invocation; otherwise the gate is controlled by
+--fail-on (default `never`, so exit 0). `--fail-on error` exits 1 when any
+ERROR is present, `warn` when any ERROR or WARN is present, `info` on any
+finding at all, and `never` never fails. `--strict` is a back-compat alias
+for `--fail-on error`. This lets a repo tune how strict its CI gate is.
 """
 
 from __future__ import annotations
@@ -808,7 +812,12 @@ def main(argv=None):
     ap = argparse.ArgumentParser(description="Documentation-health scanner")
     ap.add_argument("repo", nargs="?", default=".", help="Repo dir (default: cwd)")
     ap.add_argument("--json", action="store_true", help="Emit JSON instead of text")
-    ap.add_argument("--strict", action="store_true", help="Exit 1 if any ERROR found")
+    ap.add_argument("--fail-on", choices=("error", "warn", "info", "never"),
+                    default="never", dest="fail_on",
+                    help="Severity that makes the run exit 1 (default: never). "
+                         "error=only ERRORs; warn=ERROR or WARN; info=any finding.")
+    ap.add_argument("--strict", action="store_true",
+                    help="Alias for --fail-on error (back-compat).")
     ap.add_argument("--no-tools", action="store_true",
                     help="Skip external tools (lychee/doctoc/markdownlint)")
     ap.add_argument("--claude-max", type=int, default=None,
@@ -838,7 +847,13 @@ def main(argv=None):
     else:
         print(render(rep))
 
-    if args.strict and any(f.severity == "ERROR" for f in rep.findings):
+    # --strict is a back-compat alias for the strictest-but-one gate.
+    fail_on = "error" if args.strict else args.fail_on
+    gate = {"error": {"ERROR"},
+            "warn": {"ERROR", "WARN"},
+            "info": {"ERROR", "WARN", "INFO"},
+            "never": set()}[fail_on]
+    if gate and any(f.severity in gate for f in rep.findings):
         return 1
     return 0
 

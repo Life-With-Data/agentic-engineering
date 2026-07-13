@@ -1,0 +1,55 @@
+name: Release
+
+# Auto-tag on manifest version change. This repo hand-bumps the plugin version
+# in plugin.json / marketplace.json and maintains CHANGELOG.md (enforced by
+# `bun test`), so the manifest is already the source of truth by the time a
+# change lands on main. Rather than adopt release-please/conventional commits
+# (which would duplicate that discipline), this reads the version on every push
+# to main and, when it hasn't been tagged yet, cuts an immutable `v<version>`
+# tag + GitHub Release with notes pulled from CHANGELOG.md. Those tags are what
+# the documentation-health workflow (and any consumer) pins to.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write   # create tags and releases
+
+concurrency: release   # never race two tag-creations
+
+jobs:
+  tag:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0   # need full history + existing tags
+
+      - name: Tag & release when the plugin version is new
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          VERSION=$(jq -r .version plugins/agentic-engineering/.claude-plugin/plugin.json)
+          TAG="v${VERSION}"
+
+          if git rev-parse -q --verify "refs/tags/${TAG}" >/dev/null; then
+            echo "Tag ${TAG} already exists — nothing to release."
+            exit 0
+          fi
+
+          # Extract this version's section from CHANGELOG.md for release notes:
+          # everything between "## [VERSION]" and the next "## [".
+          NOTES=$(awk -v v="${VERSION}" '
+            $0 ~ "^## \\[" v "\\]" {grab=1; next}
+            grab && /^## \[/ {exit}
+            grab {print}
+          ' plugins/agentic-engineering/CHANGELOG.md)
+          [ -z "${NOTES//[$'\n\t ']/}" ] && NOTES="Release ${TAG}."
+
+          git tag -a "${TAG}" -m "${TAG}"
+          git push origin "${TAG}"
+          printf '%s\n' "${NOTES}" | gh release create "${TAG}" --title "${TAG}" --notes-file -
+          echo "Released ${TAG}."

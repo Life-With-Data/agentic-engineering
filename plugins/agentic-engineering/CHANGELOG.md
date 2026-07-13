@@ -16,6 +16,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - **`/workflows:work` and `/workflows:orchestrate` now drive sub-issue status at the execution boundaries** — dispatch → `in_progress`, hand-back → `in_review`, acceptance verified → `done` (replacing the raw `gh issue close`), open `blocked-by` → `blocked`. The **owning agent writes every `--sub-status`; dispatched sub-agents never touch GitHub state**, preserving the one-writer invariant so status stays faithful whether the owner implements inline or delegates. Component counts (agents/commands/skills) unchanged — this extends the engine and existing commands.
+## [3.20.1] - 2026-07-13
+
+### Added
+
+- **`documentation-health` gains first-class GitHub Actions support.** A new example workflow ([assets/doc-health.yml](skills/documentation-health/assets/doc-health.yml)) ships two independent tiers: a deterministic `scan` gate that fetches the zero-dependency scanner at a pinned ref, and an opt-in `audit` job that runs the skill inside `anthropics/claude-code-action` for the **agent-in-the-loop** judgment pass (duplication, Diátaxis mode-mixing, stale commands, README↔CLAUDE.md drift). The audit posts its review *as Claude* (the Claude GitHub App identity) and is **propose-only yet blocking**: it never pushes to a protected branch, but emits a `--json-schema` structured output and **fails the check on a judgment-confirmed must-fix**, so a real problem blocks merge while scanner false positives don't. The skill is dogfooded on this very marketplace via live repo workflows (`.github/workflows/doc-health.yml`).
+- **Manifest-version-triggered release automation** (`.github/workflows/release.yml`): on push to `main`, reads the plugin version and cuts an immutable `v<version>` tag + GitHub Release (notes from the CHANGELOG) when it's new. Chosen over release-please/conventional-commits because the repo already hand-bumps the manifest and maintains the changelog under test — those tags are what the doc-health workflow and external consumers pin to.
+- **One-click adoption via `/setup`.** The setup skill gains a "Docs CI" step that installs `.github/workflows/doc-health.yml` into the target repo and walks through enabling the agent tier — generate a `CLAUDE_CODE_OAUTH_TOKEN` (Pro/Max subscription, via `claude setup-token`) or `ANTHROPIC_API_KEY` secret, install the Claude GitHub App, and mark the checks Required. The scan gate needs no secret; the audit tier accepts a subscription token (pass exactly one credential — an empty second one breaks auth). Reciprocal pointers in the skill and README make the path obvious from either entry point, and both READMEs now route install → `/setup` with a "Configure" step so the capability surfaces through the marketplace's config flow rather than sitting behind a skill users must already know to invoke.
+
+### Changed
+
+- **The scanner (`doc_health_check.py`) gains tunable gate strictness via `--fail-on {error,warn,info,never}`** (default `never`; `--strict` is kept as a back-compat alias for `--fail-on error`). Teams can start at `error` on PRs and ratchet to `warn` once drift is burned down, or run `never` for report-only scheduled sweeps. `SKILL.md` and `reference.md` document a "Continuous integration" section covering the two tiers, the strictness dial, the propose-only-yet-blocking rule, and tag-based pinning. No component counts change.
 
 ## [3.20.0] - 2026-07-13
 

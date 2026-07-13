@@ -169,7 +169,7 @@ One skill is designed to be **always-on**: `operating-principles` ships a paste-
 |-------|-------------|
 | `brainstorming` | Explore requirements and approaches through collaborative dialogue |
 | `document-review` | Improve documents through structured self-review |
-| `documentation-health` | Audit and repair the informational health of a repo's docs — root & nested CLAUDE.md, root & nested READMEs, and internal/external documentation — with a zero-dependency scanner and a cited best-practices checklist |
+| `documentation-health` | Audit and repair the informational health of a repo's docs — root & nested CLAUDE.md, root & nested READMEs, and internal/external documentation — with a zero-dependency scanner, a cited best-practices checklist, and a two-tier GitHub Actions workflow (deterministic gate + agent audit) that `/setup` installs |
 | `editorial-style-editor` | Review copy for our editorial style guide compliance |
 | `file-todos` | File-based todo tracking system |
 | `git-worktree` | Manage Git worktrees for parallel development |
@@ -325,6 +325,8 @@ The `agent-browser` skill provides comprehensive documentation on usage.
 ```bash
 claude /plugin install agentic-engineering
 ```
+
+Then run **`/setup`** — the configuration flow. It auto-detects your stack and offers review agents, the lifecycle board, the operating-principles always-on layer, and the **documentation-health CI workflow** (docs-health gate + optional agent audit on every PR; works with a Claude Pro/Max subscription token). Use `/config-flags` to change individual settings later.
 
 ## Known Issues
 
