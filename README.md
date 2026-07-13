@@ -1,7 +1,7 @@
 # Agentic Engineering
 
-[![Build Status](https://github.com/aagnone3/agentic-engineering/actions/workflows/ci.yml/badge.svg)](https://github.com/aagnone3/agentic-engineering/actions/workflows/ci.yml)
-[![Release](https://img.shields.io/github/v/release/aagnone3/agentic-engineering)](https://github.com/aagnone3/agentic-engineering/releases)
+[![Build Status](https://github.com/Life-With-Data/agentic-engineering/actions/workflows/ci.yml/badge.svg)](https://github.com/Life-With-Data/agentic-engineering/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/Life-With-Data/agentic-engineering)](https://github.com/Life-With-Data/agentic-engineering/releases)
 
 A Claude Code plugin built on one idea: **each unit of engineering work should make the next one easier — not harder.**
 
@@ -46,7 +46,7 @@ The workflows auto-detect how you track work — a GitHub Projects v2 lifecycle 
 **Claude Code:**
 
 ```bash
-/plugin marketplace add https://github.com/aagnone3/agentic-engineering
+/plugin marketplace add https://github.com/Life-With-Data/agentic-engineering
 /plugin install agentic-engineering
 ```
 
@@ -65,8 +65,8 @@ After installing, run **`/setup`** — the plugin's configuration flow. It auto-
 This repo ships a Bun/TypeScript CLI (`agentic-plugin`) that converts the plugin into other tools' native formats. It runs straight from GitHub — no registry involved:
 
 ```bash
-npx github:aagnone3/agentic-engineering install agentic-engineering --to <target>
-# pin a release: npx github:aagnone3/agentic-engineering#v3.0.0 install ...
+npx github:Life-With-Data/agentic-engineering install agentic-engineering --to <target>
+# pin a release: npx github:Life-With-Data/agentic-engineering#v3.0.0 install ...
 ```
 
 | Target | Output | Notes |
@@ -107,7 +107,7 @@ bun run src/index.ts install ./plugins/agentic-engineering --to opencode
 Mirror your own Claude Code setup (`~/.claude/`) into other tools:
 
 ```bash
-npx github:aagnone3/agentic-engineering sync --target <opencode|codex|pi|droid|copilot>
+npx github:Life-With-Data/agentic-engineering sync --target <opencode|codex|pi|droid|copilot>
 ```
 
 Syncs personal skills from `~/.claude/skills/` (as symlinks, so edits reflect immediately) and MCP servers from `~/.claude/settings.json`.
