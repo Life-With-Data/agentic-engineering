@@ -51,12 +51,13 @@ exists today:
 
 Config lives in `.github/release-please-config.json` /
 `.github/.release-please-manifest.json` (manifest seeded at the versions in
-place when this was adopted: `4.0.0` / `0.1.0`). Both packages set
-`bootstrap-sha` to the commit tip of `main` at adoption time, so the first
-generated release PR's changelog doesn't dredge up the entire project
-history — neither package has any commits tagged in release-please's
-`<package-name>-v<version>` format yet (existing tags are flat `vX.Y.Z` from
-the old `release.yml`).
+place when this was adopted: `4.0.0` / `0.1.0`). `bootstrap-sha` is set at
+the **top level** of the config (a single Manifest-wide option — it is
+**not** a per-package field, see the gotcha below) to the commit tip of
+`main` at adoption time, so the first generated release PR's changelog
+doesn't dredge up the entire project history — neither package has any
+commits tagged in release-please's `<package-name>-v<version>` format yet
+(existing tags are flat `vX.Y.Z` from the old `release.yml`).
 
 `.github/workflows/release-pr.yml` runs `googleapis/release-please-action`
 on push to `main`, maintaining one standing release PR per package. Merging
@@ -82,6 +83,40 @@ per `docs/solutions/security-issues/hardening-scaffolded-github-actions-workflow
 guidance that third-party (non-`actions/*`) actions should be pinned rather
 than tracking a moving tag, especially when granted `contents: write` /
 `pull-requests: write` (as `release-please-action` is here).
+
+## Gotcha discovered via the first live dry run (do not repeat)
+
+The first version of this config was wrong in two ways, caught by actually
+letting `release-pr.yml` run against `main` (PR #157) rather than trusting
+the config on paper — read `src/manifest.ts` and
+`src/strategies/base.ts`/`simple.ts` in the `release-please` source, not just
+the JSON schema, before assuming a field does what its name suggests:
+
+1. **`bootstrap-sha` only exists at the top level of the manifest config**
+   (`config['bootstrap-sha']` in `manifest.ts`) — nesting it inside a
+   `packages.<path>` object is silently accepted as valid JSON but has no
+   effect. The first dry run scanned the *entire* project history and
+   proposed a MAJOR bump (`4.0.0` → `5.0.0`) off a years-old "BREAKING
+   CHANGE" commit that had nothing to do with the actual PR.
+2. **`extra-files` paths are relative to the *package's own directory*, not
+   the repo root** — `BaseStrategy.addPath()` prefixes every extra-file path
+   with `this.path` (the package path) unless the path starts with a leading
+   `/`, and it throws on `../` traversal entirely (`illegal pathing
+   characters`). Every extra-file in the first version of this config was
+   wrong: paths meant to be root-relative (e.g. `.claude-plugin/marketplace.json`)
+   got silently double-prefixed with the package directory and pointed at
+   files that don't exist — so PR #157 updated only `CHANGELOG.md` and the
+   manifest, and never touched `plugin.json` (the actual version source of
+   truth) or any of its mirrors at all. The fix: for a file *inside* the
+   package directory, use a plain relative path (e.g. `.claude-plugin/plugin.json`
+   for the package's own manifest); for a file *outside* it (like the root
+   `marketplace.json`), prefix with a leading `/` (e.g.
+   `/.claude-plugin/marketplace.json`) — never `../../`.
+
+PR #157 was closed unmerged (it would have shipped a wrong major bump and a
+`plugin.json` that never actually changed); its branch was deleted, the
+config above was corrected, and the fix was re-verified with a second live
+dry run before being trusted.
 
 ## Known limitation, accepted
 
