@@ -38,8 +38,8 @@ Branch on the JSON `verdict` (a closed enum — no prose predicates):
 | `verdict` | Action |
 |---|---|
 | `proceed` | Continue to Step 0 below and plan normally. |
-| `already_done` (plan exists) | A plan already exists — report the existing plan path (the `plan_doc` field in the JSON) and offer `/workflows:work` as the next step, then **STOP**. Do not re-plan. |
-| `already_done` (abandoned) | The item is `abandoned` (the gate returns `already_done` with `route: none` and `plan_doc: null`). Report that the item is abandoned and **STOP** — do **not** offer `/workflows:work` and do not re-plan. |
+| `already_done` (plan exists) | A plan already exists — report the existing plan path (the `plan_doc` field in the JSON) and offer `/workflows-work` as the next step, then **STOP**. Do not re-plan. |
+| `already_done` (abandoned) | The item is `abandoned` (the gate returns `already_done` with `route: none` and `plan_doc: null`). Report that the item is abandoned and **STOP** — do **not** offer `/workflows-work` and do not re-plan. |
 | `repair_needed` | Status says planned but no join-keyed plan doc exists — treat the item as un-groomed and **continue**; this run repairs it by producing the missing plan and re-stamping in Step 7. |
 | `no_board` | No board configured (legacy mode). **Continue degraded** via the legacy flow (Step 0's un-keyed fallback + Step 7's `github`/`none` branches). |
 
@@ -202,7 +202,7 @@ Select how comprehensive you want the issue to be, simpler is mostly better.
 
 **Tracker-ID frontmatter contract (applies to all three templates below):**
 
-Every plan exiting `/workflows:plan` must record the sole tracker join key:
+Every plan exiting `/workflows-plan` must record the sole tracker join key:
 
 ```
 github_issue: 123        # the GitHub issue this plan is joined to
@@ -628,11 +628,11 @@ Before finalizing, re-read the brainstorm document and verify:
 mkdir -p docs/plans/
 ```
 
-Use the Write tool to save the complete plan to `docs/plans/YYYY-MM-DD-<type>-<descriptive-name>-plan.md`. This step is mandatory and cannot be skipped — even when running as part of `/workflows:orchestrate` or other automated pipelines.
+Use the Write tool to save the complete plan to `docs/plans/YYYY-MM-DD-<type>-<descriptive-name>-plan.md`. This step is mandatory and cannot be skipped — even when running as part of `/workflows-orchestrate` or other automated pipelines.
 
 Confirm: "Plan written to docs/plans/[filename]"
 
-**Pipeline mode:** If invoked from an automated workflow (`/workflows:orchestrate`, `/workflows:groom`, or any `disable-model-invocation` context), skip all AskUserQuestion calls. Make decisions automatically and proceed to writing the plan without interactive prompts.
+**Pipeline mode:** If invoked from an automated workflow (`/workflows-orchestrate`, `/workflows-groom`, or any `disable-model-invocation` context), skip all AskUserQuestion calls. Make decisions automatically and proceed to writing the plan without interactive prompts.
 
 ## Output Format
 
@@ -653,7 +653,7 @@ Examples:
 
 ## Step 7. Create Tracker Issue (MANDATORY)
 
-**This step is a gate, not an option.** Every plan that exits `/workflows:plan` must have `github_issue` recorded in its frontmatter (or the explicit `issue_tracker: none` carve-out). This step runs unconditionally — including in `/workflows:orchestrate` / `disable-model-invocation` pipeline mode. Only `AskUserQuestion` calls are skipped in pipeline mode; tracker creation itself still executes.
+**This step is a gate, not an option.** Every plan that exits `/workflows-plan` must have `github_issue` recorded in its frontmatter (or the explicit `issue_tracker: none` carve-out). This step runs unconditionally — including in `/workflows-orchestrate` / `disable-model-invocation` pipeline mode. Only `AskUserQuestion` calls are skipped in pipeline mode; tracker creation itself still executes.
 
 **Resolve the mode first** — run the preflight script and read `integrations.issue_tracker_resolved`:
 
@@ -725,7 +725,7 @@ Print:
 No issue tracker detected. Run `gh auth login` to enable issue creation. Plan file is saved at <plan_path>.
 ```
 
-This is the only path that may exit Step 7 without writing `github_issue`. Set `issue_tracker: none` in the plan frontmatter (the documented un-tracked carve-out). When this happens, Post-Generation Options MUST surface the lack of tracking in its preamble and MUST NOT offer `/workflows:work` as a next step.
+This is the only path that may exit Step 7 without writing `github_issue`. Set `issue_tracker: none` in the plan frontmatter (the documented un-tracked carve-out). When this happens, Post-Generation Options MUST surface the lack of tracking in its preamble and MUST NOT offer `/workflows-work` as a next step.
 
 > **Implementer scratchpad note:** while implementing, a human may privately track sub-tasks with `TodoWrite` or `bd` — this is disposable working state, never the tracker. Nothing in the lifecycle ever reads it, and it is never written into the plan frontmatter.
 
@@ -757,27 +757,27 @@ Then use the **AskUserQuestion tool** to present these options:
 **Options (4 max):**
 1. **Run `/deepen-plan`** - Enhance with parallel research agents (best practices, performance, UI)
 2. **Run `/technical_review`** - Technical feedback from code-focused reviewers
-3. **Start `/workflows:work`** - Begin implementing (add `&` suffix for background/remote execution). **Omit this option entirely when the `none` carve-out is active** — work must not start without a tracker ID.
+3. **Start `/workflows-work`** - Begin implementing (add `&` suffix for background/remote execution). **Omit this option entirely when the `none` carve-out is active** — work must not start without a tracker ID.
 4. **Review and refine** - Structured self-review via `document-review` skill
 
 Based on selection:
 - **`/deepen-plan`** → Call the /deepen-plan command with the plan file path to enhance with research
 - **`/technical_review`** → Call the /technical_review command with the plan file path
-- **`/workflows:work`** → Call the /workflows:work command with the plan file path. For remote/web execution, run with `&` to start in background.
+- **`/workflows-work`** → Call the /workflows-work command with the plan file path. For remote/web execution, run with `&` to start in background.
 - **Review and refine** → Load `document-review` skill.
 
-**Question 2 (after action completes, only if user did NOT pick `/workflows:work`):**
+**Question 2 (after action completes, only if user did NOT pick `/workflows-work`):**
 
 Use the **AskUserQuestion tool** again:
 
 **Question:** "What would you like to do next?"
 
 **Options (2):**
-1. **Start `/workflows:work`** - Begin implementing this plan (omit when the `none` carve-out is active)
+1. **Start `/workflows-work`** - Begin implementing this plan (omit when the `none` carve-out is active)
 2. **Continue refining** - Loop back to Question 1
 
 Based on selection:
-- **`/workflows:work`** → Call the /workflows:work command with the plan file path
+- **`/workflows-work`** → Call the /workflows-work command with the plan file path
 - **Continue refining** → Loop back to Question 1
 
 **Note:** For maximum depth and grounding, run `/deepen-plan` after plan creation.

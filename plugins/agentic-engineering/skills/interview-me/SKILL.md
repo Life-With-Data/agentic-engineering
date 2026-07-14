@@ -11,7 +11,7 @@ What people ask for and what they actually want are different things. They ask f
 
 The cheapest moment to find this gap is before any plan, spec, or code exists. Once building has started, switching costs are real, and the user will rationalize the wrong thing into a "good enough" thing. The misfit gets locked in.
 
-This skill closes the gap before it costs anything. The skills downstream of it assume the intent is already roughly known: the `brainstorming` skill explores 2-3 concrete approaches against a known intent, `/workflows:plan` turns a chosen approach into an implementation plan, and a doubt-driven review stress-tests that plan after it's drafted. Interview-me is the part before all of those — ask one question at a time, each with a best guess attached, until the user's next answer is predictable before they give it.
+This skill closes the gap before it costs anything. The skills downstream of it assume the intent is already roughly known: the `brainstorming` skill explores 2-3 concrete approaches against a known intent, `/workflows-plan` turns a chosen approach into an implementation plan, and a doubt-driven review stress-tests that plan after it's drafted. Interview-me is the part before all of those — ask one question at a time, each with a best guess attached, until the user's next answer is predictable before they give it.
 
 Position relative to `brainstorming`: interview-me nails down **what** the user truly wants (intent extraction); brainstorming explores **how** to build it (approach exploration). When an ask is underspecified, run interview-me first, then hand the confirmed intent to brainstorming. Their triggers are deliberately adjacent, so the ordering is what keeps them from colliding.
 
@@ -135,7 +135,7 @@ This is a checkable test, not a vibe. It also has a floor: several rounds in and
 
 ## Output
 
-The output of this skill is a **confirmed statement of intent**: the restate from Step 4, with an explicit yes from Step 5. That's the deliverable. Approaches, plans, and task lists are downstream; they consume the intent this skill produces (hand off to the `brainstorming` skill to explore approaches, then `/workflows:plan` to break the chosen one down).
+The output of this skill is a **confirmed statement of intent**: the restate from Step 4, with an explicit yes from Step 5. That's the deliverable. Approaches, plans, and task lists are downstream; they consume the intent this skill produces (hand off to the `brainstorming` skill to explore approaches, then `/workflows-plan` to break the chosen one down).
 
 If the user wants the intent to persist (a multi-session project, a handoff to another collaborator), offer to save it to `docs/intent/YYYY-MM-DD-<topic>-intent.md` — mirroring where the `brainstorming` skill saves its design docs (`docs/brainstorms/`). Only save if they confirm.
 
@@ -182,7 +182,7 @@ Two questions in, the agent has discovered the actual ask isn't "a dashboard." I
 ## Interaction with Other Skills
 
 - **`brainstorming`** (this plugin): downstream. Once intent is confirmed here, hand it to `brainstorming` to explore 2-3 concrete approaches against the now-explicit intent. Interview-me answers **what** the user wants; brainstorming answers **how** to build it. When an ask is underspecified, run interview-me first, then brainstorming — their triggers are adjacent, so the ordering is what keeps them from competing.
-- **`/workflows:plan`** (this plugin): further downstream. When the confirmed intent is concrete enough to build ("I want X for Y users with Z success criteria"), `/workflows:plan` turns it into an implementation plan and its own task breakdown. The intent statement this skill produces is the input that lets `/workflows:plan` skip re-deriving what to build.
+- **`/workflows-plan`** (this plugin): further downstream. When the confirmed intent is concrete enough to build ("I want X for Y users with Z success criteria"), `/workflows-plan` turns it into an implementation plan and its own task breakdown. The intent statement this skill produces is the input that lets `/workflows-plan` skip re-deriving what to build.
 - **Doubt-driven review**: opposite end of the timeline. Interview-me is pre-decision intent extraction; a doubt-driven review is post-decision artifact review. Both catch divergence, but at different moments. (A companion `doubt-driven-development` skill may be available separately; there's no hard dependency on it.)
 
 ## Common Rationalizations
@@ -222,4 +222,4 @@ After applying interview-me:
 - [ ] A concrete restate (Outcome / User / Why now / Success / Constraint / Out of scope) was written back to the user
 - [ ] The user confirmed the restate with an explicit yes (not "whatever you think," not "sounds good," not silence)
 - [ ] At the stop point, the next three questions' reactions were predictable
-- [ ] Any handoff downstream (the `brainstorming` skill, `/workflows:plan`) was framed in terms of the confirmed intent, not the original underspecified ask
+- [ ] Any handoff downstream (the `brainstorming` skill, `/workflows-plan`) was framed in terms of the confirmed intent, not the original underspecified ask

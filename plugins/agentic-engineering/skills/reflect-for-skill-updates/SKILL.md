@@ -14,7 +14,7 @@ allowed-tools:
 
 > **Purpose**: Turn debugging sessions and mistakes into permanent improvements — updating skills, CLAUDE.md, hooks, and automation so the same problem never costs time twice.
 
-This is the meta-improvement loop for the **agentic engineering** workflow. Where `/workflows:compound` captures the solution to a technical problem, this skill captures *what was missing from the tooling or documentation that let the problem occur in the first place*.
+This is the meta-improvement loop for the **agentic engineering** workflow. Where `/workflows-compound` captures the solution to a technical problem, this skill captures *what was missing from the tooling or documentation that let the problem occur in the first place*.
 
 ## Quick Reference
 

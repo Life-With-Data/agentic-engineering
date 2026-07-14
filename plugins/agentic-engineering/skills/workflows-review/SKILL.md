@@ -57,7 +57,7 @@ Ensure that the code is ready for analysis (either in worktree or on current bra
 <protected_artifacts>
 The following paths are agentic-engineering pipeline artifacts and must never be flagged for deletion, removal, or gitignore by any review agent:
 
-- `docs/plans/*.md` — Plan files created by `/workflows:plan`. These are living documents that track implementation progress (checkboxes are checked off by `/workflows:work`).
+- `docs/plans/*.md` — Plan files created by `/workflows-plan`. These are living documents that track implementation progress (checkboxes are checked off by `/workflows-work`).
 - `docs/solutions/*.md` — Solution documents created during the pipeline.
 
 If a review agent flags any file in these directories for cleanup or removal, discard that finding during synthesis. Do not create a todo for it.
@@ -415,7 +415,7 @@ After creating all todo files, present comprehensive summary:
 3. **Work on Approved Todos**:
 
    ```bash
-   /resolve_todo_parallel  # Fix all approved items efficiently
+   /resolve-todo-parallel  # Fix all approved items efficiently
    ```
 
 4. **Track Progress**:
