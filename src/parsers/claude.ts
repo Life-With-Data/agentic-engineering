@@ -106,10 +106,13 @@ async function loadSkills(skillsDirs: string[]): Promise<ClaudeSkill[]> {
     const raw = await readText(file)
     const { data } = parseFrontmatter(raw)
     const name = (data.name as string) ?? path.basename(path.dirname(file))
+    const allowedTools = parseAllowedTools(data["allowed-tools"])
     const disableModelInvocation = data["disable-model-invocation"] === true ? true : undefined
     skills.push({
       name,
       description: data.description as string | undefined,
+      argumentHint: data["argument-hint"] as string | undefined,
+      allowedTools,
       disableModelInvocation,
       sourceDir: path.dirname(file),
       skillPath: file,
