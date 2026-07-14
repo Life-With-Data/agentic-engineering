@@ -1,6 +1,6 @@
 {
   "name": "agentic-engineering",
-  "version": "4.0.0",
+  "version": "4.1.0",
   "description": "AI-powered development tools. 31 agents, 62 skills, 1 MCP server for code review, research, design, and workflow automation. Native Codex install ships skills, MCP, and safety hooks; agents via Bun --to codex.",
   "author": {
     "name": "Anthony Agnone",
