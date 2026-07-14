@@ -4,7 +4,7 @@ description: Burn down the file-based backlog stored as markdown files under the
 argument-hint: "[optional: specific todo ID or pattern]"
 ---
 
-Resolve all TODO comments using parallel processing.
+Resolve all pending todos in the file-based `todos/` tracker using parallel processing.
 
 ## Workflow
 
