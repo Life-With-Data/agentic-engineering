@@ -161,3 +161,4 @@ The split is roughly **80% planning and review, 20% execution.** Plan thoroughly
 - [Documentation site](https://life-with-data.github.io/agentic-engineering/) — full agent and skill reference
 - [FLOWS.md](plugins/agentic-engineering/FLOWS.md) — mermaid diagrams of every workflow and where the orchestrator pauses for you
 - [Multi-platform native plugin guide](docs/multi-platform-native-plugins.md) — extend a Claude Code plugin to Cursor and Codex without duplicating its implementation
+- [Release process](CLAUDE.md#release-process) — versions and changelogs are computed by release-please from Conventional Commit PR titles, not hand-bumped
