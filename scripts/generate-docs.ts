@@ -12,8 +12,8 @@
  * Per reference page it owns two things:
  *   1. the component card sections (between `<!-- GENERATED:<id> START/END -->`)
  *   2. the sidebar "On This Page" list (the <ul> after that heading)
- * Plus every landing-page stat marked with data-stat="<key>" (agent/command/
- * skill/mcp counts + plugin version), and the changelog page (rendered from
+ * Plus every landing-page stat marked with data-stat="<key>" (agent/skill/mcp
+ * counts + plugin version), and the changelog page (rendered from
  * plugins/agentic-engineering/CHANGELOG.md). All other page chrome (nav,
  * header, intros, footer) is preserved verbatim.
  *
@@ -64,15 +64,6 @@ export function collectAgents(): Component[] {
     if (!existsSync(agentsDir)) continue
     const cats = readdirSync(agentsDir, { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => e.name)
     for (const cat of cats) for (const f of mdIn(path.join(agentsDir, cat))) out.push({ ...fm(f), category: cat })
-  }
-  return out
-}
-
-export function collectCommands(): Component[] {
-  const out: Component[] = []
-  for (const { dir } of pluginDirs()) {
-    for (const f of mdIn(path.join(dir, "commands", "workflows"))) out.push({ ...fm(f), category: "workflow" })
-    for (const f of mdIn(path.join(dir, "commands"))) out.push({ ...fm(f), category: "utility" })
   }
   return out
 }
@@ -408,32 +399,6 @@ function buildAgents(agents: Component[]): { inner: string; nav: NavItem[] } {
   return { inner: sections.join("\n\n"), nav }
 }
 
-const COMMAND_GROUPS = [
-  { key: "workflow", id: "workflow-commands", nav: "Workflow", heading: "Workflow Commands", icon: "fa-arrows-spin" },
-  { key: "utility", id: "utility-commands", nav: "Utility", heading: "Utility Commands", icon: "fa-screwdriver-wrench" },
-]
-
-function buildCommands(commands: Component[]): { inner: string; nav: NavItem[] } {
-  const sections: string[] = []
-  const nav: NavItem[] = []
-  for (const g of COMMAND_GROUPS) {
-    const items = commands.filter((c) => c.category === g.key)
-    if (!items.length) continue
-    const cards = items.map((c) =>
-      card(
-        "command",
-        slug(c.name),
-        `              <code class="command-detail-name">/${esc(c.name)}</code>`,
-        c.description,
-        `/${c.name}`,
-      ),
-    )
-    sections.push(section(g.id, g.icon, g.heading, items.length, cards))
-    nav.push({ href: `#${g.id}`, label: `${g.nav} (${items.length})` })
-  }
-  return { inner: sections.join("\n\n"), nav }
-}
-
 function buildSkills(groups: PluginSkills[]): { inner: string; nav: NavItem[] } {
   const sections: string[] = []
   const nav: NavItem[] = []
@@ -489,7 +454,6 @@ type FileUpdate = { file: string; next: string }
 
 export function buildUpdates(): FileUpdate[] {
   const agents = collectAgents()
-  const commands = collectCommands()
   const skills = collectSkills()
   const mcp = collectMcp()
 
@@ -500,7 +464,6 @@ export function buildUpdates(): FileUpdate[] {
 
   const pages: Array<{ file: string; id: string; begin: string; end: string; built: { inner: string; nav: NavItem[] } }> = [
     { file: "pages/agents.html", id: "agents", begin: "<!-- Review Agents -->", end: "<!-- Navigation -->", built: buildAgents(agents) },
-    { file: "pages/commands.html", id: "commands", begin: "<!-- Workflow Commands -->", end: "<!-- Navigation -->", built: buildCommands(commands) },
     { file: "pages/skills.html", id: "skills", begin: "<!-- Development Tools -->", end: "<!-- Navigation -->", built: buildSkills(skills) },
     { file: "pages/mcp-servers.html", id: "mcp", begin: "<!-- Playwright -->", end: "<!-- Manual Configuration -->", built: buildMcp(mcp) },
     { file: "pages/changelog.html", id: "changelog", begin: "<!-- Versions -->", end: "</article>", built: buildChangelog(changelog) },
@@ -515,7 +478,7 @@ export function buildUpdates(): FileUpdate[] {
 
   const skillCount = skills.reduce((n, g) => n + g.skills.length, 0)
   const version = String(JSON.parse(readFileSync(path.join(PLUGIN, ".claude-plugin/plugin.json"), "utf8")).version ?? "")
-  const stats: SiteStats = { agents: agents.length, commands: commands.length, skills: skillCount, mcp: mcp.length, version }
+  const stats: SiteStats = { agents: agents.length, skills: skillCount, mcp: mcp.length, version }
   updates.push({ file: path.join(DOCS, "index.html"), next: applyStats(read("index.html"), stats) })
 
   return updates

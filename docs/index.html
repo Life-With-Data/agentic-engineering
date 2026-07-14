@@ -4,7 +4,7 @@
 <head>
   <meta charset="utf-8" />
   <title>Agentic Engineering - AI-Powered Development Tools for Claude Code</title>
-  <meta content="Your code reviews just got 12 expert opinions in 30 seconds. Specialized agents, workflow commands, and skills that make today's work easier than yesterday's." name="description" />
+  <meta content="Your code reviews just got 12 expert opinions in 30 seconds. Specialized agents and skills that make today's work easier than yesterday's." name="description" />
   <meta content="width=device-width, initial-scale=1" name="viewport" />
 
   <!-- Open Graph -->
@@ -133,7 +133,6 @@
       </a>
       <nav role="navigation" class="nav-menu" data-navigation>
         <a href="#agents" class="nav-link">Agents</a>
-        <a href="#commands" class="nav-link">Commands</a>
         <a href="#skills" class="nav-link">Skills</a>
         <a href="#mcp-servers" class="nav-link">MCP Servers</a>
         <a href="pages/getting-started.html" class="nav-link">Docs</a>
@@ -161,7 +160,7 @@
             Your Code Reviews Just Got 12 Expert Opinions. In 30 Seconds.
           </h1>
           <p class="paragraph m secondary balanced" style="margin-bottom: 32px;">
-            Here's what happened when we shipped yesterday: security audit, performance analysis, architectural review, pattern detection, and eight more specialized checks—all running in parallel. No meetings. No waiting. Just answers. That's agentic engineering: <span data-stat="agents">31</span> specialized agents, <span data-stat="commands">28</span> workflow commands, and <span data-stat="skills">36</span> skills that make today's work easier than yesterday's.
+            Here's what happened when we shipped yesterday: security audit, performance analysis, architectural review, pattern detection, and eight more specialized checks—all running in parallel. No meetings. No waiting. Just answers. That's agentic engineering: <span data-stat="agents">31</span> specialized agents and <span data-stat="skills">63</span> skills that make today's work easier than yesterday's.
           </p>
           <div class="button-group margin-paragraph centered">
             <a href="#install" class="button primary">
@@ -183,13 +182,8 @@
             <div class="stat-label">Specialized Agents</div>
           </div>
           <div class="stat-card">
-            <div class="stat-icon"><i class="fa-solid fa-terminal"></i></div>
-            <div class="stat-number" data-stat="commands">28</div>
-            <div class="stat-label">Slash Commands</div>
-          </div>
-          <div class="stat-card">
             <div class="stat-icon"><i class="fa-solid fa-wand-magic-sparkles"></i></div>
-            <div class="stat-number" data-stat="skills">36</div>
+            <div class="stat-number" data-stat="skills">63</div>
             <div class="stat-label">Intelligent Skills</div>
           </div>
           <div class="stat-card">
@@ -527,158 +521,6 @@
         </div>
       </section>
 
-      <!-- Commands Section -->
-      <section id="commands">
-        <div class="heading">
-          <h2 class="no-top-margin">
-            <i class="fa-solid fa-terminal color-accent"></i> 23 Powerful Commands
-          </h2>
-          <p class="paragraph m secondary">
-            Slash commands that replace entire workflows. <code>/review</code> is your code review committee. <code>/plan</code> is your research team. <code>/triage</code> sorts 50 todos in the time it takes you to read five. Each one automates hours of work into a single line.
-          </p>
-        </div>
-
-        <!-- Workflow Commands -->
-        <div class="command-category">
-          <h3><i class="fa-solid fa-arrows-spin"></i> Workflow Commands</h3>
-          <div class="grid columns-2">
-            <div class="command-card">
-              <div class="command-header">
-                <code class="command-name">/plan</code>
-                <span class="command-type-badge">core</span>
-              </div>
-              <p class="command-description">Create comprehensive implementation plans with research agents and stakeholder analysis.</p>
-            </div>
-            <div class="command-card">
-              <div class="command-header">
-                <code class="command-name">/review</code>
-                <span class="command-type-badge">core</span>
-              </div>
-              <p class="command-description">Run exhaustive code reviews using 12 or more parallel agents and worktrees.</p>
-            </div>
-            <div class="command-card">
-              <div class="command-header">
-                <code class="command-name">/work</code>
-                <span class="command-type-badge">core</span>
-              </div>
-              <p class="command-description">Execute work items systematically with progress tracking and validation.</p>
-            </div>
-            <div class="command-card">
-              <div class="command-header">
-                <code class="command-name">/compound</code>
-                <span class="command-type-badge">core</span>
-              </div>
-              <p class="command-description">Document solved problems to compound team knowledge. Turn learnings into reusable patterns.</p>
-            </div>
-          </div>
-        </div>
-
-        <!-- Utility Commands -->
-        <div class="command-category">
-          <h3><i class="fa-solid fa-wrench"></i> Utility Commands</h3>
-          <div class="grid columns-3">
-            <div class="command-card">
-              <div class="command-header">
-                <code class="command-name">/changelog</code>
-                <span class="command-type-badge">util</span>
-              </div>
-              <p class="command-description">Create engaging changelogs for recent merges.</p>
-            </div>
-            <div class="command-card">
-              <div class="command-header">
-                <code class="command-name">/create-agent-skill</code>
-                <span class="command-type-badge">util</span>
-              </div>
-              <p class="command-description">Create or edit Claude Code skills with expert guidance.</p>
-            </div>
-            <div class="command-card">
-              <div class="command-header">
-                <code class="command-name">/generate_command</code>
-                <span class="command-type-badge">util</span>
-              </div>
-              <p class="command-description">Generate new slash commands from templates.</p>
-            </div>
-            <div class="command-card">
-              <div class="command-header">
-                <code class="command-name">/heal-skill</code>
-                <span class="command-type-badge">util</span>
-              </div>
-              <p class="command-description">Fix skill documentation issues automatically.</p>
-            </div>
-            <div class="command-card">
-              <div class="command-header">
-                <code class="command-name">/plan_review</code>
-                <span class="command-type-badge">util</span>
-              </div>
-              <p class="command-description">Multi-agent plan review in parallel.</p>
-            </div>
-            <div class="command-card">
-              <div class="command-header">
-                <code class="command-name">/prime</code>
-                <span class="command-type-badge">util</span>
-              </div>
-              <p class="command-description">Prime/setup command for project initialization.</p>
-            </div>
-            <div class="command-card">
-              <div class="command-header">
-                <code class="command-name">/report-bug</code>
-                <span class="command-type-badge">util</span>
-              </div>
-              <p class="command-description">Report bugs in the plugin with structured templates.</p>
-            </div>
-            <div class="command-card">
-              <div class="command-header">
-                <code class="command-name">/reproduce-bug</code>
-                <span class="command-type-badge">util</span>
-              </div>
-              <p class="command-description">Reproduce bugs using logs and console output.</p>
-            </div>
-            <div class="command-card">
-              <div class="command-header">
-                <code class="command-name">/triage</code>
-                <span class="command-type-badge">util</span>
-              </div>
-              <p class="command-description">Triage and prioritize issues interactively.</p>
-            </div>
-            <div class="command-card">
-              <div class="command-header">
-                <code class="command-name">/resolve_parallel</code>
-                <span class="command-type-badge">util</span>
-              </div>
-              <p class="command-description">Resolve TODO comments in parallel.</p>
-            </div>
-            <div class="command-card">
-              <div class="command-header">
-                <code class="command-name">/resolve_pr_parallel</code>
-                <span class="command-type-badge">util</span>
-              </div>
-              <p class="command-description">Resolve PR comments in parallel.</p>
-            </div>
-            <div class="command-card">
-              <div class="command-header">
-                <code class="command-name">/resolve_todo_parallel</code>
-                <span class="command-type-badge">util</span>
-              </div>
-              <p class="command-description">Resolve file-based todos in parallel.</p>
-            </div>
-            <div class="command-card">
-              <div class="command-header">
-                <code class="command-name">/release-docs</code>
-                <span class="command-type-badge">util</span>
-              </div>
-              <p class="command-description">Build and update the documentation site with current plugin components.</p>
-            </div>
-            <div class="command-card">
-              <div class="command-header">
-                <code class="command-name">/deploy-docs</code>
-                <span class="command-type-badge">util</span>
-              </div>
-              <p class="command-description">Validate and prepare documentation for GitHub Pages deployment.</p>
-            </div>
-          </div>
-        </div>
-      </section>
-
       <!-- Skills Section -->
       <section id="skills">
         <div class="heading">
@@ -965,7 +807,7 @@ skill: gemini-imagegen</code></pre>
             </summary>
             <div class="accordion-content">
               <p>
-                Absolutely. We've got Python and TypeScript reviewers alongside the Rails ones. And the workflow commands, research agents, and skills like gemini-imagegen don't care what language you write. The security-sentinel finds SQL injection whether it's in Rails, Django, or Laravel.
+                Absolutely. We've got Python and TypeScript reviewers alongside the Rails ones. And the workflow skills, research agents, and domain skills like gemini-imagegen don't care what language you write. The security-sentinel finds SQL injection whether it's in Rails, Django, or Laravel.
               </p>
             </div>
           </details>
@@ -989,7 +831,7 @@ skill: gemini-imagegen</code></pre>
           <span class="cta-badge"><i class="fa-solid fa-bolt"></i> Free & Open Source</span>
           <h2>Install Once. Compound Forever.</h2>
           <p class="paragraph m cta-subheading">
-            <strong>Your next code review takes 30 seconds.</strong> The one after that? Even faster. That's compounding. Get <span data-stat="agents">31</span> expert agents, <span data-stat="commands">28</span> workflow commands, and <span data-stat="skills">36</span> specialized skills working for you right now.
+            <strong>Your next code review takes 30 seconds.</strong> The one after that? Even faster. That's compounding. Get <span data-stat="agents">31</span> expert agents and <span data-stat="skills">63</span> specialized skills working for you right now.
           </p>
           <div class="button-group margin-paragraph centered">
             <a href="#install" class="button primary cta-primary">
@@ -1017,7 +859,6 @@ skill: gemini-imagegen</code></pre>
         <div>
           <div class="link-list">
             <a href="#agents" class="ui s">Agents</a>
-            <a href="#commands" class="ui s">Commands</a>
             <a href="#skills" class="ui s">Skills</a>
             <a href="pages/getting-started.html" class="ui s">Documentation</a>
           </div>

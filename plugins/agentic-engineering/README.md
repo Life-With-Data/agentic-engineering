@@ -7,11 +7,10 @@ AI-powered development tools that get smarter with every use. Make each unit of 
 | Component | Count |
 |-----------|-------|
 | Agents | 31 |
-| Commands | 28 |
-| Skills | 35 |
+| Skills | 62 |
 | MCP Servers | 1 |
 
-> 📊 **[FLOWS.md](FLOWS.md)** — mermaid diagrams of every workflow (brainstorm → plan → work → review → compound) and how `/workflows:orchestrate` drives them.
+> 📊 **[FLOWS.md](FLOWS.md)** — mermaid diagrams of every workflow (brainstorm → plan → work → review → compound) and how `/workflows-orchestrate` drives them.
 
 ## Agents
 
@@ -73,28 +72,30 @@ Agents are organized into categories for easier discovery.
 |-------|-------------|
 | `ankane-readme-writer` | Create READMEs following Ankane-style template for Ruby gems |
 
-## Commands
+## Skills
 
-### Workflow Commands
+One skill is designed to be **always-on**: `operating-principles` ships a paste-ready CLAUDE.md block ([claude-md-snippet.md](skills/operating-principles/assets/claude-md-snippet.md)) — ten compressed execution rules plus a trigger line that pulls the full skill in (decomposition patterns, verification playbook, failure-mode catalog) when a task warrants depth. The workflow skills load it automatically for delegated sub-agents; the snippet extends the same discipline to every session. The `setup` skill offers to install it into a repo's existing `CLAUDE.md`/`AGENTS.md` (idempotent, marker-guarded).
 
-Core workflow commands use `workflows:` prefix to avoid collisions with built-in commands:
+### Workflow
 
-| Command | Description |
-|---------|-------------|
-| `/workflows:brainstorm` | Explore requirements and approaches before planning |
-| `/workflows:plan` | Create implementation plans |
-| `/workflows:review` | Run comprehensive code reviews |
-| `/workflows:work` | Execute work items systematically (uses deterministic repo preflight script) |
-| `/workflows:compound` | Document solved problems to compound team knowledge |
-| `/workflows:orchestrate` | Drive the full pipeline (brainstorm → plan → work → review → land → compound) as the orchestrator — delegating implementation to sub-agents, reviewing their work, surfacing only blockers and a final review. Segment flags bifurcate the run: `--groom` stops once the item is planned; `--implement` starts from groomed work and refuses to groom |
-| `/workflows:groom` | Groom intake (an idea, bug report, or stub issue) through brainstorm → plan and **stop once the work is groomed** — Status `planned`, join-keyed plan doc, sub-issues with dependencies. The first half of the bifurcated flow; never claims, never branches, never writes code |
-| `/workflows:merge` | Land an open PR — thin entry point to the `land-pr` skill (CI wait, thread resolution, merge gate, cleanup, tracker-item close) |
+The core engineering loop, one skill per stage. Workflow skills carry a `workflows-` prefix — hyphenated, since skill directory names allow only lowercase letters, numbers, and hyphens — so `/workflows-plan` never collides with Claude Code's built-in `/plan`.
+
+| Skill | Description |
+|-------|-------------|
+| `workflows-brainstorm` | Explore requirements and approaches before planning |
+| `workflows-plan` | Create implementation plans (issue + sub-issues + board add, Status=planned) |
+| `workflows-work` | Execute work items systematically (uses deterministic repo preflight script) |
+| `workflows-review` | Run comprehensive multi-agent code reviews |
+| `workflows-compound` | Document solved problems to compound team knowledge |
+| `workflows-orchestrate` | Drive the full pipeline (brainstorm → plan → work → review → land → compound) as the orchestrator — delegating implementation to sub-agents, reviewing their work, surfacing only blockers and a final review. Segment flags bifurcate the run: `--groom` stops once the item is planned; `--implement` starts from groomed work and refuses to groom |
+| `workflows-groom` | Groom intake (an idea, bug report, or stub issue) through brainstorm → plan and **stop once the work is groomed** — Status `planned`, join-keyed plan doc, sub-issues with dependencies. The first half of the bifurcated flow; never claims, never branches, never writes code |
+| `workflows-merge` | Land an open PR — thin entry point to the `land-pr` skill (CI wait, thread resolution, merge gate, cleanup, tracker-item close) |
 
 #### Issue tracker
 
-The workflow commands resolve one of three modes (`github-project | github | none`) at startup and dispatch accordingly:
+The workflow skills resolve one of three modes (`github-project | github | none`) at startup and dispatch accordingly:
 
-- **`github-project`** — a committed board config (`github_project_owner:` + `github_project_number:` in `agentic-engineering.md` at the repo root) is present. This unlocks the full unified lifecycle: a GitHub Projects v2 board is the source of truth, every command gates on entry, and stage moves route through `scripts/lifecycle_board.py`. See the **Lifecycle** section below.
+- **`github-project`** — a committed board config (`github_project_owner:` + `github_project_number:` in `agentic-engineering.md` at the repo root) is present. This unlocks the full unified lifecycle: a GitHub Projects v2 board is the source of truth, every workflow skill gates on entry, and stage moves route through `scripts/lifecycle_board.py`. See the **Lifecycle** section below.
 - **`github`** — plain GitHub Issues + file-todos, today's semantics, no stage machinery and no board writes. Used when `gh` is authenticated but no board config is committed.
 - **`none`** — no `gh` authentication; TodoWrite and the `file-todos` skill are used unchanged.
 
@@ -110,38 +111,31 @@ stub → brainstormed → planned → in_progress → in_review → shipped
                               deployed / compounded (terminal refinements) · abandoned (off-ramp)
 ```
 
-`deployed` and `compounded` are **order-independent** refinements of `shipped`; `abandoned` is reachable from any stage — closing an item as not-planned abandons it even post-ship (the `deployed` high-water rule applies to rollbacks, not to explicit not-planned closes). Each transition has exactly one writer, and a shared reconciler applies a closed set of five repairs. The full vocabulary — stages, writer contracts, entry-gate verdicts, claim semantics, and security invariants — lives in the [`lifecycle` skill](skills/lifecycle/SKILL.md), which every workflow command loads. Humans and agents have parity: assign yourself and drag a card to `in_progress` (the drag is the claim), or run `--claim`; manual card order in views is decorative (the API cannot read it).
+`deployed` and `compounded` are **order-independent** refinements of `shipped`; `abandoned` is reachable from any stage — closing an item as not-planned abandons it even post-ship (the `deployed` high-water rule applies to rollbacks, not to explicit not-planned closes). Each transition has exactly one writer, and a shared reconciler applies a closed set of five repairs. The full vocabulary — stages, writer contracts, entry-gate verdicts, claim semantics, and security invariants — lives in the [`lifecycle` skill](skills/lifecycle/SKILL.md), which every workflow skill loads. Humans and agents have parity: assign yourself and drag a card to `in_progress` (the drag is the claim), or run `--claim`; manual card order in views is decorative (the API cannot read it).
 
-### Utility Commands
+### Utility
 
-| Command | Description |
-|---------|-------------|
-| `/deepen-plan` | Enhance plans with parallel research agents for each section |
-| `/changelog` | Create engaging changelogs for recent merges |
-| `/create-agent-skill` | Create or edit Claude Code skills |
-| `/generate_command` | Generate new slash commands |
-| `/heal-skill` | Fix skill documentation issues |
-| `/sync` | Sync Claude Code config across machines |
-| `/report-bug` | Report a bug in the plugin |
-| `/reproduce-bug` | Reproduce bugs using logs and console |
-| `/resolve_parallel` | Resolve TODO comments in parallel |
-| `/resolve_pr_parallel` | Resolve PR comments in parallel |
-| `/resolve_todo_parallel` | Resolve todos in parallel |
-| `/triage` | Triage and prioritize issues |
-| `/test-browser` | Run browser tests on PR-affected pages |
-| `/test-xcode` | Build and test iOS apps on simulator |
-| `/feature-video` | Record video walkthroughs and add to PR description |
-| `/agent-native-audit` | Run agent-native architecture review with scored principles |
-| `/ci-resolve-workflow-issues` | Diagnose and fix failing CI checks on a pull request |
-| `/upstream-scan` | Scan registered upstream repos for adoptable components and report candidates |
-| `/analyze-source` | Evaluate any external resource (X post, blog, repo, tool) and return one verdict — author locally, track upstream, new plugin, install-alongside, or skip |
-| `/lifecycle-doctor` | Verify the lifecycle board setup — toolchain, repo shape, board schema, delivery topology — and answer "ready for first work item: yes/no" (`--live` for the end-to-end probe) |
-| `/deploy-docs` | Validate and prepare documentation for GitHub Pages deployment |
-| `/config-flags` | Browse and toggle every opt-in configuration flag the plugin offers for this repo, with current value vs. default |
-
-## Skills
-
-One skill is designed to be **always-on**: `operating-principles` ships a paste-ready CLAUDE.md block ([claude-md-snippet.md](skills/operating-principles/assets/claude-md-snippet.md)) — ten compressed execution rules plus a trigger line that pulls the full skill in (decomposition patterns, verification playbook, failure-mode catalog) when a task warrants depth. The workflow commands load it automatically for delegated sub-agents; the snippet extends the same discipline to every session. The `setup` skill offers to install it into a repo's existing `CLAUDE.md`/`AGENTS.md` (idempotent, marker-guarded).
+| Skill | Description |
+|-------|-------------|
+| `deepen-plan` | Enhance plans with parallel research agents for each section |
+| `changelog` | Create engaging changelogs for recent merges |
+| `generate-command` | Generate new slash commands |
+| `heal-skill` | Fix skill documentation issues |
+| `report-bug` | Report a bug in the plugin |
+| `reproduce-bug` | Reproduce bugs using logs and console |
+| `resolve-parallel` | Resolve TODO comments in parallel |
+| `resolve-todo-parallel` | Resolve todos in parallel |
+| `triage` | Triage and prioritize issues |
+| `test-browser` | Run browser tests on PR-affected pages |
+| `test-xcode` | Build and test iOS apps on simulator |
+| `feature-video` | Record video walkthroughs and add to PR description |
+| `agent-native-audit` | Run agent-native architecture review with scored principles |
+| `ci-resolve-workflow-issues` | Diagnose and fix failing CI checks on a pull request |
+| `upstream-scan` | Scan registered upstream repos for adoptable components and report candidates |
+| `analyze-source` | Evaluate any external resource (X post, blog, repo, tool) and return one verdict — author locally, track upstream, new plugin, install-alongside, or skip |
+| `lifecycle-doctor` | Verify the lifecycle board setup — toolchain, repo shape, board schema, delivery topology — and answer "ready for first work item: yes/no" (`--live` for the end-to-end probe) |
+| `deploy-docs` | Validate and prepare documentation for GitHub Pages deployment |
+| `config-flags` | Browse and toggle every opt-in configuration flag the plugin offers for this repo, with current value vs. default |
 
 ### Architecture & Design
 
@@ -185,7 +179,7 @@ One skill is designed to be **always-on**: `operating-principles` ships a paste-
 
 | Skill | Description |
 |-------|-------------|
-| `debugging-and-error-recovery` | Root-cause debugging methodology — stop-the-line, reproduce, localize, reduce, fix the cause, guard, verify; the broader triage layer above the `/reproduce-bug` and `/report-bug` commands and the `bug-reproduction-validator` agent |
+| `debugging-and-error-recovery` | Root-cause debugging methodology — stop-the-line, reproduce, localize, reduce, fix the cause, guard, verify; the broader triage layer above the `/reproduce-bug` and `/report-bug` skills and the `bug-reproduction-validator` agent |
 | `doubt-driven-development` | In-flight adversarial review of non-trivial decisions (CLAIM → EXTRACT → DOUBT → RECONCILE → STOP) with a fresh-context reviewer and gated cross-model escalation |
 | `observability-and-instrumentation` | Instrument code as it's built so production behavior is visible: signal selection, RED/USE, a cardinality denylist, symptom-based alerting, and a verify-the-telemetry step |
 | `security-and-hardening` | Harden a feature against vulnerabilities while building it — STRIDE threat modeling per trust boundary, the Always/Ask-First/Never rules, injection/XSS/SSRF patterns, reachability-keyed `npm audit` triage, and OWASP LLM Top 10; build-time counterpart to the `security-sentinel` agent |
@@ -287,7 +281,7 @@ The `github-project` lifecycle is opinionated about your repo's shape. Read thes
 - **Issues are enabled** on the repo (preflight hard-errors otherwise).
 - **Issue text is untrusted data.** Titles, bodies, and comments are quoted, never obeyed; only structured, permission-gated fields (Status, assignee, labels, PR merge state, `stateReason`) drive control flow.
 - **The board is agent-managed after bootstrap.** Bootstrap's fresh-project guard refuses to adopt a customized project; once set up, **do not rename the Status options** — per-entry name re-resolution turns a rename into an `option missing` hard error.
-- **github.com only** — not GitHub Enterprise Server (the GraphQL surface lags). Requires **`gh` ≥ 2.94.0** with the **`project`** OAuth scope everywhere commands run.
+- **github.com only** — not GitHub Enterprise Server (the GraphQL surface lags). Requires **`gh` ≥ 2.94.0** with the **`project`** OAuth scope everywhere these skills run.
 - **GitHub Free suffices** for the single-repo topology (its one auto-add workflow is all the plugin uses).
 - **POSIX environment** — macOS, Linux, or WSL. Native Windows is untested.
 - **Fork-based contributors** (origin = a personal fork, board under the canonical owner) need the documented owner-allowlist entry so the owner-equals-origin check passes.
