@@ -5,6 +5,63 @@ All notable changes to the agentic-engineering plugin will be documented in this
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.0.0](https://github.com/Life-With-Data/agentic-engineering/compare/agentic-engineering-v4.0.0...agentic-engineering-v5.0.0) (2026-07-14)
+
+
+### ⚠ BREAKING CHANGES
+
+* **plugin:** remove Linear support — unified-lifecycle Phase 1 ([#39](https://github.com/Life-With-Data/agentic-engineering/issues/39)) (#40)
+
+### Features
+
+* add issue_tracker abstraction (beads | linear | github | none) ([1902c91](https://github.com/Life-With-Data/agentic-engineering/commit/1902c91eadbfee51278a6bee254a3f9c0f019c0c))
+* **bootstrap:** scaffold actions/add-to-project workflow on auto-add ([#63](https://github.com/Life-With-Data/agentic-engineering/issues/63)) ([#67](https://github.com/Life-With-Data/agentic-engineering/issues/67)) ([34ca53f](https://github.com/Life-With-Data/agentic-engineering/commit/34ca53f8f5f782b4ffc454a6851a319b43a7c903))
+* **commands:** add /analyze-source — one-off resource evaluation ([#31](https://github.com/Life-With-Data/agentic-engineering/issues/31)) ([#34](https://github.com/Life-With-Data/agentic-engineering/issues/34)) ([1defb44](https://github.com/Life-With-Data/agentic-engineering/commit/1defb445bd4ed0e5b67bbd386880f1be24fc8402))
+* **commands:** add /upstream-scan + upstream-source registry ([#28](https://github.com/Life-With-Data/agentic-engineering/issues/28)) ([#29](https://github.com/Life-With-Data/agentic-engineering/issues/29)) ([c246aec](https://github.com/Life-With-Data/agentic-engineering/commit/c246aecd71ee4ebca6878957ead8da34bc59ba49))
+* **commands:** add /workflows:merge as a thin wrapper over land-pr ([#25](https://github.com/Life-With-Data/agentic-engineering/issues/25)) ([1570ac2](https://github.com/Life-With-Data/agentic-engineering/commit/1570ac2f26b08cbb8ee64e7d58afc70ad8fa468f))
+* **compound:** autonomous docs-only "data lane" via land-docs skill (v3.8.0) ([#96](https://github.com/Life-With-Data/agentic-engineering/issues/96)) ([f5015ae](https://github.com/Life-With-Data/agentic-engineering/commit/f5015ae10fd14a34c5a9b1d347ccec77b91ef98a))
+* **config:** Phase 1 discoverable config surface — registry, /config-flags, doctor section (v3.9.0) ([#93](https://github.com/Life-With-Data/agentic-engineering/issues/93)) ([c28129d](https://github.com/Life-With-Data/agentic-engineering/commit/c28129da8aa52ae8eeda711d32acba90ee42f1b2))
+* **hooks:** add block-slack-webhook secret-hygiene guard hook (v3.5.0) ([#69](https://github.com/Life-With-Data/agentic-engineering/issues/69)) ([064e5c3](https://github.com/Life-With-Data/agentic-engineering/commit/064e5c3a2db158062df9870b1ded3eaab90ba5b2))
+* **hooks:** adopt opt-in sdd-cache WebFetch doc cache (v3.14.0) ([#107](https://github.com/Life-With-Data/agentic-engineering/issues/107)) ([d8b5b5a](https://github.com/Life-With-Data/agentic-engineering/commit/d8b5b5a2d48c93884ad0db0b961bf18bf9b6fc17))
+* **hooks:** opt-in non-blocking TodoWrite → durable-tracker nudge (v3.7.0) ([#90](https://github.com/Life-With-Data/agentic-engineering/issues/90)) ([95badd6](https://github.com/Life-With-Data/agentic-engineering/commit/95badd67f98361ab40d83fdb21b64d69856acb4b))
+* land agent-leverage hook cluster + verification-loop skill (v3.1.0) ([#61](https://github.com/Life-With-Data/agentic-engineering/issues/61)) ([e4c3845](https://github.com/Life-With-Data/agentic-engineering/commit/e4c3845a59f3ca334990d5f15bd51f335e5a79e6))
+* **land-pr:** add PR completion-and-merge skill, wire into workflows ([#20](https://github.com/Life-With-Data/agentic-engineering/issues/20)) ([bb80996](https://github.com/Life-With-Data/agentic-engineering/commit/bb809965e2ccb2e2b50f8dabaa78006cc967e42a))
+* **lifecycle:** link board to origin repo on bootstrap + doctor check ([#54](https://github.com/Life-With-Data/agentic-engineering/issues/54)) ([6741d3a](https://github.com/Life-With-Data/agentic-engineering/commit/6741d3a3e6ecbb1bffdb9cfcc8164a59f03eb06e))
+* **lifecycle:** unified work-item lifecycle on GitHub Projects v2 — Phases 2–5 ([#39](https://github.com/Life-With-Data/agentic-engineering/issues/39)) ([#44](https://github.com/Life-With-Data/agentic-engineering/issues/44)) ([1a28ac5](https://github.com/Life-With-Data/agentic-engineering/commit/1a28ac5b69da6a39d828f2a202265434b7ead267))
+* **plugin:** add workflows work repo preflight script ([d7b13dd](https://github.com/Life-With-Data/agentic-engineering/commit/d7b13dd228231597c2366d9b3ea6c4286ed22708))
+* **plugin:** add workflows work repo preflight script ([f7d3124](https://github.com/Life-With-Data/agentic-engineering/commit/f7d3124f4d2612cd09fad8ac5974ccc69868c315))
+* **plugin:** remove Linear support — unified-lifecycle Phase 1 ([#39](https://github.com/Life-With-Data/agentic-engineering/issues/39)) ([#40](https://github.com/Life-With-Data/agentic-engineering/issues/40)) ([be9b1b5](https://github.com/Life-With-Data/agentic-engineering/commit/be9b1b5da7e8d0db8d522bf4472c9a5baf4ac6a8))
+* **setup:** make repo→board binding an explicit, recorded decision ([#64](https://github.com/Life-With-Data/agentic-engineering/issues/64)) ([#66](https://github.com/Life-With-Data/agentic-engineering/issues/66)) ([49598ad](https://github.com/Life-With-Data/agentic-engineering/commit/49598adc745a04081d5db0305702489e28847f2c))
+* **skills:** add operating-principles skill with always-on layer ([#53](https://github.com/Life-With-Data/agentic-engineering/issues/53)) ([63d9a24](https://github.com/Life-With-Data/agentic-engineering/commit/63d9a240e94f8bdc47c3de41041121e3a293a9b3))
+* **skills:** adopt api-and-interface-design design-time contract skill (v3.16.0) ([#101](https://github.com/Life-With-Data/agentic-engineering/issues/101)) ([1c0f83c](https://github.com/Life-With-Data/agentic-engineering/commit/1c0f83c38a38a4918c754de9132f5b4850a9609f))
+* **skills:** adopt debugging-and-error-recovery methodology skill (v3.15.0) ([#100](https://github.com/Life-With-Data/agentic-engineering/issues/100)) ([c0fc5de](https://github.com/Life-With-Data/agentic-engineering/commit/c0fc5deb99862118e57a57c67e9aec12a9c555a5))
+* **skills:** adopt doubt-driven-development from addyosmani/agent-skills (v3.17.0) ([#105](https://github.com/Life-With-Data/agentic-engineering/issues/105)) ([f1fc71e](https://github.com/Life-With-Data/agentic-engineering/commit/f1fc71e0765e5dacbf42fcd2b7db9415cd9c07d7))
+* **skills:** adopt interview-me — confidence-gated intent extraction (v3.10.0) ([#102](https://github.com/Life-With-Data/agentic-engineering/issues/102)) ([ea9a874](https://github.com/Life-With-Data/agentic-engineering/commit/ea9a8741ed993fbb2f1a2f69b305a6d9db74a6ed))
+* **skills:** adopt observability-and-instrumentation (v3.11.0) ([#99](https://github.com/Life-With-Data/agentic-engineering/issues/99)) ([4d5a3ed](https://github.com/Life-With-Data/agentic-engineering/commit/4d5a3edfa4a2c3c8180660216a291530d6e77f4c))
+* **skills:** adopt test-driven-development from addyosmani/agent-skills (v3.13.0) ([#104](https://github.com/Life-With-Data/agentic-engineering/issues/104)) ([2ebfa97](https://github.com/Life-With-Data/agentic-engineering/commit/2ebfa97065ec4813e363a371f4dea9af4574c35e))
+* **workflows:plan:** Add smart research decision logic ([#100](https://github.com/Life-With-Data/agentic-engineering/issues/100)) ([c50208d](https://github.com/Life-With-Data/agentic-engineering/commit/c50208d4130a2b4295bc2b34c8d099688e6fd826))
+* **workflows:work:** make Orchestrated Execution tracker-driven (beads/Linear/file-todos) ([#13](https://github.com/Life-With-Data/agentic-engineering/issues/13)) ([f7f2cdf](https://github.com/Life-With-Data/agentic-engineering/commit/f7f2cdf95f7fb61dcc34ca7e344ca1d228f5d90a))
+* **workflows:work:** Orchestrated Execution style for beads (subagent-per-bead) ([#11](https://github.com/Life-With-Data/agentic-engineering/issues/11)) ([964c6b8](https://github.com/Life-With-Data/agentic-engineering/commit/964c6b8e098ffebe96785c0851d3defc4fd3b526))
+* **workflows/plan:** add 'External System Wiring' required section to MORE and A LOT templates ([#9](https://github.com/Life-With-Data/agentic-engineering/issues/9)) ([80ac558](https://github.com/Life-With-Data/agentic-engineering/commit/80ac558e53d4e2d9817e97c8947e883801b269e8))
+* **workflows:** add /workflows:orchestrate steering layer + visual flow docs ([#12](https://github.com/Life-With-Data/agentic-engineering/issues/12)) ([39c1024](https://github.com/Life-With-Data/agentic-engineering/commit/39c10242bd7a1ac37e61d2fabde4a56afe080c8d))
+* **workflows:** default orchestrate to fully autonomous; drop lfg/slfg (v3.2.0) ([#65](https://github.com/Life-With-Data/agentic-engineering/issues/65)) ([94d28cf](https://github.com/Life-With-Data/agentic-engineering/commit/94d28cfb8ed465a8eb6d209f7e75111d5fd12c7e))
+* **workflows:** orchestrate defaults to delegate mode — orchestrator delegates, reviews, surfaces only blockers + final review ([#36](https://github.com/Life-With-Data/agentic-engineering/issues/36)) ([d83f92a](https://github.com/Life-With-Data/agentic-engineering/commit/d83f92a1d978ab090caa882a965eb923d4ad9185))
+
+
+### Bug Fixes
+
+* **git-worktree:** adopt canonical gitignore idiom in ensure_gitignore (v3.5.2) ([#73](https://github.com/Life-With-Data/agentic-engineering/issues/73)) ([4507bc2](https://github.com/Life-With-Data/agentic-engineering/commit/4507bc2ea7c877e2a343f507ed8833952efe8dbb))
+* **hooks:** solve the fork trap (gh default repo + PreToolUse backstop) ([#21](https://github.com/Life-With-Data/agentic-engineering/issues/21)) ([f369a66](https://github.com/Life-With-Data/agentic-engineering/commit/f369a664dfc4612b2d8b5d149bad3d4cfd5e09d8))
+* **hooks:** stop block-no-verify & prevent-main-commit false-blocking PR-body prose (v3.6.1) ([#87](https://github.com/Life-With-Data/agentic-engineering/issues/87)) ([b11fa1a](https://github.com/Life-With-Data/agentic-engineering/commit/b11fa1a7470b233cd66ab37ea7c574bdb4157afa))
+* **lifecycle:** work-gate reasons interpolate the actual stage ([#46](https://github.com/Life-With-Data/agentic-engineering/issues/46)) ([#47](https://github.com/Life-With-Data/agentic-engineering/issues/47)) ([d4f1336](https://github.com/Life-With-Data/agentic-engineering/commit/d4f1336a264b7a1b08dc35b0df075d5bab6f1828))
+* **plan-tracker-guard:** accept uppercase-prefix base-36 bead IDs (e.g. AL-09v) ([#16](https://github.com/Life-With-Data/agentic-engineering/issues/16)) ([58a1dc0](https://github.com/Life-With-Data/agentic-engineering/commit/58a1dc0a4476b93d013a5fd0fee2c76715a87ce8))
+* **preflight:** ignore git-tracked agentic-engineering.local.md tracker override ([#74](https://github.com/Life-With-Data/agentic-engineering/issues/74)) (v3.5.1) ([#75](https://github.com/Life-With-Data/agentic-engineering/issues/75)) ([de213d1](https://github.com/Life-With-Data/agentic-engineering/commit/de213d1571cc649226714b02cb9c4cd4c6931724))
+* **scripts/plan-tracker-guard:** accept base-36 beads IDs (bump 2.38.1) ([bcfd24a](https://github.com/Life-With-Data/agentic-engineering/commit/bcfd24a8edccfd0ef7c789664b124877664ecc4b))
+* **setup:** gitignore agentic-engineering.local.md on write; detect & offer untrack ([#62](https://github.com/Life-With-Data/agentic-engineering/issues/62)) (v3.5.3) ([#72](https://github.com/Life-With-Data/agentic-engineering/issues/72)) ([1256bad](https://github.com/Life-With-Data/agentic-engineering/commit/1256bad4d09d7641ea9e9f6720484fb9a31bf19b))
+* **work:** close parent/standalone bead at PR-open, not after merge ([#7](https://github.com/Life-With-Data/agentic-engineering/issues/7)) ([61d9360](https://github.com/Life-With-Data/agentic-engineering/commit/61d936064ce5d521999406ba3391da3aacc0bf82))
+* **work:** don't close tracker items at PR-open time; close belongs at merge ([#6](https://github.com/Life-With-Data/agentic-engineering/issues/6)) ([29d62df](https://github.com/Life-With-Data/agentic-engineering/commit/29d62dffd8c6ab00365b92a042ed3f7ed8d21201))
+* **workflows/plan:** gate plan completion on tracker-issue creation ([#8](https://github.com/Life-With-Data/agentic-engineering/issues/8)) ([082dcd3](https://github.com/Life-With-Data/agentic-engineering/commit/082dcd302fe8d6e6f6e349d21d2c40d887ac6423))
+
 ## [4.0.0] - 2026-07-14
 
 ### Changed
