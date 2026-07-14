@@ -3,7 +3,7 @@ CANONICAL PARENT-ISSUE TEMPLATE (agentic-engineering eng workflow)
 
 Fill every section. Delete a section only if you can state why it does not apply
 (e.g. write "No external wiring required." rather than deleting that heading).
-This body is written to the parent GitHub issue by `/workflows:plan` Step 7 via
+This body is written to the parent GitHub issue by `/workflows-plan` Step 7 via
 `--body-file`, and mirrors the plan doc under `docs/plans/`. The task breakdown
 below becomes the sub-issues (see `sub-issue-template.md`).
 
@@ -15,7 +15,7 @@ title: [Concise, outcome-oriented title]
 type: [feat|fix|refactor|chore]
 date: YYYY-MM-DD
 origin: docs/brainstorms/YYYY-MM-DD-<topic>-brainstorm.md  # if from a brainstorm, else omit
-github_issue: 123        # REQUIRED — populated by /workflows:plan Step 7
+github_issue: 123        # REQUIRED — populated by /workflows-plan Step 7
 ---
 
 # [Issue Title]
