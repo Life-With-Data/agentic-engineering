@@ -1,7 +1,7 @@
-// Durable control that every gh WRITE in a distributed command/skill is
-// SELF-TARGETING. These commands run in arbitrary users' repos, so a flagless
+// Durable control that every gh WRITE in a distributed skill is
+// SELF-TARGETING. These skills run in arbitrary users' repos, so a flagless
 // `gh issue|project|api` write relies on gh's default-repo resolution and can
-// silently land on the wrong repo. This test greps every command and skill
+// silently land on the wrong repo. This test greps every skill
 // markdown file for `gh issue|gh project|gh api` invocations inside bash code
 // fences and requires each to be self-targeting: an explicit --repo/--owner
 // (literal or documented variable form like `--repo "$REPORT_REPO"`), OR a

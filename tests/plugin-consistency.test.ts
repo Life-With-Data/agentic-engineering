@@ -29,10 +29,6 @@ function mdFilesRecursive(dir: string): string[] {
   return out
 }
 
-function frontmatterName(file: string): string {
-  return String(parseFrontmatter(readFileSync(file, "utf8")).data.name ?? "")
-}
-
 function skillDirsIn(pluginDir: string): string[] {
   const dir = path.join(pluginDir, "skills")
   if (!existsSync(dir)) return []
@@ -44,7 +40,6 @@ function skillDirsIn(pluginDir: string): string[] {
 // ---- filesystem truth -------------------------------------------------------
 
 const agentFiles = mdFilesRecursive(path.join(PLUGIN, "agents"))
-const commandFiles = mdFilesRecursive(path.join(PLUGIN, "commands"))
 const skillDirs = skillDirsIn(PLUGIN)
 
 const nonCorePlugins = readdirSync(PLUGINS_DIR, { withFileTypes: true })
@@ -59,7 +54,6 @@ const nonCorePlugins = readdirSync(PLUGINS_DIR, { withFileTypes: true })
 
 const counts = {
   agents: agentFiles.length,
-  commands: commandFiles.length,
   skills: skillDirs.length,
 }
 
@@ -76,32 +70,28 @@ const indexHtml = readFileSync(path.join(ROOT, "docs/index.html"), "utf8")
 describe("declared counts match filesystem", () => {
   test("plugin.json description", () => {
     expect(pluginJson.description).toContain(`${counts.agents} agents`)
-    expect(pluginJson.description).toContain(`${counts.commands} commands`)
     expect(pluginJson.description).toContain(`${counts.skills} skills`)
   })
 
   test("marketplace.json description", () => {
     const desc = marketplace.plugins[0].description
     expect(desc).toContain(`${counts.agents} specialized agents`)
-    expect(desc).toContain(`${counts.commands} commands`)
     expect(desc).toContain(`${counts.skills} skills`)
   })
 
   test("plugin README components table", () => {
     expect(pluginReadme).toContain(`| Agents | ${counts.agents} |`)
-    expect(pluginReadme).toContain(`| Commands | ${counts.commands} |`)
     expect(pluginReadme).toContain(`| Skills | ${counts.skills} |`)
     expect(pluginReadme).toContain(`| MCP Servers | ${mcpCount} |`)
   })
 
   test("root README components table", () => {
     expect(rootReadme).toContain(`| Specialized agents | ${counts.agents} |`)
-    expect(rootReadme).toContain(`| Commands | ${counts.commands} |`)
     expect(rootReadme).toContain(`| Skills | ${counts.skills} |`)
     expect(rootReadme).toContain(`| MCP servers | ${mcpCount} |`)
   })
 
-  test("docs/index.html landing-page stats (agents, commands, skills, mcp)", () => {
+  test("docs/index.html landing-page stats (agents, skills, mcp)", () => {
     // Every stat on the landing page is marked data-stat="<key>" and filled by
     // scripts/generate-docs.ts. Assert EVERY occurrence (cards + hero + CTA
     // prose) matches the filesystem, so a stale hardcoded number can't slip in.
@@ -115,7 +105,6 @@ describe("declared counts match filesystem", () => {
       for (const v of found) expect(v).toBe(String(expected))
     }
     expectAll("agents", counts.agents)
-    expectAll("commands", counts.commands)
     expectAll("skills", totalSkills)
     expectAll("mcp", mcpCount)
     expectAll("version", pluginJson.version)
@@ -194,14 +183,12 @@ describe("multi-platform packaging parity", () => {
     expect(codexPluginJson.version).toBe(pluginJson.version)
   })
 
-  test("Cursor manifest wires skills, agents, commands, hooks, MCP", () => {
+  test("Cursor manifest wires skills, agents, hooks, MCP", () => {
     expect(cursorPluginJson.skills).toBe("./skills/")
     expect(cursorPluginJson.agents).toBe("./agents/")
-    expect(cursorPluginJson.commands).toBe("./commands/")
     expect(cursorPluginJson.hooks).toBe("./hooks/hooks-cursor.json")
     expect(cursorPluginJson.mcpServers).toBe(".mcp.json")
     expect(cursorPluginJson.description).toContain(`${counts.agents} agents`)
-    expect(cursorPluginJson.description).toContain(`${counts.commands} commands`)
     expect(cursorPluginJson.description).toContain(`${counts.skills} skills`)
   })
 
@@ -213,7 +200,7 @@ describe("multi-platform packaging parity", () => {
   })
 
   test("manifest component paths resolve inside the plugin", () => {
-    const cursorPaths = ["skills", "agents", "commands", "hooks", "mcpServers"]
+    const cursorPaths = ["skills", "agents", "hooks", "mcpServers"]
     const codexPaths = ["skills", "hooks", "mcpServers"]
     for (const field of cursorPaths) {
       expect(existsSync(path.resolve(PLUGIN, cursorPluginJson[field]))).toBe(true)
@@ -307,16 +294,6 @@ describe("multi-platform packaging parity", () => {
 
 // ---- every component is documented in the plugin README ---------------------
 
-describe("plugin README documents every command (by frontmatter name)", () => {
-  test.each(commandFiles.map((f) => [path.basename(f), frontmatterName(f)] as const))(
-    "%s → /%s is in README",
-    (_file, name) => {
-      expect(name).not.toBe("") // every command must declare a name
-      expect(pluginReadme).toContain(`/${name}`)
-    },
-  )
-})
-
 describe("plugin README documents every agent", () => {
   test.each(agentFiles.map((f) => path.basename(f, ".md")))("%s is in README", (slug) => {
     expect(pluginReadme).toContain(slug)
@@ -331,8 +308,8 @@ describe("plugin README documents every skill", () => {
 
 // ---- frontmatter hygiene ----------------------------------------------------
 
-describe("commands and agents declare name + description", () => {
-  test.each([...commandFiles, ...agentFiles].map((f) => [path.relative(PLUGIN, f), f] as const))(
+describe("agents declare name + description", () => {
+  test.each(agentFiles.map((f) => [path.relative(PLUGIN, f), f] as const))(
     "%s",
     (_rel, file) => {
       const { data } = parseFrontmatter(readFileSync(file, "utf8"))
