@@ -1,5 +1,5 @@
 ---
-name: workflows:plan
+name: workflows-plan
 description: Transform feature descriptions into well-structured project plans following conventions. Idempotent entry gate — re-running on an already-planned item routes to work instead of re-planning; orchestrate invokes this directly.
 argument-hint: "[feature description, bug report, or improvement idea]"
 allowed-tools: Read, Edit, Write, Bash(gh issue *), Bash(gh project *), Bash(python3 *), Bash(jq *), Bash(ls *), Bash(mkdir *)

@@ -1,5 +1,5 @@
 ---
-name: workflows:groom
+name: workflows-groom
 description: Groom intake into ready work — drive an idea, bug report, or stub issue through brainstorm → plan, then STOP once the item is planned on the board with a join-keyed plan doc and sub-issues. Never implements; the deliverable is a groomed, ready-to-claim work item.
 argument-hint: "[idea, bug report, issue number, or brainstorm path] [--steer]"
 disable-model-invocation: true

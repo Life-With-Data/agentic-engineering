@@ -1,5 +1,5 @@
 ---
-name: workflows:review
+name: workflows-review
 description: Perform exhaustive code reviews using multi-agent analysis and worktrees
 argument-hint: "[PR number, GitHub URL, branch name, or latest]"
 ---

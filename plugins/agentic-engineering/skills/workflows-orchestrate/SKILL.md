@@ -1,5 +1,5 @@
 ---
-name: workflows:orchestrate
+name: workflows-orchestrate
 description: Drive the brainstorm → plan → work → review → land → compound pipeline as the orchestrator — delegating implementation to sub-agents, reviewing their work, and running fully autonomously by default (surfacing only genuine blockers; --final-review adds one pre-merge check). Segment flags bifurcate the run — --groom stops once the item is planned; --implement starts from groomed work and refuses to groom.
 argument-hint: "[feature idea, or path to an existing brainstorm/plan] [--groom | --implement] [--final-review | --steer | --careful]"
 disable-model-invocation: true

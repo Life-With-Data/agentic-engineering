@@ -1,5 +1,5 @@
 ---
-name: workflows:merge
+name: workflows-merge
 description: Merge a PR — a thin entry point to the land-pr skill (CI wait, review-thread resolution, merge gate, branch cleanup, idempotent tracker-item close).
 argument-hint: "[optional: PR number — defaults to the current branch's PR] [--auto]"
 disable-model-invocation: true

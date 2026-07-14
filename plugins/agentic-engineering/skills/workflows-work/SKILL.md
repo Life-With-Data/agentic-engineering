@@ -1,5 +1,5 @@
 ---
-name: workflows:work
+name: workflows-work
 description: Execute work plans efficiently while maintaining quality and finishing features
 argument-hint: "[plan file, spec, todo file, or issue number — e.g. 39]"
 allowed-tools: Read, Edit, Write, Bash(gh issue *), Bash(gh pr *), Bash(gh project *), Bash(python3 *), Bash(git *), Bash(jq *)
