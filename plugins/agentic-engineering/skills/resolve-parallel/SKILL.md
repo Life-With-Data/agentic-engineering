@@ -1,6 +1,6 @@
 ---
 name: resolve-parallel
-description: Resolve all TODO comments using parallel processing
+description: Sweep source-code TODO and FIXME comment annotations and fix each by dispatching a dedicated subagent concurrently. Use to batch-clear inline code markers left across the repository.
 argument-hint: "[optional: specific TODO pattern or file]"
 disable-model-invocation: true
 ---

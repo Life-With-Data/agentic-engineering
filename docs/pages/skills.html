@@ -473,7 +473,7 @@ skill: create-agent-skills</code></pre>
             <div class="skill-detail-header">
               <h3>resolve-parallel</h3>
             </div>
-            <p class="skill-detail-description">Resolve all TODO comments using parallel processing</p>
+            <p class="skill-detail-description">Sweep source-code TODO and FIXME comment annotations and fix each by dispatching a dedicated subagent concurrently. Use to batch-clear inline code markers left across the repository.</p>
             <div class="card-code-block">
               <pre><code>skill: resolve-parallel</code></pre>
             </div>
@@ -491,7 +491,7 @@ skill: create-agent-skills</code></pre>
             <div class="skill-detail-header">
               <h3>resolve-todo-parallel</h3>
             </div>
-            <p class="skill-detail-description">Resolve all pending CLI todos using parallel processing</p>
+            <p class="skill-detail-description">Burn down the file-based backlog stored as markdown files under the todos directory, dispatching a dedicated subagent per pending entry concurrently. Use to clear the file-todos tracker queue.</p>
             <div class="card-code-block">
               <pre><code>skill: resolve-todo-parallel</code></pre>
             </div>

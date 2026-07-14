@@ -1,6 +1,6 @@
 ---
 name: resolve-todo-parallel
-description: Resolve all pending CLI todos using parallel processing
+description: Burn down the file-based backlog stored as markdown files under the todos directory, dispatching a dedicated subagent per pending entry concurrently. Use to clear the file-todos tracker queue.
 argument-hint: "[optional: specific todo ID or pattern]"
 ---
 
