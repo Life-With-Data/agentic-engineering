@@ -1,0 +1,30 @@
+{
+  "version": 1,
+  "hooks": {
+    "beforeShellExecution": [
+      {
+        "command": "python3 ./scripts/block-no-verify.py",
+        "failClosed": true
+      },
+      {
+        "command": "python3 ./scripts/prevent-main-commit.py",
+        "failClosed": true
+      },
+      {
+        "command": "python3 ./scripts/block-slack-webhook.py",
+        "failClosed": true
+      },
+      {
+        "command": "python3 ./scripts/block-db-push.py",
+        "failClosed": true
+      }
+    ],
+    "preToolUse": [
+      {
+        "command": "python3 ./scripts/block-slack-webhook.py",
+        "matcher": "Write",
+        "failClosed": true
+      }
+    ]
+  }
+}

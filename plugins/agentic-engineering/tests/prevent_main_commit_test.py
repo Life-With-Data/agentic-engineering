@@ -38,8 +38,7 @@ def _git(cwd: Path, *args: str) -> None:
     )
 
 
-def _run(command: str, cwd: Path, tool_name: str = "Bash") -> subprocess.CompletedProcess[str]:
-    payload = {"tool_name": tool_name, "tool_input": {"command": command}}
+def _run_payload(payload: dict, cwd: Path) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         [sys.executable, str(SCRIPT)],
         input=json.dumps(payload),
@@ -47,6 +46,13 @@ def _run(command: str, cwd: Path, tool_name: str = "Bash") -> subprocess.Complet
         text=True,
         cwd=str(cwd),
         timeout=10,
+    )
+
+
+def _run(command: str, cwd: Path, tool_name: str = "Bash") -> subprocess.CompletedProcess[str]:
+    return _run_payload(
+        {"tool_name": tool_name, "tool_input": {"command": command}},
+        cwd,
     )
 
 
@@ -76,6 +82,11 @@ class PreventMainCommitTest(unittest.TestCase):
     def test_blocks_commit_on_master(self) -> None:
         self._on_branch("master")
         self.assertEqual(_run('git commit -m "wip"', self.repo).returncode, BLOCK)
+
+    def test_blocks_cursor_before_shell_execution_payload(self) -> None:
+        self._on_branch("main")
+        result = _run_payload({"command": 'git commit -m "wip"'}, self.repo)
+        self.assertEqual(result.returncode, BLOCK)
 
     # --- explicit push to a protected branch: MUST block -----------------
 

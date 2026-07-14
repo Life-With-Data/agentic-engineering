@@ -1,0 +1,41 @@
+{
+  "name": "agentic-engineering",
+  "version": "3.22.0",
+  "description": "AI-powered development tools. 31 agents, 28 commands, 35 skills, 1 MCP server for code review, research, design, and workflow automation. Native Codex install ships skills, MCP, and safety hooks; agents/commands via Bun --to codex.",
+  "author": {
+    "name": "Anthony Agnone",
+    "url": "https://github.com/aagnone3"
+  },
+  "homepage": "https://life-with-data.github.io/agentic-engineering/",
+  "repository": "https://github.com/Life-With-Data/agentic-engineering",
+  "license": "MIT",
+  "keywords": [
+    "codex",
+    "ai-powered",
+    "agentic-engineering",
+    "workflow-automation",
+    "code-review",
+    "knowledge-management"
+  ],
+  "skills": "./skills/",
+  "mcpServers": "./.mcp.json",
+  "hooks": "./hooks/hooks.json",
+  "interface": {
+    "displayName": "Agentic Engineering",
+    "shortDescription": "Skills, MCP, and safety hooks for agentic engineering workflows",
+    "longDescription": "Installs agentic-engineering skills, Context7 MCP, and safety-net hooks (block --no-verify, prevent main commits, block Slack webhooks, block prisma db push). Claude-style agents and slash commands are not part of the native Codex surface — use the Bun CLI convert path (--to codex) when you need full agent/command parity. Plugin hooks require review and trust in Codex before they run.",
+    "developerName": "Anthony Agnone",
+    "category": "Developer Tools",
+    "capabilities": [
+      "Interactive",
+      "Read",
+      "Write"
+    ],
+    "websiteURL": "https://life-with-data.github.io/agentic-engineering/",
+    "defaultPrompt": [
+      "Run the plan → work → review → compound loop on this task.",
+      "Review this change for acceptance criteria and safety.",
+      "Set up lifecycle tracking for this repository."
+    ]
+  }
+}

@@ -130,6 +130,181 @@ describe("version parity", () => {
   })
 })
 
+// ---- multi-platform native packaging (Claude / Cursor / Codex) --------------
+
+const cursorPluginJson = JSON.parse(
+  readFileSync(path.join(PLUGIN, ".cursor-plugin/plugin.json"), "utf8"),
+)
+const codexPluginJson = JSON.parse(
+  readFileSync(path.join(PLUGIN, ".codex-plugin/plugin.json"), "utf8"),
+)
+const codexMarketplace = JSON.parse(
+  readFileSync(path.join(ROOT, ".agents/plugins/marketplace.json"), "utf8"),
+)
+const cursorMarketplace = JSON.parse(
+  readFileSync(path.join(ROOT, ".cursor-plugin/marketplace.json"), "utf8"),
+)
+const cursorHooks = JSON.parse(
+  readFileSync(path.join(PLUGIN, "hooks/hooks-cursor.json"), "utf8"),
+)
+const codexHooks = JSON.parse(readFileSync(path.join(PLUGIN, "hooks/hooks.json"), "utf8"))
+
+const SAFETY_HOOK_SCRIPTS = [
+  "block-no-verify.py",
+  "prevent-main-commit.py",
+  "block-slack-webhook.py",
+  "block-db-push.py",
+] as const
+
+function scriptPathsFromCursorHooks(hooks: {
+  hooks?: Record<string, Array<{ command?: string; failClosed?: boolean }>>
+}): string[] {
+  const out: string[] = []
+  for (const entries of Object.values(hooks.hooks ?? {})) {
+    for (const entry of entries) {
+      const cmd = entry.command ?? ""
+      const match = cmd.match(/^python3 \.\/scripts\/([A-Za-z0-9_-]+\.py)$/)
+      if (!match) throw new Error(`Invalid Cursor hook command: ${cmd}`)
+      out.push(match[1])
+    }
+  }
+  return out
+}
+
+function scriptPathsFromCodexHooks(hooks: {
+  hooks?: Record<string, Array<{ hooks?: Array<{ command?: string }> }>>
+}): string[] {
+  const out: string[] = []
+  for (const groups of Object.values(hooks.hooks ?? {})) {
+    for (const group of groups) {
+      for (const hook of group.hooks ?? []) {
+        const cmd = hook.command ?? ""
+        const match = cmd.match(/^python3 \$\{PLUGIN_ROOT\}\/scripts\/([A-Za-z0-9_-]+\.py)$/)
+        if (!match) throw new Error(`Invalid Codex hook command: ${cmd}`)
+        out.push(match[1])
+      }
+    }
+  }
+  return out
+}
+
+describe("multi-platform packaging parity", () => {
+  test("Claude / Cursor / Codex plugin versions match", () => {
+    expect(cursorPluginJson.version).toBe(pluginJson.version)
+    expect(codexPluginJson.version).toBe(pluginJson.version)
+  })
+
+  test("Cursor manifest wires skills, agents, commands, hooks, MCP", () => {
+    expect(cursorPluginJson.skills).toBe("./skills/")
+    expect(cursorPluginJson.agents).toBe("./agents/")
+    expect(cursorPluginJson.commands).toBe("./commands/")
+    expect(cursorPluginJson.hooks).toBe("./hooks/hooks-cursor.json")
+    expect(cursorPluginJson.mcpServers).toBe(".mcp.json")
+    expect(cursorPluginJson.description).toContain(`${counts.agents} agents`)
+    expect(cursorPluginJson.description).toContain(`${counts.commands} commands`)
+    expect(cursorPluginJson.description).toContain(`${counts.skills} skills`)
+  })
+
+  test("Codex manifest wires skills, MCP, hooks", () => {
+    expect(codexPluginJson.skills).toBe("./skills/")
+    expect(codexPluginJson.mcpServers).toBe("./.mcp.json")
+    expect(codexPluginJson.hooks).toBe("./hooks/hooks.json")
+    expect(codexPluginJson.interface?.displayName).toBeTruthy()
+  })
+
+  test("manifest component paths resolve inside the plugin", () => {
+    const cursorPaths = ["skills", "agents", "commands", "hooks", "mcpServers"]
+    const codexPaths = ["skills", "hooks", "mcpServers"]
+    for (const field of cursorPaths) {
+      expect(existsSync(path.resolve(PLUGIN, cursorPluginJson[field]))).toBe(true)
+    }
+    for (const field of codexPaths) {
+      expect(codexPluginJson[field]).toStartWith("./")
+      expect(existsSync(path.resolve(PLUGIN, codexPluginJson[field]))).toBe(true)
+    }
+  })
+
+  test("required packaging files exist", () => {
+    const required = [
+      path.join(PLUGIN, ".claude-plugin/plugin.json"),
+      path.join(PLUGIN, ".cursor-plugin/plugin.json"),
+      path.join(PLUGIN, ".codex-plugin/plugin.json"),
+      path.join(PLUGIN, ".mcp.json"),
+      path.join(PLUGIN, "hooks/hooks-cursor.json"),
+      path.join(PLUGIN, "hooks/hooks.json"),
+      path.join(PLUGIN, "scripts/hook_payload.py"),
+      path.join(PLUGIN, "scripts/HOOKS.md"),
+      path.join(ROOT, ".cursor-plugin/marketplace.json"),
+      path.join(ROOT, ".agents/plugins/marketplace.json"),
+      path.join(ROOT, ".claude-plugin/marketplace.json"),
+    ]
+    for (const file of required) {
+      expect(existsSync(file)).toBe(true)
+    }
+  })
+
+  test("Codex marketplace points at the plugin", () => {
+    const entry = codexMarketplace.plugins.find(
+      (p: { name: string }) => p.name === CORE_PLUGIN_NAME,
+    )
+    expect(entry).toBeDefined()
+    expect(entry?.source?.path ?? entry?.source).toContain("plugins/agentic-engineering")
+    expect(path.resolve(ROOT, entry.source.path)).toBe(PLUGIN)
+  })
+
+  test("Cursor marketplace points at the nested plugin", () => {
+    const entry = cursorMarketplace.plugins.find(
+      (p: { name: string }) => p.name === CORE_PLUGIN_NAME,
+    )
+    expect(entry).toBeDefined()
+    expect(
+      path.resolve(ROOT, cursorMarketplace.metadata.pluginRoot, entry.source),
+    ).toBe(PLUGIN)
+  })
+
+  test("Cursor + Codex hook configs reference existing safety scripts", () => {
+    const cursorScripts = new Set(scriptPathsFromCursorHooks(cursorHooks))
+    const codexScripts = new Set(scriptPathsFromCodexHooks(codexHooks))
+    for (const script of SAFETY_HOOK_SCRIPTS) {
+      expect(cursorScripts.has(script)).toBe(true)
+      expect(codexScripts.has(script)).toBe(true)
+      expect(existsSync(path.join(PLUGIN, "scripts", script))).toBe(true)
+    }
+  })
+
+  test("Cursor security hooks fail closed", () => {
+    const entries = Object.values(cursorHooks.hooks as Record<
+      string,
+      Array<{ command: string; failClosed?: boolean }>
+    >).flat()
+    expect(entries.length).toBeGreaterThan(0)
+    for (const entry of entries) {
+      expect(entry.failClosed).toBe(true)
+    }
+  })
+
+  test("README uses native platform install and invocation contracts", () => {
+    expect(rootReadme).toContain(
+      "/add-plugin agentic-engineering@https://github.com/Life-With-Data/agentic-engineering",
+    )
+    expect(rootReadme).toContain("~/.cursor/plugins/local/agentic-engineering")
+    expect(rootReadme).toContain(
+      "codex plugin add agentic-engineering --marketplace agentic-engineering",
+    )
+    expect(rootReadme).not.toContain("codex plugin install agentic-engineering")
+    expect(rootReadme).toContain("**`$setup`**")
+    expect(rootReadme).toContain("select `setup` through `/skills`")
+  })
+
+  test("HOOKS.md documents the four shipped safety hooks", () => {
+    const hooksMd = readFileSync(path.join(PLUGIN, "scripts/HOOKS.md"), "utf8")
+    for (const script of SAFETY_HOOK_SCRIPTS) {
+      expect(hooksMd).toContain(script)
+      expect(hooksMd).toMatch(new RegExp(`${script.replace(".", "\\.")}.*Ships`, "s"))
+    }
+  })
+})
+
 // ---- every component is documented in the plugin README ---------------------
 
 describe("plugin README documents every command (by frontmatter name)", () => {

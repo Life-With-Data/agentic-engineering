@@ -26,8 +26,7 @@ BLOCK = 2
 ALLOW = 0
 
 
-def _run(command: str, tool_name: str = "Bash") -> subprocess.CompletedProcess[str]:
-    payload = {"tool_name": tool_name, "tool_input": {"command": command}}
+def _run_payload(payload: dict) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         [sys.executable, str(SCRIPT)],
         input=json.dumps(payload),
@@ -35,6 +34,10 @@ def _run(command: str, tool_name: str = "Bash") -> subprocess.CompletedProcess[s
         text=True,
         timeout=10,
     )
+
+
+def _run(command: str, tool_name: str = "Bash") -> subprocess.CompletedProcess[str]:
+    return _run_payload({"tool_name": tool_name, "tool_input": {"command": command}})
 
 
 class BlockNoVerifyTest(unittest.TestCase):
@@ -48,6 +51,12 @@ class BlockNoVerifyTest(unittest.TestCase):
 
     def test_blocks_push_no_verify(self) -> None:
         self.assertEqual(_run("git push --no-verify origin HEAD").returncode, BLOCK)
+
+    def test_blocks_cursor_before_shell_execution_payload(self) -> None:
+        self.assertEqual(
+            _run_payload({"command": "git commit --no-verify"}).returncode,
+            BLOCK,
+        )
 
     def test_blocks_bypass_in_later_segment(self) -> None:
         # The bypass is the second segment's verb, not the first's.

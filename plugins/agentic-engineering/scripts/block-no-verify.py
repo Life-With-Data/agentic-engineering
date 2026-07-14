@@ -22,6 +22,10 @@ Design notes:
 import json
 import re
 import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from hook_payload import normalize
 
 COMMIT_BYPASS = re.compile(r"\bgit\s+commit\b[^&|;]*?(?:^|\s)(?:-n|--no-verify)\b")
 PUSH_BYPASS = re.compile(r"\bgit\s+push\b[^&|;]*?(?:^|\s)--no-verify\b")
@@ -40,7 +44,7 @@ Bypassing hooks breaks that chain.
 
 
 def main():
-    input_data = json.load(sys.stdin)
+    input_data = normalize(json.load(sys.stdin))
 
     if input_data.get("tool_name") != "Bash":
         sys.exit(0)

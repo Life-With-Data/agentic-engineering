@@ -31,6 +31,10 @@ Design notes:
 import json
 import re
 import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from hook_payload import normalize
 
 # Direct invocation in any wrapper form: `prisma db push`, `npx prisma db
 # push`, `pnpm prisma db push`, `pnpm dlx prisma db push`, `dotenv -- prisma db
@@ -57,7 +61,7 @@ Use a migration instead — it keeps the DB and history in sync:
 
 
 def main():
-    input_data = json.load(sys.stdin)
+    input_data = normalize(json.load(sys.stdin))
 
     if input_data.get("tool_name") != "Bash":
         sys.exit(0)
