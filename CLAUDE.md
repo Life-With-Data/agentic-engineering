@@ -36,9 +36,9 @@ Component counts are intentionally not listed here — they drift. The authorita
 
 When you add or remove an agent, command, or skill:
 
-1. **Bump the version** (semver) in `plugins/agentic-engineering/.claude-plugin/plugin.json` and `.claude-plugin/marketplace.json` — keep them equal. MINOR for new components, PATCH for fixes/docs.
+1. **Do not hand-bump the version.** [release-please](https://github.com/googleapis/release-please) computes the bump for `plugins/agentic-engineering/.claude-plugin/plugin.json` (and mirrors it into `.claude-plugin/marketplace.json`, `.cursor-plugin/plugin.json`, `.codex-plugin/plugin.json`) from Conventional Commit-prefixed PR titles once merged to `main` — see [Commit conventions](#commit-conventions) and [Release process](#release-process).
 2. **Update the counts** in `plugin.json` `description`, `marketplace.json` `description`, and both READMEs' component tables. The exact expected substrings differ per file — the test encodes each one, so let a `bun test` failure tell you what to change.
-3. **Document it** in `plugins/agentic-engineering/CHANGELOG.md` (Keep a Changelog format).
+3. **Don't hand-write CHANGELOG.md entries.** release-please generates them from your PR title when it composes the release PR.
 4. **Regenerate the docs site**: `bun run docs:build`, then `bun run docs:check` (also enforced in CI). See [Documentation Site](#documentation-site).
 5. **Validate JSON**: `cat .claude-plugin/marketplace.json | jq .` and the same for `plugin.json`.
 
@@ -87,8 +87,12 @@ claude /plugin install agentic-engineering
 
 ## Commit conventions
 
-- `Add [component]` / `Remove [component]` — adding or removing functionality
-- `Update [file] to [what changed]`, `Fix [issue]`, `Simplify [component] to [improvement]`
+PR titles (squash-merged as the commit subject) **must** use a [Conventional Commits](https://www.conventionalcommits.org/) type prefix — `pr-title.yml` enforces this in CI, and release-please reads it to decide each package's version bump and changelog section:
+
+- `feat:` — new agent/command/skill (MINOR)
+- `fix:` — bug fix (PATCH)
+- `docs:`, `refactor:`, `chore:`, `perf:`, `test:`, `ci:` — as appropriate
+- Optional scope for clarity (e.g. `feat(marketing): ...`) — not required to route the release to the right package, since release-please attributes commits to a package by which directory changed (`plugins/agentic-engineering/` vs `plugins/marketing/`).
 
 Include the footer:
 
@@ -98,6 +102,10 @@ Include the footer:
 Co-Authored-By: Claude <noreply@anthropic.com>
 ```
 
+## Release process
+
+Releases are driven by [release-please](https://github.com/googleapis/release-please), configured in `.github/release-please-config.json` / `.github/.release-please-manifest.json`, with one package per releasable component: `plugins/agentic-engineering` and `plugins/marketing`. The `Release PR` workflow (`.github/workflows/release-pr.yml`) maintains one standing release PR per package on every push to `main`, accumulating merged Conventional Commits into its changelog. Merging a generated release PR is what cuts that package's tag (`<package-name>-v<version>`) and GitHub Release — nothing is released until that PR is merged. See `docs/solutions/plugin-versioning-requirements.md` for the full model and `docs/solutions/adopt-release-please.md` for the adoption rationale.
+
 ## Resources
 
 - [Claude Code Plugin Documentation](https://docs.claude.com/en/docs/claude-code/plugins)
@@ -106,6 +114,7 @@ Co-Authored-By: Claude <noreply@anthropic.com>
 
 ## Key Learnings
 
+- **2026-07-14 — A fork-disconnect force-push can strand a bot-generated release PR on unreachable history.** Disconnecting from the upstream fork and force-pushing `main` back to the correct state left an already-open release-please PR pointed at the old, now-unreachable commit lineage — 826 files of pure noise, unmergeable, and unregenerable because the workflow that created it no longer existed on the new `main`. Verify with `git merge-base --is-ancestor <PR-branch-tip> <main-tip>` before assuming a stale automation PR can simply be re-triggered; if the answer is no, close it and rebuild the automation fresh rather than trying to reconcile it.
 - **2024-11-22 — Count files before updating descriptions.** Adding the first skill revealed the counts were wrong (said 15 agents, actually 17). Counts appear in multiple files and must all match; `tests/plugin-consistency.test.ts` now enforces this, so `bun test` is the check.
 - **2024-10-09 — Stick to the official marketplace spec.** The initial `marketplace.json` carried custom fields (`downloads`, `stars`, `rating`, `categories`, `trending`) that aren't in the spec. Removed them; custom fields confuse users and risk breaking future compatibility.
 </content>

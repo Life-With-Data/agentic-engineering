@@ -1,0 +1,33 @@
+name: PR Title
+
+# Enforces Conventional Commit-style PR titles (squash-merged into main as the
+# commit subject). release-please reads that subject to decide each package's
+# version bump and changelog section — an unprefixed title silently produces
+# no release entry, so this check makes the requirement visible in CI rather
+# than trusting it. See docs/solutions/plugin-versioning-requirements.md.
+
+on:
+  pull_request_target:
+    types: [opened, edited, synchronize, reopened]
+
+permissions:
+  pull-requests: read
+
+jobs:
+  title:
+    runs-on: ubuntu-latest
+    steps:
+      # SHA-pinned per docs/solutions/security-issues/hardening-scaffolded-github-actions-workflows.md
+      - uses: amannn/action-semantic-pull-request@48f256284bd46cdaab1048c3721360e808335d50 # v6.1.1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          types: |
+            feat
+            fix
+            docs
+            refactor
+            chore
+            perf
+            test
+            ci

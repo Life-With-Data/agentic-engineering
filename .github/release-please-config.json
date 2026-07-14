@@ -1,0 +1,42 @@
+{
+  "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+  "include-component-in-tag": true,
+  "packages": {
+    "plugins/agentic-engineering": {
+      "release-type": "simple",
+      "package-name": "agentic-engineering",
+      "changelog-path": "CHANGELOG.md",
+      "bootstrap-sha": "d099581c06fe80d47028bcd94a09d8b9321225e9",
+      "extra-files": [
+        {
+          "type": "json",
+          "path": ".claude-plugin/marketplace.json",
+          "jsonpath": "$.plugins[0].version"
+        },
+        {
+          "type": "json",
+          "path": "plugins/agentic-engineering/.cursor-plugin/plugin.json",
+          "jsonpath": "$.version"
+        },
+        {
+          "type": "json",
+          "path": "plugins/agentic-engineering/.codex-plugin/plugin.json",
+          "jsonpath": "$.version"
+        }
+      ]
+    },
+    "plugins/marketing": {
+      "release-type": "simple",
+      "package-name": "marketing",
+      "changelog-path": "CHANGELOG.md",
+      "bootstrap-sha": "d099581c06fe80d47028bcd94a09d8b9321225e9",
+      "extra-files": [
+        {
+          "type": "json",
+          "path": ".claude-plugin/marketplace.json",
+          "jsonpath": "$.plugins[1].version"
+        }
+      ]
+    }
+  }
+}
