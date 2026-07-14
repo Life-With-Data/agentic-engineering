@@ -15,8 +15,8 @@ silently re-track the files and resurrect the churn. This hook turns that into
 a clear, actionable block.
 
 The agentic-engineering workflow treats Beads as a first-class tracker
-(`/workflows:plan` writes `bead_id:`, `/workflows:work` runs `bd ready`/`bd
-close`, `/workflows:review` files findings as beads). This guard protects that
+(`/workflows-plan` writes `bead_id:`, `/workflows-work` runs `bd ready`/`bd
+close`, `/workflows-review` files findings as beads). This guard protects that
 integration from the JSONL-churn footgun.
 
 Design notes:

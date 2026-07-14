@@ -41,13 +41,13 @@ Each transition has exactly one writer. Writers invoke `lifecycle_board.py` verb
 | Transition | Writer | Mechanism |
 |---|---|---|
 | → `stub` | `/triage`, `/upstream-scan`, humans | `gh issue create` + board add + `--set-status stub` (one sequence) |
-| → `brainstormed` | `/workflows:brainstorm` | On doc completion, open questions resolved; creates the issue if none exists |
-| → `planned` | `/workflows:plan` | Issue create/update + sub-issues + dependencies + board add + `--set-status planned` |
-| → `in_progress` | `/workflows:work` | `--claim` verb |
-| → `in_review` | `/workflows:work` | PR opens with `Closes #N`; `--set-status in_review`; issue stays open |
+| → `brainstormed` | `/workflows-brainstorm` | On doc completion, open questions resolved; creates the issue if none exists |
+| → `planned` | `/workflows-plan` | Issue create/update + sub-issues + dependencies + board add + `--set-status planned` |
+| → `in_progress` | `/workflows-work` | `--claim` verb |
+| → `in_review` | `/workflows-work` | PR opens with `Closes #N`; `--set-status in_review`; issue stays open |
 | → `shipped` | Built-in "Item closed" automation | Merge closes the issue via `Closes #N`; pre-enabled, survives bootstrap |
 | → `deployed` | Consumer repo's deploy workflow | Comment-always / Status-best-effort (see gh-recipes) |
-| → `compounded` | `/workflows:compound` | Only when a `github_issue` join key exists; legal directly from `shipped` |
+| → `compounded` | `/workflows-compound` | Only when a `github_issue` join key exists; legal directly from `shipped` |
 | → `abandoned` | Humans; reconciler on close-as-not-planned | Any stage; abandoning a parent cascades to sub-issues |
 | sub-issue `status:*` | The **owning agent** (orchestrator, or the inline worker) | `--sub-status <sub> <in_progress\|in_review\|blocked\|done>`; a mutually-exclusive label, never a board stage |
 | *(repairs)* | The shared reconciler — the only other writer | The five closed repairs below; every command invokes this one `--reconcile`, never its own reconcile prose |
@@ -72,7 +72,7 @@ Every command runs one idempotent entry gate on entry and routes around complete
 python3 "${CLAUDE_PLUGIN_ROOT}/scripts/lifecycle_board.py" --gate <command> [--issue N]
 ```
 
-`<command>` is one of `brainstorm | plan | work | compound | orchestrate`. The result carries `{stage, issue, plan_doc, brainstorm_doc, verdict, route, provenance}`. (`orchestrate` is the pure state read for pipeline drivers: its verdict is always `proceed` and the caller applies its own ladder — `/workflows:orchestrate` and `/workflows:groom` both consume it; groom owns no transition of its own, it drives the brainstorm/plan writers and stops at `planned`.) There are **two closed enums**, each with its own routing table: the **gate enum** (returned by `--gate`) and the **claim enum** (returned only by `--claim`). The gate never reads assignees, so a claim verdict can never come out of `--gate`.
+`<command>` is one of `brainstorm | plan | work | compound | orchestrate`. The result carries `{stage, issue, plan_doc, brainstorm_doc, verdict, route, provenance}`. (`orchestrate` is the pure state read for pipeline drivers: its verdict is always `proceed` and the caller applies its own ladder — `/workflows-orchestrate` and `/workflows-groom` both consume it; groom owns no transition of its own, it drives the brainstorm/plan writers and stops at `planned`.) There are **two closed enums**, each with its own routing table: the **gate enum** (returned by `--gate`) and the **claim enum** (returned only by `--claim`). The gate never reads assignees, so a claim verdict can never come out of `--gate`.
 
 **Gate enum** — the five values in `lifecycle_board.VERDICTS` that `--gate` may return:
 
@@ -80,7 +80,7 @@ python3 "${CLAUDE_PLUGIN_ROOT}/scripts/lifecycle_board.py" --gate <command> [--i
 |---|---|---|
 | `proceed` | Ready for this command's transition | Do the one owned transition. |
 | `already_done` | This stage (or later) is reached with its artifact | STOP; follow `route` (e.g. `route: route_to_work` means plan is done, hand to work). |
-| `route_to_plan` | Un-groomed for this command | STOP; hand off to `/workflows:plan`. |
+| `route_to_plan` | Un-groomed for this command | STOP; hand off to `/workflows-plan`. |
 | `repair_needed` | Stage/artifact drift, or an unresolved join key | Treat the stage as un-groomed and let the current command repair by doing its normal work **without trusting the stage** — brainstorm/plan re-groom from scratch; compound documents but does not stamp. The closed repair set does not fabricate a missing artifact, and a stale join key needs a manual `github_issue:` frontmatter fix. |
 | `no_board` | Not in `github-project` mode | Fall back to the command's legacy `github`/`none` behavior. |
 
@@ -98,7 +98,7 @@ Universal routing rules:
 
 - **Stage without artifact = un-groomed.** A Status of `planned` with no join-keyed plan doc routes to plan; a Status of `brainstormed` with no brainstorm doc re-grooms. Board state alone never directs an agent to execute work — a plan doc requires a merged PR to exist, so this is a security invariant, not hygiene.
 - **Never fight a human drag.** Gates read stage *and* artifact and route; they do not "correct" a human's manual card move.
-- **Hotfixes bypass the board.** `/workflows:work` requires ≥ `planned`; a hotfix with no board item routes around the gate entirely.
+- **Hotfixes bypass the board.** `/workflows-work` requires ≥ `planned`; a hotfix with no board item routes around the gate entirely.
 - **`no_board` degrades gracefully.** Each command keeps its pre-lifecycle `github` (plain issues + file-todos) or `none` behavior when no board is configured.
 
 ## Claim semantics
@@ -121,7 +121,7 @@ python3 "${CLAUDE_PLUGIN_ROOT}/scripts/lifecycle_board.py" --set-status N <stage
 
 `--set-status` owns the four-ID `gh project item-edit` flow and adds the item to the board if absent — commands never hand-assemble GraphQL or call raw `item-edit`. `--set-status` and `--reconcile` are the sanctioned operator primitives for deliberate out-of-band moves and manual reconciliation (humans and CI may call them directly).
 
-**Seam gate — `in_review` requires terminal sub-issues.** `--set-status <N> in_review` **refuses** when `<N>` has open sub-issues (`error_code: open_sub_issues`), enforcing in the engine what `/workflows:work` Phase 4 states in prose — an agent that skips the checklist still cannot mark a parent ready-for-review while its decomposed work is unfinished and then bury it under the merge → `shipped` automation. The reconciler and deliberate operator/CI moves pass through (`--force`); the `in_review_with_open_subissues` flag is the after-the-fact detector for those forced paths. This is the one place the lifecycle verifies a *predecessor step actually finished* before allowing the next transition — a snowball stop, not general hygiene.
+**Seam gate — `in_review` requires terminal sub-issues.** `--set-status <N> in_review` **refuses** when `<N>` has open sub-issues (`error_code: open_sub_issues`), enforcing in the engine what `/workflows-work` Phase 4 states in prose — an agent that skips the checklist still cannot mark a parent ready-for-review while its decomposed work is unfinished and then bury it under the merge → `shipped` automation. The reconciler and deliberate operator/CI moves pass through (`--force`); the `in_review_with_open_subissues` flag is the after-the-fact detector for those forced paths. This is the one place the lifecycle verifies a *predecessor step actually finished* before allowing the next transition — a snowball stop, not general hygiene.
 
 ## Sub-issue status
 

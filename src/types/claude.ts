@@ -47,6 +47,8 @@ export type ClaudeCommand = {
 export type ClaudeSkill = {
   name: string
   description?: string
+  argumentHint?: string
+  allowedTools?: string[]
   disableModelInvocation?: boolean
   sourceDir: string
   skillPath: string

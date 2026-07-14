@@ -28,7 +28,7 @@ describe("loadClaudePlugin", () => {
     expect(plugin.manifest.name).toBe("agentic-engineering");
     expect(plugin.agents.length).toBe(2);
     expect(plugin.commands.length).toBe(7);
-    expect(plugin.skills.length).toBe(2);
+    expect(plugin.skills.length).toBe(3);
     expect(plugin.hooks).toBeDefined();
     expect(plugin.mcpServers).toBeDefined();
 
@@ -118,6 +118,29 @@ describe("loadClaudePlugin", () => {
       (skill) => skill.name === "skill-one"
     );
     expect(normalSkill?.disableModelInvocation).toBeUndefined();
+  });
+
+  test("parses allowed-tools and argument-hint from skills", async () => {
+    const plugin = await loadClaudePlugin(fixtureRoot);
+
+    const tooledSkill = plugin.skills.find(
+      (skill) => skill.name === "tooled-skill"
+    );
+    expect(tooledSkill).toBeDefined();
+    expect(tooledSkill?.argumentHint).toBe("<path> [--flag]");
+    expect(tooledSkill?.allowedTools).toEqual([
+      "Read",
+      "Edit",
+      "Bash(git:*)",
+      "Bash(npm:*)",
+    ]);
+
+    const plainSkill = plugin.skills.find(
+      (skill) => skill.name === "skill-one"
+    );
+    expect(plainSkill).toBeDefined();
+    expect(plainSkill?.argumentHint).toBeUndefined();
+    expect(plainSkill?.allowedTools).toBeUndefined();
   });
 
   test("loads MCP servers from .mcp.json when manifest is empty", async () => {

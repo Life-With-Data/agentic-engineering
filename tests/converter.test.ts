@@ -49,6 +49,10 @@ describe("convertClaudeToOpenCode", () => {
     const bashPermission = permission.bash as Record<string, string>;
     expect(bashPermission["ls *"]).toBe("allow");
     expect(bashPermission["git *"]).toBe("allow");
+    // "npm *" is granted only by the tooled-skill fixture's allowed-tools, not by any
+    // fixture command — this is the one assertion that would fail if applyPermissions()
+    // stopped merging plugin.skills into the "from-commands" permission source.
+    expect(bashPermission["npm *"]).toBe("allow");
     expect(permission.webfetch).toBe("allow");
 
     const readPermission = permission.read as Record<string, string>;
@@ -328,5 +332,49 @@ Run \`/agentic-engineering-setup\` to create a settings file.`,
     const parsed = parseFrontmatter(commandFile!.content);
     expect(parsed.data.description).toBe("Test description");
     expect(parsed.body).toContain("Do the thing");
+  });
+
+  test("from-commands mode: derives permissions from skills when commands are empty", () => {
+    const plugin: ClaudePlugin = {
+      root: "/tmp/plugin",
+      manifest: { name: "fixture", version: "1.0.0" },
+      agents: [],
+      commands: [],
+      skills: [
+        {
+          name: "review",
+          description: "Review skill",
+          allowedTools: ["Read", "Bash(git:*)", "WebFetch"],
+          sourceDir: "/tmp/plugin/skills/review",
+          skillPath: "/tmp/plugin/skills/review/SKILL.md",
+        },
+      ],
+    };
+
+    const bundle = convertClaudeToOpenCode(plugin, {
+      agentMode: "subagent",
+      inferTemperature: false,
+      permissions: "from-commands",
+    });
+
+    const permission = bundle.config.permission as Record<
+      string,
+      string | Record<string, string>
+    >;
+    const tools = bundle.config.tools as Record<string, boolean>;
+
+    // Skills-only plugin still yields a non-empty, correct permission set.
+    expect(permission.read).toBe("allow");
+    expect(permission.webfetch).toBe("allow");
+    const bashPermission = permission.bash as Record<string, string>;
+    expect(bashPermission["*"]).toBe("deny");
+    expect(bashPermission["git *"]).toBe("allow");
+
+    expect(tools.read).toBe(true);
+    expect(tools.bash).toBe(true);
+    expect(tools.webfetch).toBe(true);
+    // Tools not granted by any skill stay denied/disabled.
+    expect(permission.edit).toBe("deny");
+    expect(tools.edit).toBe(false);
   });
 });

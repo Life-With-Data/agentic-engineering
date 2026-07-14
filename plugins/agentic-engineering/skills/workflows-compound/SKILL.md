@@ -1,5 +1,5 @@
 ---
-name: workflows:compound
+name: workflows-compound
 description: Document a recently solved problem to compound your team's knowledge
 argument-hint: "[optional: brief context about the fix]"
 ---
@@ -17,8 +17,8 @@ Captures problem solutions while context is fresh, creating structured documenta
 ## Usage
 
 ```bash
-/workflows:compound                    # Document the most recent fix
-/workflows:compound [brief context]    # Provide additional context hint
+/workflows-compound                    # Document the most recent fix
+/workflows-compound [brief context]    # Provide additional context hint
 ```
 
 ## Entry Gate (run before anything else)
@@ -138,9 +138,9 @@ non-doc path aborts the auto-merge and escalates. This is what makes the merge s
 
 **When to run the data lane:**
 
-- **Autonomous pipeline** (`/workflows:orchestrate`, or `/workflows:compound` invoked as the pipeline's
+- **Autonomous pipeline** (`/workflows-orchestrate`, or `/workflows-compound` invoked as the pipeline's
   compound stage) → run it automatically. This is the seam that used to bounce back to the user.
-- **Standalone `/workflows:compound`** → run it too, so a hand-invoked compound also closes out without
+- **Standalone `/workflows-compound`** → run it too, so a hand-invoked compound also closes out without
   a manual "now open a PR for these docs" step.
 - **`no_board` / hotfix with no issue** → still applies; `land-docs` uses `compound` as the branch/PR
   slug when no `<N>` is available.
@@ -270,7 +270,7 @@ Build → Test → Find Issue → Research → Improve → Document → Validate
 
 <auto_invoke> <trigger_phrases> - "that worked" - "it's fixed" - "working now" - "problem solved" </trigger_phrases>
 
-<manual_override> Use /workflows:compound [context] to document immediately without waiting for auto-detection. </manual_override> </auto_invoke>
+<manual_override> Use /workflows-compound [context] to document immediately without waiting for auto-detection. </manual_override> </auto_invoke>
 
 ## Routes To
 
@@ -299,10 +299,10 @@ Based on problem type, these agents can enhance documentation:
 
 ### When to Invoke
 - **Auto-triggered** (optional): Agents can run post-documentation for enhancement
-- **Manual trigger**: User can invoke agents after /workflows:compound completes for deeper review
+- **Manual trigger**: User can invoke agents after /workflows-compound completes for deeper review
 - **Customize agents**: Edit `agentic-engineering.local.md` or invoke the `setup` skill to configure which review agents are used across all workflows
 
 ## Related Commands
 
 - `/research [topic]` - Deep investigation (searches docs/solutions/ for patterns)
-- `/workflows:plan` - Planning workflow (references documented solutions)
+- `/workflows-plan` - Planning workflow (references documented solutions)

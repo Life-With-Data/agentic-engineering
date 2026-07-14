@@ -1,6 +1,6 @@
 """End-to-end smoke tests for ``scripts/plan-tracker-guard.py``.
 
-The script is the Stop-hook safety net for ``/workflows:plan``. These tests
+The script is the Stop-hook safety net for ``/workflows-plan``. These tests
 drive it as a subprocess with fixture transcripts shaped exactly like real
 Claude Code transcripts (``record["message"]["content"][i]`` with
 ``type == "tool_use"`` and ``name`` in {Write, Edit, MultiEdit, NotebookEdit}).

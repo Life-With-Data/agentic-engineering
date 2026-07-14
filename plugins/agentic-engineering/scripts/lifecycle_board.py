@@ -1565,7 +1565,7 @@ def evaluate_forward_binding_check(binding: BindingConfig,
                     f"Remove {auto_add_workflow}, or set {CONFIG_KEY_FORWARD_BINDING}: auto-add "
                     f"in {COMMITTED_CONFIG} if you do want auto-add")
         return ("PASS",
-                "workflow-only — the /workflows:* commands add items themselves; no auto-add", "")
+                "workflow-only — the /workflows-* skills add items themselves; no auto-add", "")
     if fb == "auto-add":
         if auto_add_workflow is None:
             return ("WARN",

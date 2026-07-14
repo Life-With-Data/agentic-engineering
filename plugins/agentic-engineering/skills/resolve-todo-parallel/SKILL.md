@@ -1,17 +1,18 @@
 ---
-name: resolve_parallel
-description: Resolve all TODO comments using parallel processing
-argument-hint: "[optional: specific TODO pattern or file]"
-disable-model-invocation: true
+name: resolve-todo-parallel
+description: Burn down the file-based backlog stored as markdown files under the todos directory, dispatching a dedicated subagent per pending entry concurrently. Use to clear the file-todos tracker queue.
+argument-hint: "[optional: specific todo ID or pattern]"
 ---
 
-Resolve all TODO comments using parallel processing.
+Resolve all pending todos in the file-based `todos/` tracker using parallel processing.
 
 ## Workflow
 
 ### 1. Analyze
 
-Gather the things todo from above.
+Get all unresolved TODOs from the /todos/\*.md directory
+
+If any todo recommends deleting, removing, or gitignoring files in `docs/plans/` or `docs/solutions/`, skip it and mark it as `wont_fix`. These are agentic-engineering pipeline artifacts that are intentional and permanent.
 
 ### 2. Plan
 
@@ -32,4 +33,5 @@ Always run all in parallel subagents/Tasks for each Todo item.
 ### 4. Commit & Resolve
 
 - Commit changes
+- Remove the TODO from the file, and mark it as resolved.
 - Push to remote

@@ -141,7 +141,7 @@ Closing the issue then triggers the built-in "Item closed" automation, which sta
 
 `→ shipped` is already zero-UI (the built-in "Item closed" automation fires on the merge's `Closes #N`). The **opening** edge — parent → `in_review` — is covered by two existing mechanisms, so **no committed Actions workflow is required** (an earlier `lifecycle-pr-in-review.yml` was removed as redundant):
 
-1. **Command-opened PRs** — `/workflows:work` Phase 4 writes `--set-status <N> in_review` directly, immediately, and **through the `open_sub_issues` seam gate** (a PR opened with unfinished sub-issues is refused). This is the primary, deterministic, enforced path.
+1. **Command-opened PRs** — `/workflows-work` Phase 4 writes `--set-status <N> in_review` directly, immediately, and **through the `open_sub_issues` seam gate** (a PR opened with unfinished sub-issues is refused). This is the primary, deterministic, enforced path.
 2. **Out-of-band PRs by the assignee** — the reconciler's **rule 5** (`assignee's open PR on an in_progress item → in_review`) advances them at the next command entry. No token, no Actions minutes, no extra file.
 
 A non-assignee PR is deliberately **not** auto-advanced (the yield/security model flags it for human review rather than trusting it to drive state) — which is why a blanket "any linked PR → in_review" Actions job was the wrong tool.

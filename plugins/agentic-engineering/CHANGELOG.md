@@ -5,6 +5,23 @@ All notable changes to the agentic-engineering plugin will be documented in this
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.0.0] - 2026-07-14
+
+### Changed
+
+- **BREAKING — every command is now a skill; `/workflows:*` invocations no longer exist.** All 28 command files under `plugins/agentic-engineering/commands/` were migrated into 27 skills (`skills/<name>/SKILL.md`) and the `commands/` directory was deleted. The plugin now ships **zero commands**. The 8 `workflows:*` commands are renamed to hyphenated skills — `workflows-brainstorm`, `workflows-compound`, `workflows-groom`, `workflows-merge`, `workflows-orchestrate`, `workflows-plan`, `workflows-review`, `workflows-work` — because skill directory names allow only lowercase letters, numbers, and hyphens (no colons). **Every `/workflows:*` invocation breaks**: scripts, muscle memory, external docs, orchestrator hand-offs, and any other tooling that typed `/workflows:plan`, `/workflows:review`, etc. must switch to `/workflows-plan`, `/workflows-review`, and so on. **No alias, redirect, or back-compat shim is provided** — the old colon names are gone. This is the reason for the MAJOR version bump.
+- **3 underscore-named commands were hyphenated** to satisfy the same skill-naming constraint: `generate_command` → `generate-command`, `resolve_parallel` → `resolve-parallel`, `resolve_todo_parallel` → `resolve-todo-parallel`. Invocations using the underscore forms break.
+- **Skill frontmatter parser reached parity with command parsing.** `loadSkills()` now parses `allowed-tools` and `argument-hint` from `SKILL.md` frontmatter (previously only the command loader read these), so migrated skills keep their tool grants and argument hints intact across every conversion target.
+- **OpenCode `"from-commands"` permission derivation now also reads skill `allowed-tools`.** Previously it derived permissions only from commands; a skills-only plugin like this one (now that `commands/` is gone) would have silently degraded to an all-deny permission set. The derivation now includes skill `allowed-tools`, so this plugin converts to a correct, non-empty OpenCode permission set.
+- **`plugins/agentic-engineering/.cursor-plugin/plugin.json` dropped its `commands` field** — the Cursor native manifest no longer wires a commands directory, since none exists.
+- **Component counts and manifest descriptions updated across all manifests** (`plugin.json`, root `marketplace.json`, `.cursor-plugin/plugin.json`, `.codex-plugin/plugin.json`), both READMEs, and the docs site: **31 agents, 62 skills, 0 commands, 1 MCP server** (the 62 skills = 35 pre-existing + 27 migrated). The "commands" clause was removed from every description.
+- **Sharpened `resolve-parallel` and `resolve-todo-parallel` descriptions** so they no longer collide in skill routing. Once both former commands became skills they shared near-identical descriptions ("Resolve all TODO comments using parallel processing"); their frontmatter now distinguishes source-code TODO/FIXME annotations (`resolve-parallel`) from the file-based `todos/` markdown tracker (`resolve-todo-parallel`).
+
+### Removed
+
+- **`create-agent-skill` command deleted** — it was a redundant wrapper. Use the pre-existing [`create-agent-skills`](skills/create-agent-skills/SKILL.md) skill directly (note the trailing `s`).
+- **`commands/` directory removed entirely.** The 28 commands migrated to 27 skills (the redundant `create-agent-skill` wrapper was dropped rather than migrated, accounting for the 28 → 27 delta).
+
 ## [3.22.0] - 2026-07-13
 
 ### Added

@@ -11,7 +11,7 @@
 ### Version Bumping Rules
 
 - **MAJOR** (1.0.0 → 2.0.0): Breaking changes, major reorganization
-- **MINOR** (1.0.0 → 1.1.0): New agents, commands, or skills
+- **MINOR** (1.0.0 → 1.1.0): New agents or skills
 - **PATCH** (1.0.0 → 1.0.1): Bug fixes, doc updates, minor improvements
 
 ### Pre-Commit Checklist
@@ -21,7 +21,7 @@ Before committing ANY changes:
 - [ ] Version bumped in `.claude-plugin/plugin.json`
 - [ ] CHANGELOG.md updated with changes
 - [ ] README.md component counts verified
-- [ ] README.md tables accurate (agents, commands, skills)
+- [ ] README.md tables accurate (agents, skills)
 - [ ] plugin.json description matches current counts
 
 ### Directory Structure
@@ -34,23 +34,20 @@ agents/
 ├── workflow/   # Workflow automation agents
 └── docs/       # Documentation agents
 
-commands/
-├── workflows/  # Core workflow commands (workflows:plan, workflows:review, etc.)
-└── *.md        # Utility commands
-
 skills/
-└── *.md        # All skills at root level
+└── <name>/SKILL.md  # All skills, one directory per skill (includes the former workflow
+                      # and utility commands, e.g. workflows-plan, workflows-review)
 ```
 
-## Command Naming Convention
+## Skill Naming Convention
 
-**Workflow commands** use `workflows:` prefix to avoid collisions with built-in commands:
-- `/workflows:plan` - Create implementation plans
-- `/workflows:review` - Run comprehensive code reviews
-- `/workflows:work` - Execute work items systematically
-- `/workflows:compound` - Document solved problems
+**Workflow skills** use a `workflows-` prefix, hyphenated (not colon-separated — skill directory names allow only lowercase letters, numbers, and hyphens):
+- `workflows-plan` - Create implementation plans
+- `workflows-review` - Run comprehensive code reviews
+- `workflows-work` - Execute work items systematically
+- `workflows-compound` - Document solved problems
 
-**Why `workflows:`?** Claude Code has built-in `/plan` and `/review` commands. Using `name: workflows:plan` in frontmatter creates a unique `/workflows:plan` command with no collision.
+**Why the prefix?** Claude Code has built-in `/plan` and `/review` slash invocations. A skill named `workflows-plan` produces `/workflows-plan` with no collision.
 
 ## Skill Compliance Checklist
 

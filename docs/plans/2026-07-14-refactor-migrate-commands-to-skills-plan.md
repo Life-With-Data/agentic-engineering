@@ -133,7 +133,7 @@ See brainstorm doc: rejected keeping commands as a distinct type relying solely 
 - **Manual:**
   1. `claude /plugin marketplace add /path/to/agentic-engineering && claude /plugin install agentic-engineering` — confirm the `/` menu lists all 27 migrated skills under their new names, and that a sample `disable-model-invocation: true` skill (e.g. `/workflows-groom`) invokes correctly while NOT appearing as an auto-triggered suggestion from unrelated conversation.
   2. Install natively in Cursor per `docs/multi-platform-native-plugins.md` §5, confirm the same skills appear in Cursor's `/` menu, specifically re-checking the forum-reported `disable-model-invocation` visibility bug against a couple of the 17 affected skills.
-  3. `bun run docs:build` then visually spot-check `docs/pages/skills.html` (63 entries) and confirm `docs/pages/commands.html` was removed (see docs decision below) along with its nav-chrome links across the 6 hand-written pages.
+  3. `bun run docs:build` then visually spot-check `docs/pages/skills.html` (62 entries) and confirm `docs/pages/commands.html` was removed (see docs decision below) along with its nav-chrome links across the 6 hand-written pages.
 - **Rollback:** revert the single migration PR — since this is a pure content/config + two additive parser changes with no data migration, a straight `git revert` is safe and complete.
 
 ## Success Metrics

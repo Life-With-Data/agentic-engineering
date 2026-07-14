@@ -1,5 +1,5 @@
 ---
-name: workflows:brainstorm
+name: workflows-brainstorm
 description: Explore requirements and approaches through collaborative dialogue before planning implementation
 argument-hint: "[feature idea or problem to explore]"
 ---
@@ -8,7 +8,7 @@ argument-hint: "[feature idea or problem to explore]"
 
 **Note: The current year is 2026.** Use this when dating brainstorm documents.
 
-Brainstorming helps answer **WHAT** to build through collaborative dialogue. It precedes `/workflows:plan`, which answers **HOW** to build it.
+Brainstorming helps answer **WHAT** to build through collaborative dialogue. It precedes `/workflows-plan`, which answers **HOW** to build it.
 
 **Process knowledge:** Load the `brainstorming` skill for detailed question techniques, approach exploration patterns, and YAGNI principles.
 
@@ -27,7 +27,7 @@ Do not proceed until you have a feature description from the user.
 1. Run `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/lifecycle_board.py" --gate brainstorm [--issue <N>]` (pass `--issue` only if the feature description references an existing issue number or join key; otherwise omit it).
 2. Branch on `verdict` — exactly these outcomes, nothing else:
    - **`proceed`** (no issue, or issue at `stub`) → continue to Phase 0 below; this run owns the write to `brainstormed` on completion.
-   - **`already_done`** (groomed past brainstorming — the item is at `brainstormed` **or any later stage**) → the gate has already advanced beyond this command's scope. Announce the current stage and route to the stage-appropriate command per the gate's `route` (e.g. `route_to_plan` → `/workflows:plan`; a planned-or-later item routes to work). Then STOP — **never re-groom and never re-stamp**. Brainstorm never regresses a later stage back to `brainstormed`.
+   - **`already_done`** (groomed past brainstorming — the item is at `brainstormed` **or any later stage**) → the gate has already advanced beyond this command's scope. Announce the current stage and route to the stage-appropriate command per the gate's `route` (e.g. `route_to_plan` → `/workflows-plan`; a planned-or-later item routes to work). Then STOP — **never re-groom and never re-stamp**. Brainstorm never regresses a later stage back to `brainstormed`.
    - **`repair_needed`** (stage says `brainstormed` but no doc resolves the join key) → announce that the recorded stage has no matching doc, then continue to Phase 0 to re-groom and repair the record.
    - **`no_board`** (no board configured / legacy repo) → continue to Phase 0 using the legacy flow (no lifecycle write at completion; skip the Completion Step's board call).
 
@@ -48,7 +48,7 @@ Evaluate whether brainstorming is needed based on the feature description.
 - Constrained, well-defined scope
 
 **If requirements are already clear:**
-Use **AskUserQuestion tool** to suggest: "Your requirements seem detailed enough to proceed directly to planning. Should I run `/workflows:plan` instead, or would you like to explore the idea further?"
+Use **AskUserQuestion tool** to suggest: "Your requirements seem detailed enough to proceed directly to planning. Should I run `/workflows-plan` instead, or would you like to explore the idea further?"
 
 ### Phase 1: Understand the Idea
 
@@ -113,7 +113,7 @@ Use **AskUserQuestion tool** to present next steps:
 
 **Options:**
 1. **Review and refine** - Improve the document through structured self-review
-2. **Proceed to planning** - Run `/workflows:plan` (will auto-detect this brainstorm)
+2. **Proceed to planning** - Run `/workflows-plan` (will auto-detect this brainstorm)
 3. **Ask more questions** - I have more questions to clarify before moving on
 4. **Done for now** - Return later
 
@@ -125,8 +125,8 @@ Load the `document-review` skill and apply it to the brainstorm document.
 
 When document-review returns "Review complete", present next steps:
 
-1. **Move to planning** - Continue to `/workflows:plan` with this document
-2. **Done for now** - Brainstorming complete. To start planning later: `/workflows:plan [document-path]`
+1. **Move to planning** - Continue to `/workflows-plan` with this document
+2. **Done for now** - Brainstorming complete. To start planning later: `/workflows-plan [document-path]`
 
 ## Output Summary
 
@@ -141,7 +141,7 @@ Key decisions:
 - [Decision 1]
 - [Decision 2]
 
-Next: Run `/workflows:plan` when ready to implement.
+Next: Run `/workflows-plan` when ready to implement.
 ```
 
 ## Important Guidelines

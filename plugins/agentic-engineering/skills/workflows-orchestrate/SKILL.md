@@ -1,5 +1,5 @@
 ---
-name: workflows:orchestrate
+name: workflows-orchestrate
 description: Drive the brainstorm → plan → work → review → land → compound pipeline as the orchestrator — delegating implementation to sub-agents, reviewing their work, and running fully autonomously by default (surfacing only genuine blockers; --final-review adds one pre-merge check). Segment flags bifurcate the run — --groom stops once the item is planned; --implement starts from groomed work and refuses to groom.
 argument-hint: "[feature idea, or path to an existing brainstorm/plan] [--groom | --implement] [--final-review | --steer | --careful]"
 disable-model-invocation: true
@@ -12,7 +12,7 @@ disable-model-invocation: true
 You are the **orchestrator** sitting between the user and the workflow pipeline. The user has a flow they run by hand:
 
 ```
-/workflows:brainstorm → /workflows:plan → [/deepen-plan?] → /workflows:work → /workflows:review → /workflows:compound
+/workflows-brainstorm → /workflows-plan → [/deepen-plan?] → /workflows-work → /workflows-review → /workflows-compound
 ```
 
 The full expansion — including the finalization steps — is:
@@ -57,14 +57,14 @@ Autonomy ordering (most to least human involvement): `--careful` > `--steer` > `
 | Flag | Segment |
 |------|---------|
 | _(default)_ | The full pipeline, end to end. |
-| `--groom` | **Intake → groomed, then stop.** Run only the grooming segment (brainstorm → plan) and end the run once the item is `planned` with a join-keyed plan doc and sub-issues. `/workflows:groom` is the standalone form of this segment and its spec is **normative** here — same routing ladder, same hard-stop contract, same groomed packet. Items already at or past `planned` report as already-groomed / past-grooming and stop. |
-| `--implement` | **Groomed → shipped.** Require the item to already be groomed: if the board stage resolves below `planned` — or Status says `planned` but no join-keyed plan doc exists — **stop and route to `/workflows:groom`**. An implement run never grooms as a side effect; the bifurcation exists so grooming can be reviewed (or supervised) separately before code gets written. From `planned`, run the remaining pipeline exactly as the default does (plan self-review at pickup, then work → review → land → compound). |
+| `--groom` | **Intake → groomed, then stop.** Run only the grooming segment (brainstorm → plan) and end the run once the item is `planned` with a join-keyed plan doc and sub-issues. `/workflows-groom` is the standalone form of this segment and its spec is **normative** here — same routing ladder, same hard-stop contract, same groomed packet. Items already at or past `planned` report as already-groomed / past-grooming and stop. |
+| `--implement` | **Groomed → shipped.** Require the item to already be groomed: if the board stage resolves below `planned` — or Status says `planned` but no join-keyed plan doc exists — **stop and route to `/workflows-groom`**. An implement run never grooms as a side effect; the bifurcation exists so grooming can be reviewed (or supervised) separately before code gets written. From `planned`, run the remaining pipeline exactly as the default does (plan self-review at pickup, then work → review → land → compound). |
 
 Segment flags compose with autonomy flags: `--groom --steer` is an interactive grooming session; `--implement` alone is the classic unattended build from a ready backlog. Under `--groom` there is no merge, so `--final-review` is a no-op. Together the pair supports the standard bifurcated flow — groom intake into a ready backlog first, implement from it later: `--implement` with empty input pulls from `--ready-work` as usual, whose items (`planned ∧ unassigned ∧ unblocked`) are groomed by definition.
 
 ## How You Operate
 
-You drive the pipeline by invoking the existing `/workflows:*` sub-commands in order. Each sub-command has its own internal questions. Your role is to **filter those questions**:
+You drive the pipeline by invoking the existing `/workflows-*` sub-skills in order. Each sub-skill has its own internal questions. Your role is to **filter those questions**:
 
 - **Menial prompts** (branch naming, "proceed?", detail level, "continue on this branch?") → answer them yourself with the sensible default below. Do **not** forward them to the user.
 - **Judgment prompts** (which approach to build, approval to start implementing, which findings to fix) → in **`--steer`/`--careful`**, surface them via **AskUserQuestion**. In the **autonomous modes** (default and `--final-review`), answer them yourself per the Decision Policy and record the call in the decision log — only a genuine blocker goes to the user.
@@ -78,7 +78,7 @@ You also **insert your own gates** where the pipeline itself wouldn't stop: the 
 The orchestrator does not implement feature code inline. It sits at the top of a two-tier structure:
 
 - **Orchestrator (this session — the strongest model available).** Owns the pipeline state machine, the tracker, all judgment calls, and **review of everything a sub-agent returns**. Reviewing is the orchestrator's real job: read the returned diff against the acceptance criteria, re-run the project's quality gates at the top level, and reject work that doesn't hold up.
-- **Implementation sub-agents.** Each tracked issue / plan task is dispatched to one focused sub-agent via the Agent tool, using the **Orchestrated Execution** engine in `/workflows:work` (its subagent brief, wave planning, and terminal-state rules apply verbatim). Run implementation sub-agents on an Opus-tier model (`model: "opus"`) in the background; reserve the orchestrator's own tier for review and steering, and drop to a cheaper tier for purely mechanical chores (docs regeneration, count bumps). Dispatch file-disjoint work in parallel (worktree-isolated when agents would touch the same repo); serialize the rest.
+- **Implementation sub-agents.** Each tracked issue / plan task is dispatched to one focused sub-agent via the Agent tool, using the **Orchestrated Execution** engine in `/workflows-work` (its subagent brief, wave planning, and terminal-state rules apply verbatim). Run implementation sub-agents on an Opus-tier model (`model: "opus"`) in the background; reserve the orchestrator's own tier for review and steering, and drop to a cheaper tier for purely mechanical chores (docs regeneration, count bumps). Dispatch file-disjoint work in parallel (worktree-isolated when agents would touch the same repo); serialize the rest.
 
 The review loop per returned sub-agent: **verify → accept, retry, or escalate.** Criteria met and gates green → accept and advance the tracker. Gates fail or criteria unmet → re-dispatch with the specific failure appended, max ~2 retries. Still failing, or the failure needs a human decision → blocker. Never accept unreviewed work, and never let a sub-agent's "done" substitute for your own verification. Both tiers run on the `operating-principles` skill: sub-agents load it via the brief template, and the orchestrator applies its independent-channel verification and Verified / Checked / Assumed calibration when judging returned work — a sub-agent's *checked* is not the orchestrator's *verified*.
 
@@ -93,26 +93,26 @@ This table is the heart of the orchestrator. Apply it literally. **🧍 CHECKPOI
 | Run repo preflight, print tracker banner | **AUTO** | Run `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/workflow-repo-preflight.py"`; follow its `recommendation.action`. |
 | Brainstorm: lightweight repo research | **AUTO** | Let it run. |
 | Brainstorm: **which approach to build** | **🧍 CHECKPOINT** | The user picks — this is WHAT-we-build steering. *Autonomous self-answer:* pick the approach the brainstorm's own analysis recommends and log it; if the fork is product-shaping with no clear winner, that's a blocker — escalate, don't guess. |
-| Brainstorm → plan transition | **AUTO** | When the brainstorm doc is written and its open questions are resolved, proceed to `/workflows:plan` (it auto-detects the brainstorm). |
-| Plan: research depth decision | **AUTO** | Let `/workflows:plan` decide per its own rules; don't intervene. |
+| Brainstorm → plan transition | **AUTO** | When the brainstorm doc is written and its open questions are resolved, proceed to `/workflows-plan` (it auto-detects the brainstorm). |
+| Plan: research depth decision | **AUTO** | Let `/workflows-plan` decide per its own rules; don't intervene. |
 | Plan: detail level (MINIMAL/MORE/A LOT) | **AUTO** | Choose by scope: bug/small → MINIMAL, typical feature → MORE, architectural/multi-phase → A LOT. |
 | Plan: tracker-issue creation | **AUTO** | Mandatory Step 7 runs as-is: it creates/updates the GitHub issue, sub-issues (via the plan), dependencies, board-adds, and sets Status=`planned`. Capture the issue number `#<N>`. |
 | **Plan-Approval gate** (plan written, before any code) | **🧍 CHECKPOINT** | Show a tight plan summary + issue number `#<N>`. Ask: proceed / deepen first / refine / edit-and-recheck. See gate spec below. *Autonomous self-answer:* run the **plan self-review** (the `document-review` skill, plus `spec-flow-analyzer` for user-facing flows), fix what it surfaces, log the approval, and proceed — the plan summary is replayed at the Final-Review gate. |
 | Deepen the plan | **🧍 CHECKPOINT** (folded into Plan-Approval) | Only run `/deepen-plan` if the user asks for it at the gate, or (autonomous) the plan is large/architectural. |
 | Work: branch / worktree setup | **AUTO** | If already on a feature branch, continue on it. Else create `feat/…`-style branch from the default branch. Never commit to the default branch without explicit user say-so (that itself becomes a blocker → ask). |
 | Work: clarifying questions about the plan | **AUTO if resolvable** | Resolve from the plan + repo. Only escalate genuinely ambiguous items as a blocker. |
-| Work: implementation, tests, incremental commits | **AUTO** | In the autonomous modes: dispatch via **Orchestrated Execution** (see Delegation & Review) — one Opus-tier sub-agent per tracked issue/sub-issue; `/workflows:work` claims each via `--claim` (assignee = claim), advances the parent Status through `--set-status`, and drives each sub-issue's `status:*` label through `--sub-status` (in_progress on dispatch → in_review on hand-back → done on acceptance) so the board and issues list stay faithful throughout. The orchestrator reviews every returned diff and re-runs gates before accepting; sub-agents never write GitHub state. In `--steer`/`--careful`: execute per `/workflows:work` (inline is fine for small linear work). |
+| Work: implementation, tests, incremental commits | **AUTO** | In the autonomous modes: dispatch via **Orchestrated Execution** (see Delegation & Review) — one Opus-tier sub-agent per tracked issue/sub-issue; `/workflows-work` claims each via `--claim` (assignee = claim), advances the parent Status through `--set-status`, and drives each sub-issue's `status:*` label through `--sub-status` (in_progress on dispatch → in_review on hand-back → done on acceptance) so the board and issues list stay faithful throughout. The orchestrator reviews every returned diff and re-runs gates before accepting; sub-agents never write GitHub state. In `--steer`/`--careful`: execute per `/workflows-work` (inline is fine for small linear work). |
 | Work: discovered scope expansion | **🧍 CHECKPOINT if material** | A small follow-on task → file it and proceed (all modes). A direction change or significant new scope → pause and ask — **in every mode, including the fully-autonomous default**; redefining WHAT is being built is always the user's call, and counts as a genuine blocker. |
-| Work: open the PR | **AUTO** | `/workflows:work` Phase 4 opens the PR with `Closes #N` and sets Status=`in_review` (the issue is **not** closed at PR creation — the built-in "Item closed" automation owns `shipped` at merge). Outward-facing, but it's the expected terminal of the work stage in a solo/small-team flow. |
-| Review: run multi-agent review | **AUTO — mandatory, never skipped in any mode (the fully-autonomous default included)** | Run `/workflows:review` against the new PR. This is the **independent** review that justifies the eventual merge: it fans out to fresh reviewer sub-agents (not the implementer), and `/workflows:review` always runs a baseline set (`agent-native-reviewer`, `learnings-researcher`, `integration-boundary-reviewer`) even with no `review_agents` configured — so the review is never empty. In the autonomous modes, if no `agentic-engineering.local.md` exists, proceed with that baseline rather than blocking on the interactive `setup` skill. A run that reaches land/merge without this review having run this cycle has no basis to merge — `land-pr` re-checks and runs it if it is somehow missing (condition 3). |
-| Review: **P1 (critical) findings** | **AUTO-FIX** | P1 blocks merge — fix it without asking (via `/resolve_todo_parallel` or direct edits), then re-verify. |
+| Work: open the PR | **AUTO** | `/workflows-work` Phase 4 opens the PR with `Closes #N` and sets Status=`in_review` (the issue is **not** closed at PR creation — the built-in "Item closed" automation owns `shipped` at merge). Outward-facing, but it's the expected terminal of the work stage in a solo/small-team flow. |
+| Review: run multi-agent review | **AUTO — mandatory, never skipped in any mode (the fully-autonomous default included)** | Run `/workflows-review` against the new PR. This is the **independent** review that justifies the eventual merge: it fans out to fresh reviewer sub-agents (not the implementer), and `/workflows-review` always runs a baseline set (`agent-native-reviewer`, `learnings-researcher`, `integration-boundary-reviewer`) even with no `review_agents` configured — so the review is never empty. In the autonomous modes, if no `agentic-engineering.local.md` exists, proceed with that baseline rather than blocking on the interactive `setup` skill. A run that reaches land/merge without this review having run this cycle has no basis to merge — `land-pr` re-checks and runs it if it is somehow missing (condition 3). |
+| Review: **P1 (critical) findings** | **AUTO-FIX** | P1 blocks merge — fix it without asking (via `/resolve-todo-parallel` or direct edits), then re-verify. |
 | Review: **P2 / P3 findings triage** | **🧍 CHECKPOINT** | Present the categorized findings. The user decides which non-blocking items to fix now vs defer. *Autonomous self-answer:* fix P2s now, defer P3s as tracked todos/beads, log the split — the triage is replayed at the Final-Review gate. |
-| Review: resolve approved findings | **AUTO** | Run `/agentic-engineering:resolve_todo_parallel` to fix the items the user approved (and all P1s). |
+| Review: resolve approved findings | **AUTO** | Run `/agentic-engineering:resolve-todo-parallel` to fix the items the user approved (and all P1s). |
 | Verify: browser / E2E tests (`/agentic-engineering:test-browser`) | **AUTO when applicable** | After findings are resolved, for web/iOS changes run `/test-browser` on affected pages. Failures become P1 todos → fix and re-run until green. Skip for non-UI changes (note the skip). |
 | Finalize: feature walkthrough video (`/agentic-engineering:feature-video`) | **AUTO when applicable** | For UI / user-facing changes, record the walkthrough and attach it to the PR (`/feature-video`). Skip with a one-line note for internal-only changes, or if the user opted out at the triage gate. |
 | Land: drive CI green + resolve threads (`land-pr` skill) | **AUTO** | Run the `land-pr` skill to wait on CI, resolve any remaining review threads, and reach a landable state (CI green, threads resolved, mergeable). The independent review that justifies the merge already ran upstream (the Review stage above) — that, not a human GitHub approval, is the review gate. |
 | Land: **the merge itself** (`gh pr merge`) | **AUTO** (default) / **🧍 FINAL-REVIEW GATE** (`--final-review`) / **🧍 CHECKPOINT** (steer/careful) | Merging is outward-facing and irreversible. In the **default** (fully autonomous) mode, the `land-pr` skill merges with no prompt — **once** CI is green, the upstream multi-agent review ran with P1s resolved, all threads are resolved, and the PR is mergeable. Under **`--final-review`**, this is the run's single surfacing point: present the **Final-Review packet** (see gate spec below) and wait for the user's go. In **`--steer`/`--careful`**, stop and ask before merging. In all cases, do **not** wait on a human GitHub `APPROVED` (a solo run never gets one — that's the whole point of the autonomous review). Never merge on an unmet condition or directly to the default branch. The one real stop even in the default is `mergeStateStatus: BLOCKED` (branch protection requires something the agent can't supply) → escalate as a blocker. |
-| Compound: document the solution | **AUTO** | Run `/workflows:compound` once work has shipped (merged) and a non-trivial problem was solved. |
+| Compound: document the solution | **AUTO** | Run `/workflows-compound` once work has shipped (merged) and a non-trivial problem was solved. |
 | Compound: ship the knowledge PR (`land-docs` skill) | **AUTO** | Compound's Phase 3 spins the written markdown off into its own **docs-only** PR via the `land-docs` skill, **submitted with GitHub auto-merge armed at creation** so it lands on green with no separate user turn (even if the session has ended). `land-docs` enforces a docs-only scope gate (any non-doc path aborts before the PR opens → blocker) and follows CI: pass → GitHub auto-merges; simple failure → fix; failure needing input → escalate. This is the seam that used to bounce back to the user after the code PR merged. |
 | Any genuine blocker | **🧍 ESCALATE** | Access, credentials, an ambiguous product decision, conflicting requirements, a failing gate you can't resolve in ~2 tries. Batch open blockers into ONE AskUserQuestion. Never guess on irreversible or product-shaping choices. |
 
@@ -120,7 +120,7 @@ Mode collapse rules, precisely: in the **default** (fully autonomous) mode, ever
 
 ## State Detection (Resumable)
 
-Re-running `/workflows:orchestrate` should pick up where things left off. The board is the source of truth for pipeline stage — orchestrate reads it via `lifecycle_board.py` verbs, never by inferring stage from filenames or recency.
+Re-running `/workflows-orchestrate` should pick up where things left off. The board is the source of truth for pipeline stage — orchestrate reads it via `lifecycle_board.py` verbs, never by inferring stage from filenames or recency.
 
 ### Entry sequence (every run, and after each stage)
 
@@ -163,7 +163,7 @@ Map the board `stage` to a resume point (this replaces the artifact-heuristic la
 | `compounded` | pipeline **complete** — report and stop |
 | `abandoned` | report the item is abandoned and **stop** (no further pipeline runs on it) |
 
-**Segment bounds (when a segment flag is set).** Under `--groom`, the ladder is truncated at grooming: `stub`/`brainstormed` resume as shown, and `planned` (with its plan doc) or any later stage reports already-groomed / past-grooming and **stops** — the groomed packet replaces the final summary. Under `--implement`, it is truncated from below: `stub`/`brainstormed` — or `planned` whose plan doc is missing — **stop and route to `/workflows:groom`**; `planned` and later resume as shown.
+**Segment bounds (when a segment flag is set).** Under `--groom`, the ladder is truncated at grooming: `stub`/`brainstormed` resume as shown, and `planned` (with its plan doc) or any later stage reports already-groomed / past-grooming and **stops** — the groomed packet replaces the final summary. Under `--implement`, it is truncated from below: `stub`/`brainstormed` — or `planned` whose plan doc is missing — **stop and route to `/workflows-groom`**; `planned` and later resume as shown.
 
 **`in_review` sub-detection (PR-based, unchanged).** Once the board says `in_review`, the finer position within review → land is still read from the PR — keep the existing gh-based checks (use explicit `--repo`/`--owner` on every invocation):
 
@@ -248,13 +248,13 @@ Anything else — same counts, a re-run that changed nothing, a fix that didn't 
 
 **Stop at 2.** Two consecutive no-progress passes at the same stage → that stage enters the **`stalled`** terminal state. Stop working it, gather the evidence (what was attempted on both passes, which of the four metrics did not move, the exact failure), and escalate as a blocker in the normal one-batch AskUserQuestion. `stalled` is a terminal state distinct from success — **never report a stalled stage as done**, and never auto-merge out of one.
 
-**Where the existing "~2 retries" live.** The bounded retries inside `land-pr` (drive-to-green) and `/workflows:work` Orchestrated Execution are *instances* of this rule: a retry that does not strictly shrink the blocker/failure set counts toward the stall bound. Treat their local counters and this run-level counter as the same budget — two dry attempts, then escalate.
+**Where the existing "~2 retries" live.** The bounded retries inside `land-pr` (drive-to-green) and `/workflows-work` Orchestrated Execution are *instances* of this rule: a retry that does not strictly shrink the blocker/failure set counts toward the stall bound. Treat their local counters and this run-level counter as the same budget — two dry attempts, then escalate.
 
 ## Checkpoint Specs
 
 ### Approach selection (during brainstorm)
 
-In `--steer`/`--careful`: let `/workflows:brainstorm` run its own approach exploration and AskUserQuestion — that question is already a meaningful one. Do not pre-answer it. When autonomous (default / `--final-review`): intercept it, pick the recommended approach, log the decision (escalating only a product-shaping fork with no clear winner). Once the approach is settled and the brainstorm doc is written with open questions resolved, proceed automatically to plan.
+In `--steer`/`--careful`: let `/workflows-brainstorm` run its own approach exploration and AskUserQuestion — that question is already a meaningful one. Do not pre-answer it. When autonomous (default / `--final-review`): intercept it, pick the recommended approach, log the decision (escalating only a product-shaping fork with no clear winner). Once the approach is settled and the brainstorm doc is written with open questions resolved, proceed automatically to plan.
 
 ### Plan-Approval gate (steer/careful — replaced by plan self-review when autonomous)
 
@@ -292,7 +292,7 @@ P1 findings are already auto-fixed before you reach this gate. When autonomous (
 Then **AskUserQuestion**: *"P1s are fixed. Which non-blocking findings should I address now?"*
 
 - **Fix P2s now** — resolve important findings, defer nice-to-haves.
-- **Fix everything** — resolve P2 + P3 via `/resolve_todo_parallel`.
+- **Fix everything** — resolve P2 + P3 via `/resolve-todo-parallel`.
 - **Defer all** — leave P2/P3 as tracked todos/beads for later.
 - **Let me pick** — show the list; the user selects specific items.
 
@@ -335,14 +335,14 @@ When a sub-command asks one of its built-in questions, answer as the orchestrato
 | plan: *"description clear — proceed with research?"* | **Proceed.** |
 | plan: detail level | Pick by scope (see Decision Policy). |
 | plan Post-Generation menu | Route to the **Plan-Approval gate** (steer/careful) or the **plan self-review** (autonomous) instead of auto-picking. |
-| deepen-plan Post-Enhancement menu | **Start `/workflows:work`** (you only got here if the user chose to deepen). |
+| deepen-plan Post-Enhancement menu | **Start `/workflows-work`** (you only got here if the user chose to deepen). |
 | work Phase 1: *"continue on branch X or new branch?"* | Continue if on a feature branch; else new `feat/…` branch. |
 | work: *"commit to default branch?"* | **Never auto-yes.** Escalate as a blocker. |
 | review: inline end-to-end testing offer | **Decline** — the dedicated `test-browser` finalization stage handles E2E so it isn't run twice. |
 | test-browser: human-verification pauses (OAuth/email/payment/IAP) | **Forward to user** — these are genuine manual-verification steps, not menial. |
 | feature-video: *"record a walkthrough?"* | Run it for UI/user-facing changes; skip (noted) for internal-only changes. |
 | compound: *"what's next?"* | **Suppressed** — the compound stage routes to the `land-docs` skill (docs-only PR → merge on green) instead of the blocking menu. Don't forward it. |
-| any `--gate` verdict | **Auto-follow it.** `proceed` → run the stage. `already_done` → skip the stage (it's complete on the board). `route_to_plan` → run `/workflows:plan`. `route_to_work` → run `/workflows:work`. `repair_needed` → the reconciler already handled it — re-read stage and continue. `no_board` → fall to Legacy fallback. |
+| any `--gate` verdict | **Auto-follow it.** `proceed` → run the stage. `already_done` → skip the stage (it's complete on the board). `route_to_plan` → run `/workflows-plan`. `route_to_work` → run `/workflows-work`. `repair_needed` → the reconciler already handled it — re-read stage and continue. `no_board` → fall to Legacy fallback. |
 | `--claim` returns `claim_conflict` | **Blocker.** Another agent/human owns the issue (or is racing for it). Do not force the claim — escalate. |
 | `--reconcile`/`--gate` `flags` present | **Surface in the status stream** — `merged_to_non_default_branch` and `stale_join_key` as blockers/notes (see State Detection step 1); `truncated_ready_work` as a note. |
 
@@ -380,10 +380,10 @@ Next: <if merged> done — PR #<n> is in <default-branch>.  <if --final-review o
 
 - **Don't suppress meaningful questions.** In `--steer`/`--careful`, when in doubt about whether a juncture is menial or meaningful, treat it as meaningful and ask. When autonomous (default / `--final-review`), the same doubt resolves differently: if the call is recoverable and reviewable from the decision log, decide it yourself and log it; if it is product-shaping, irreversible, or would be expensive to unwind, it's a blocker — ask. Autonomy is never a license to guess on the calls that matter.
 - **Don't ask about chores.** Branch names, "should I proceed", detail levels, tracker bookkeeping — decide and move.
-- **Autonomous runs are still reviewed.** Autonomous continuation rests on two reviews the orchestrator itself performs: the per-sub-agent diff review (nothing is accepted unverified) and the independent multi-agent `/workflows:review` of the PR. If either is skipped, the run has no basis to reach a merge — whether that merge is gated by `--final-review` or automatic in the default.
-- **Irreversible / outward-facing actions** beyond the expected pipeline (force-push, closing others' PRs, deleting unrelated branches, anything touching the default branch directly) → always a blocker, never auto. The exceptions are the pipeline's own expected outward steps: opening the PR (`/workflows:work` Phase 4) and, **in the default (fully autonomous) mode**, the `land-pr` merge — which squash-merges and deletes *its own just-merged feature branch* only after CI is green, the upstream independent review ran with P1s resolved, threads are resolved, and the PR is mergeable. (This is not a human-approval wait — see the Land rows above. Under `--final-review`, and in `--steer`/`--careful`, the merge additionally waits on a gate.)
-- **Honor every sub-command's own gates** — the tracker-issue gate in `/workflows:plan`, the P1-blocks-merge rule in `/workflows:review`, and the entry gates + writer contracts in every command (one writer per transition; the reconciler's closed repair set). You orchestrate them; you don't override them.
+- **Autonomous runs are still reviewed.** Autonomous continuation rests on two reviews the orchestrator itself performs: the per-sub-agent diff review (nothing is accepted unverified) and the independent multi-agent `/workflows-review` of the PR. If either is skipped, the run has no basis to reach a merge — whether that merge is gated by `--final-review` or automatic in the default.
+- **Irreversible / outward-facing actions** beyond the expected pipeline (force-push, closing others' PRs, deleting unrelated branches, anything touching the default branch directly) → always a blocker, never auto. The exceptions are the pipeline's own expected outward steps: opening the PR (`/workflows-work` Phase 4) and, **in the default (fully autonomous) mode**, the `land-pr` merge — which squash-merges and deletes *its own just-merged feature branch* only after CI is green, the upstream independent review ran with P1s resolved, threads are resolved, and the PR is mergeable. (This is not a human-approval wait — see the Land rows above. Under `--final-review`, and in `--steer`/`--careful`, the merge additionally waits on a gate.)
+- **Honor every sub-command's own gates** — the tracker-issue gate in `/workflows-plan`, the P1-blocks-merge rule in `/workflows-review`, and the entry gates + writer contracts in every command (one writer per transition; the reconciler's closed repair set). You orchestrate them; you don't override them.
 - **Never bypass a verb.** Orchestrate reads board state through `--gate`/`--ready-work` and moves it through the sub-commands' own `--claim`/`--set-status` writers — never a raw `gh project item-edit`, raw item mutation, or hand-assembled board write of its own.
-- **Segment bounds are hard.** Under `--groom`, reaching `planned` ends the run — the groomed packet is the final output; never roll into work "to be helpful." Under `--implement`, an un-groomed item is a routing stop (→ `/workflows:groom`), never an invitation to groom inline.
-- **Stay resumable.** Drive state from artifacts, not memory. If interrupted, a fresh `/workflows:orchestrate` must be able to pick up exactly where this left off.
+- **Segment bounds are hard.** Under `--groom`, reaching `planned` ends the run — the groomed packet is the final output; never roll into work "to be helpful." Under `--implement`, an un-groomed item is a routing stop (→ `/workflows-groom`), never an invitation to groom inline.
+- **Stay resumable.** Drive state from artifacts, not memory. If interrupted, a fresh `/workflows-orchestrate` must be able to pick up exactly where this left off.
 - **One blocker batch at a time.** Don't drip-feed questions. Collect everything that needs the user, ask once, then run.

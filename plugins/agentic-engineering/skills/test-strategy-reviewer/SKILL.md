@@ -9,9 +9,9 @@ Analyze test files to identify coverage gaps, mock depth issues, and untested in
 
 ## When to Use
 
-- During `/workflows:plan` to plan testing strategy for a new feature
-- During `/workflows:work` to verify test quality before marking a task done
-- During `/workflows:review` to assess test coverage of a PR
+- During `/workflows-plan` to plan testing strategy for a new feature
+- During `/workflows-work` to verify test quality before marking a task done
+- During `/workflows-review` to assess test coverage of a PR
 - Standalone to audit test quality for any test file
 
 ## Input

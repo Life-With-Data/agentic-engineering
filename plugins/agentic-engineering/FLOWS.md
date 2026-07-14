@@ -38,7 +38,7 @@ flowchart LR
     C -->|"docs/solutions/*.md<br/><b>compounded</b>"| done([compounded])
 ```
 
-The **bold** labels are the lifecycle stages stamped on the board's Status field as each artifact lands (see the state machine below). `/workflows:orchestrate` runs this whole chain for you — **fully autonomously by default** (merges once landable, surfaces only genuine blockers); add `--final-review` to pause once before the merge, or `--steer` for the classic checkpoint cadence. The chain also splits into a **bifurcated flow** at the `planned` boundary: `/workflows:groom` (or `orchestrate --groom`) drives intake → groomed and stops; `orchestrate --implement` drives groomed → shipped and refuses to groom on the fly.
+The **bold** labels are the lifecycle stages stamped on the board's Status field as each artifact lands (see the state machine below). `/workflows-orchestrate` runs this whole chain for you — **fully autonomously by default** (merges once landable, surfaces only genuine blockers); add `--final-review` to pause once before the merge, or `--steer` for the classic checkpoint cadence. The chain also splits into a **bifurcated flow** at the `planned` boundary: `/workflows-groom` (or `orchestrate --groom`) drives intake → groomed and stops; `orchestrate --implement` drives groomed → shipped and refuses to groom on the fly.
 
 ---
 
@@ -96,13 +96,13 @@ stateDiagram-v2
 | Transition | Writer |
 |---|---|
 | → `stub` | `/triage`, `/upstream-scan`, humans (create + board-add + `--set-status stub`) |
-| → `brainstormed` | `/workflows:brainstorm` (on doc completion) |
-| → `planned` | `/workflows:plan` Step 7 (issue + sub-issues + deps + `--set-status planned`) |
-| → `in_progress` | `/workflows:work` Phase 1 (`--claim`) |
-| → `in_review` | `/workflows:work` Phase 4 (PR opens; issue NOT closed) |
+| → `brainstormed` | `/workflows-brainstorm` (on doc completion) |
+| → `planned` | `/workflows-plan` Step 7 (issue + sub-issues + deps + `--set-status planned`) |
+| → `in_progress` | `/workflows-work` Phase 1 (`--claim`) |
+| → `in_review` | `/workflows-work` Phase 4 (PR opens; issue NOT closed) |
 | → `shipped` | Built-in "Item closed" automation (merge automation stamps it) |
 | → `deployed` | Consumer repo's deploy workflow (comment-always / Status-best-effort) |
-| → `compounded` | `/workflows:compound` (join key present only) |
+| → `compounded` | `/workflows-compound` (join key present only) |
 | → `abandoned` | Humans; reconciler on close-as-not-planned |
 | *repairs / cascade* | The shared reconciler (the five labeled repairs; the `abandoned_cascade` on sub-issues) |
 
@@ -110,13 +110,13 @@ The three report-only flags (`merged_to_non_default_branch`, `stale_join_key`, `
 
 ---
 
-## /workflows:orchestrate — the orchestrator layer
+## /workflows-orchestrate — the orchestrator layer
 
 The orchestrator drives every stage automatically. **By default it is fully autonomous:** it delegates implementation to sub-agents, reviews their diffs itself, self-answers the intermediate gates (logging every decision), merges once the PR is landable, and stops only for genuine blockers — no hexagon pauses at all. `--final-review` adds exactly one hexagon, the **Final-Review gate**, before the merge; `--steer` restores the classic cadence where every hexagon below pauses for you.
 
 ```mermaid
 flowchart TD
-    start(["/workflows:orchestrate"]) --> detect["reconcile + read board stage<br/>(legacy artifact fallback)"]
+    start(["/workflows-orchestrate"]) --> detect["reconcile + read board stage<br/>(legacy artifact fallback)"]
     detect --> B["brainstorm"]
     B --> g1{{"approach selection †"}}
     g1 --> P["plan"]
@@ -149,13 +149,13 @@ flowchart TD
 
 ---
 
-## /workflows:groom — intake → groomed, then stop
+## /workflows-groom — intake → groomed, then stop
 
-The grooming segment as a standalone flow: an idea, bug report, or stub issue goes in; a **groomed, ready-to-claim work item** comes out (Status `planned`, join-keyed plan doc, sub-issues with dependencies — the exact bar `/workflows:work`'s gate enforces at claim time). The stop is the feature: groom never claims, never branches, never writes code. Autonomous by default with a decision log; `--steer` makes it an interactive grooming session. `/workflows:orchestrate --implement` picks up where groom stops.
+The grooming segment as a standalone flow: an idea, bug report, or stub issue goes in; a **groomed, ready-to-claim work item** comes out (Status `planned`, join-keyed plan doc, sub-issues with dependencies — the exact bar `/workflows-work`'s gate enforces at claim time). The stop is the feature: groom never claims, never branches, never writes code. Autonomous by default with a decision log; `--steer` makes it an interactive grooming session. `/workflows-orchestrate --implement` picks up where groom stops.
 
 ```mermaid
 flowchart TD
-    start(["/workflows:groom<br/>(idea / bug report / #issue)"]) --> read["reconcile + read board stage"]
+    start(["/workflows-groom<br/>(idea / bug report / #issue)"]) --> read["reconcile + read board stage"]
     read --> prov{"provenance<br/>trusted?"}
     prov -->|untrusted| ask{{"confirm before grooming<br/>outsider-authored issue"}}
     ask --> ladder
@@ -176,7 +176,7 @@ flowchart TD
 
 ---
 
-## /workflows:brainstorm — decide WHAT to build
+## /workflows-brainstorm — decide WHAT to build
 
 ```mermaid
 flowchart TD
@@ -191,7 +191,7 @@ flowchart TD
     open -->|yes| resolve{{"resolve each with you"}}
     resolve --> capture
     open -->|no| handoff{{"handoff: proceed to plan?"}}
-    handoff --> plan(["/workflows:plan"])
+    handoff --> plan(["/workflows-plan"])
 
     classDef gate fill:#ffe8cc,stroke:#e8590c,stroke-width:2px;
     class suggest,pick,resolve,handoff gate
@@ -199,7 +199,7 @@ flowchart TD
 
 ---
 
-## /workflows:plan — decide HOW to build it
+## /workflows-plan — decide HOW to build it
 
 Tracker-issue creation (Step 7) is a hard gate enforced by the `plan-tracker-guard` Stop hook: the plan cannot exit without a `github_issue` join key (or an explicit `issue_tracker: none`). In `github-project` mode Step 7 also creates the sub-issues + dependencies, adds the item to the board, and stamps Status=`planned`.
 
@@ -253,7 +253,7 @@ flowchart TD
 
 ---
 
-## /workflows:work — execute the plan and ship a PR
+## /workflows-work — execute the plan and ship a PR
 
 Mode-aware (`github-project` / `github` / `none`) and supports three execution styles: **inline** (default), **orchestrated** (one sub-agent per sub-issue), and **swarm** (parallel teammates). In `github-project` mode Phase 1 claims the item via `--claim` (Status=`in_progress`); Phase 4 opens the PR with `Closes #N` and sets Status=`in_review` — the issue is **not** closed at PR creation. The merge automation stamps `shipped`.
 
@@ -281,7 +281,7 @@ flowchart TD
 
 ---
 
-## /workflows:review — multi-agent code review
+## /workflows-review — multi-agent code review
 
 Runs configured review agents in parallel (plus conditional migration agents), synthesizes findings into P1/P2/P3, and records them as `todos/*.md` file-todos. P1 findings block merge.
 
@@ -302,7 +302,7 @@ flowchart TD
 
 ---
 
-## /workflows:compound — capture the solution
+## /workflows-compound — capture the solution
 
 Phase-1 sub-agents return **text only**; only the orchestrator (Phase 2) writes a single file. Knowledge compounds: the next occurrence of this problem is a lookup, not a re-investigation.
 
@@ -328,4 +328,4 @@ flowchart TD
 
 ## Fully autonomous runs
 
-The **default** (`/workflows:orchestrate` with no flag) is already fully autonomous, no human in the loop: it drives the whole chain above, self-answers every intermediate judgment call, merges once the PR is landable (CI green, independent review ran with P1s resolved, threads resolved, mergeable), and surfaces only genuine blockers — material scope changes or something branch protection requires that the agent can't supply. Built for unattended runs (cron routines, overnight loops). Add **`--final-review`** when you want that same hands-off run but the final merge to be your call — it pauses once at the Final-Review gate before merging, and nowhere else.
+The **default** (`/workflows-orchestrate` with no flag) is already fully autonomous, no human in the loop: it drives the whole chain above, self-answers every intermediate judgment call, merges once the PR is landable (CI green, independent review ran with P1s resolved, threads resolved, mergeable), and surfaces only genuine blockers — material scope changes or something branch protection requires that the agent can't supply. Built for unattended runs (cron routines, overnight loops). Add **`--final-review`** when you want that same hands-off run but the final merge to be your call — it pauses once at the Final-Review gate before merging, and nowhere else.

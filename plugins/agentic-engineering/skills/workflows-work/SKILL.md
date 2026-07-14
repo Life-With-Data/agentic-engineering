@@ -1,5 +1,5 @@
 ---
-name: workflows:work
+name: workflows-work
 description: Execute work plans efficiently while maintaining quality and finishing features
 argument-hint: "[plan file, spec, todo file, or issue number — e.g. 39]"
 allowed-tools: Read, Edit, Write, Bash(gh issue *), Bash(gh pr *), Bash(gh project *), Bash(python3 *), Bash(git *), Bash(jq *)
@@ -73,9 +73,9 @@ Run these in order, once, at entry:
    | `verdict` | What it means | Action |
    |-----------|---------------|--------|
    | `proceed` | `stage ≥ planned` **and** a join-keyed plan doc exists | Continue to **Phase 1**. |
-   | `route_to_plan` | Not yet groomed to `planned`, **or** Status says planned but no plan doc | Tell the user to run **`/workflows:plan`** first. Hotfixes bypass the board entirely (plain PR flow, no gate, no board exception). **STOP.** |
+   | `route_to_plan` | Not yet groomed to `planned`, **or** Status says planned but no plan doc | Tell the user to run **`/workflows-plan`** first. Hotfixes bypass the board entirely (plain PR flow, no gate, no board exception). **STOP.** |
    | `already_done` | Stage is terminal (`shipped`/`deployed`/`compounded`) or `abandoned` | Report the stage to the user and that the work is already at/past this command's scope. **STOP.** |
-   | `repair_needed` | Stale join key, or a stage claiming `planned`/`brainstormed` with no matching artifact | The board can't be trusted for this item. Report the flag/reason, tell the user to fix the doc's `github_issue:` frontmatter (or re-run `/workflows:plan` if the plan doc is genuinely missing), and **STOP**. |
+   | `repair_needed` | Stale join key, or a stage claiming `planned`/`brainstormed` with no matching artifact | The board can't be trusted for this item. Report the flag/reason, tell the user to fix the doc's `github_issue:` frontmatter (or re-run `/workflows-plan` if the plan doc is genuinely missing), and **STOP**. |
    | `no_board` | No board configured (mode is `github`/`none`) | Fall through to the **Legacy flow (no board)** below and continue **degraded** — no stage machinery, no board writes. |
 
    `claim_conflict` and `blocked` are **not** gate verdicts — they are returned by `--claim` in Phase 1, not here. Only `proceed` (with a board) and `no_board` (degraded) continue past this gate; every other verdict **STOPs**.
@@ -139,7 +139,7 @@ When `verdict == no_board`, the repo has no configured Projects board. Behave as
 
 4. **Decompose into tasks (sub-issues)**
 
-   `/workflows:plan` already created the sub-issues that decompose this work item — you do **not** create them here. List them:
+   `/workflows-plan` already created the sub-issues that decompose this work item — you do **not** create them here. List them:
 
    ```bash
    # Sub-issues of the claimed parent <N>:
@@ -162,7 +162,7 @@ When `verdict == no_board`, the repo has no configured Projects board. Behave as
 | **Orchestrated** ([section](#orchestrated-execution-board-driven)) | Work backed by tracked sub-issues — one or many | You own the board/sub-issue state and drive one subagent per sub-issue, looping each to a terminal state before returning. |
 | **Swarm** ([section](#swarm-mode-optional)) | 5+ independent workstreams needing maximum parallelism | Long-lived teammates self-claim from a shared queue. |
 
-Even a **single** tracked item benefits from Orchestrated Execution — the orchestrator absorbs the retry/verify/unblock loop and returns a finished or verifiably-blocked result, not a half-step. The Inline loop below is the default for plan/spec files — **except when this command runs under `/workflows:orchestrate` in an autonomous mode (its fully-autonomous default, or `--final-review`)**, where Orchestrated is the default for all inputs: the orchestrator is a reviewer, not an implementer, and delegates every work item to a sub-agent whose diff it verifies before accepting.
+Even a **single** tracked item benefits from Orchestrated Execution — the orchestrator absorbs the retry/verify/unblock loop and returns a finished or verifiably-blocked result, not a half-step. The Inline loop below is the default for plan/spec files — **except when this command runs under `/workflows-orchestrate` in an autonomous mode (its fully-autonomous default, or `--final-review`)**, where Orchestrated is the default for all inputs: the orchestrator is a reviewer, not an implementer, and delegates every work item to a sub-agent whose diff it verifies before accepting.
 
 1. **Task Execution Loop** (board mode — iterate open sub-issues)
 
@@ -326,7 +326,7 @@ Even a **single** tracked item benefits from Orchestrated Execution — the orch
 
    **Acceptance-criteria pre-check (recommended).** Before opening the PR, run `Task acceptance-criteria-reviewer(diff + this item's issue number)` to check the change against the item's own documented `## Acceptance Criteria` and `## Validation` sections while fixes are still cheap. This is the *same* agent the review stage runs, but here it is **advisory only** — a smell-test in the implementer's own session, never the gate. Address its P1s now rather than discovering them at review. Skipping it is fine; skipping the independent review stage is not.
 
-   **This is distinct from — and never a substitute for — the mandatory independent `/workflows:review` stage.** These inline agents run in the implementer's own session as an early smell-test. The pipeline's real verification is the separate `/workflows:review` pass that runs on the open PR with *fresh* reviewer sub-agents (not the implementer); that stage is non-optional in every mode, and `land-pr` will not merge a PR it has not seen (land-pr condition 3). Skipping these optional inline agents is fine; skipping the `/workflows:review` stage is not.
+   **This is distinct from — and never a substitute for — the mandatory independent `/workflows-review` stage.** These inline agents run in the implementer's own session as an early smell-test. The pipeline's real verification is the separate `/workflows-review` pass that runs on the open PR with *fresh* reviewer sub-agents (not the implementer); that stage is non-optional in every mode, and `land-pr` will not merge a PR it has not seen (land-pr condition 3). Skipping these optional inline agents is fine; skipping the `/workflows-review` stage is not.
 
 5. **Final Validation**
    - No open sub-issues on the parent (board mode), or all TodoWrite items checked (legacy)
@@ -478,7 +478,7 @@ The philosophy here: **opening the PR is the `in_review` transition, not a compl
    - Link to the PR.
    - Note that the work item is now `in_review`; it becomes `shipped` automatically when the PR merges (and regresses to `in_progress` automatically if the PR is closed unmerged) — no manual tracking needed.
    - Note any follow-up work needed.
-   - Suggest next steps: typically **`/workflows:review`** to review the PR, then the **`land-pr`** skill to drive CI green, resolve review threads, and **merge** once approved. This command ends at PR creation; `land-pr` owns the completion-and-merge tail (it invokes the shared reconciler to verify/repair `shipped` post-merge — idempotent with the automation, so nothing double-writes).
+   - Suggest next steps: typically **`/workflows-review`** to review the PR, then the **`land-pr`** skill to drive CI green, resolve review threads, and **merge** once approved. This command ends at PR creation; `land-pr` owns the completion-and-merge tail (it invokes the shared reconciler to verify/repair `shipped` post-merge — idempotent with the automation, so nothing double-writes).
 
 ---
 
@@ -595,7 +595,7 @@ REPORT BACK (your final message = structured result, not prose to a human):
 - Parallelize only file-disjoint sub-issues; otherwise serialize or isolate with the `git-worktree` skill.
 - One sub-issue = one subagent, tightly scoped; subagents never run board/tracker state changes.
 - Discovered work becomes a follow-on sub-issue that gates its parent — never a silent extra.
-- Bound retries (~2), then block and escalate — don't loop forever. A retry that makes no strictly-measurable progress (gates still fail the same way, no criterion newly satisfied) is a dry attempt; two dry attempts is the stall bound — the same uniform no-progress rule `/workflows:orchestrate` applies run-wide.
+- Bound retries (~2), then block and escalate — don't loop forever. A retry that makes no strictly-measurable progress (gates still fail the same way, no criterion newly satisfied) is a dry attempt; two dry attempts is the stall bound — the same uniform no-progress rule `/workflows-orchestrate` applies run-wide.
 - Quality gates are mandatory before any sub-issue is closed; the parent's `shipped` comes from the merge.
 
 ---

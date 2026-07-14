@@ -6,7 +6,7 @@ disable-model-invocation: true
 
 # Agentic Engineering Setup
 
-Interactive setup for `agentic-engineering.local.md` — configures which agents run during `/workflows:review` and `/workflows:work`.
+Interactive setup for `agentic-engineering.local.md` — configures which agents run during `/workflows-review` and `/workflows-work`.
 
 ## Step 1: Check Existing Config
 
@@ -167,7 +167,7 @@ question: "How should new issues reach the lifecycle board?"
 header: "Forward binding"
 options:
   - label: "Workflow-only (recommended)"
-    description: "The /workflows:* commands add items themselves as they plan/work. No auto-add, no standing token."
+    description: "The /workflows-* skills add items themselves as they plan/work. No auto-add, no standing token."
   - label: "Auto-add new issues"
     description: "Bootstrap scaffolds an actions/add-to-project workflow so every new issue auto-lands. Needs a PAT secret. Forward-only."
   - label: "None / manual"
@@ -474,7 +474,7 @@ writer above only ever touches the frontmatter block, never the body:
 # Review Context
 
 Add project-specific review instructions here.
-These notes are passed to all review agents during /workflows:review and /workflows:work.
+These notes are passed to all review agents during /workflows-review and /workflows-work.
 
 Examples:
 - "We use Turbo Frames heavily — check for frame-busting issues"

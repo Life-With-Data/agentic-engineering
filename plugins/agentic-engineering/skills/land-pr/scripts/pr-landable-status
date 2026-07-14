@@ -23,7 +23,7 @@
 # and merge_state is not DIRTY/BLOCKED/BEHIND.
 #
 # Deliberately NOT required: review_decision == APPROVED. A *human* GitHub approval is not the
-# review gate for autonomous runs — the orchestrator's own multi-agent `/workflows:review`
+# review gate for autonomous runs — the orchestrator's own multi-agent `/workflows-review`
 # (P1s resolved) is. A branch-protection-required approval the agent cannot supply shows up as
 # merge_state=BLOCKED, which IS reported as a blocker. `blockers` names each unmet reason so the
 # caller can escalate precisely instead of bouncing a bare "say the word and I'll merge."

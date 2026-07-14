@@ -1,6 +1,6 @@
 ---
 name: acceptance-criteria-reviewer
-description: "Verifies a change satisfies the documented Acceptance Criteria and Validation steps of its tracker issue — every criterion checked against the actual diff, every validation step confirmed runnable. Use in /workflows:review as the gating conformance check, or as a pre-check before opening a PR."
+description: "Verifies a change satisfies the documented Acceptance Criteria and Validation steps of its tracker issue — every criterion checked against the actual diff, every validation step confirmed runnable. Use in /workflows-review as the gating conformance check, or as a pre-check before opening a PR."
 model: inherit
 ---
 
@@ -31,7 +31,7 @@ Establish these before reviewing. If any is missing, say so explicitly rather th
 
 1. **The change** — the PR diff or the branch diff against the base (`gh pr diff <N>`, or `git diff <base>...HEAD`).
 2. **The work item** — the parent issue and any sub-issues in scope. Read their bodies, not just titles (`gh issue view <N> --json title,body`; enumerate sub-issues via `gh issue view <N> --json subIssues` and read each).
-3. **The documented contract** — within those bodies, the **`## Acceptance Criteria`** checklist and the **`## Validation`** section produced by `/workflows:plan` (parent and sub-issue templates carry both). These are the source of truth. If an item has no acceptance criteria at all, report that as a finding — an untracked "done" is itself a gap.
+3. **The documented contract** — within those bodies, the **`## Acceptance Criteria`** checklist and the **`## Validation`** section produced by `/workflows-plan` (parent and sub-issue templates carry both). These are the source of truth. If an item has no acceptance criteria at all, report that as a finding — an untracked "done" is itself a gap.
 
 ## Review Process
 
@@ -104,7 +104,7 @@ Flag **both** directions of drift:
 
 ## How your verdict is used
 
-- Inside `/workflows:review`, every P1 you raise becomes a `todos/*.md` finding, and `land-pr`'s merge gate blocks the merge until P1s are resolved. So a `FAIL` verdict is the mechanism that stops an under-delivered change from merging. Be precise and evidence-backed — a false P1 stalls a good PR, a missed one ships an incomplete feature.
+- Inside `/workflows-review`, every P1 you raise becomes a `todos/*.md` finding, and `land-pr`'s merge gate blocks the merge until P1s are resolved. So a `FAIL` verdict is the mechanism that stops an under-delivered change from merging. Be precise and evidence-backed — a false P1 stalls a good PR, a missed one ships an incomplete feature.
 - Inside an implementer's session (pre-check), your report is advisory: it tells the author what to fix *before* opening the PR. The bar is identical; only the authority differs.
 
 ## Non-Goals
