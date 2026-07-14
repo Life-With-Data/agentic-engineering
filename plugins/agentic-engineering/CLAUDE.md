@@ -1,28 +1,22 @@
 # Agentic Engineering Plugin Development
 
-## Versioning Requirements
+## Versioning
 
-**IMPORTANT**: Every change to this plugin MUST include updates to all three files:
-
-1. **`.claude-plugin/plugin.json`** - Bump version using semver
-2. **`CHANGELOG.md`** - Document changes using Keep a Changelog format
-3. **`README.md`** - Verify/update component counts and tables
-
-### Version Bumping Rules
-
-- **MAJOR** (1.0.0 → 2.0.0): Breaking changes, major reorganization
-- **MINOR** (1.0.0 → 1.1.0): New agents or skills
-- **PATCH** (1.0.0 → 1.0.1): Bug fixes, doc updates, minor improvements
+Version and `CHANGELOG.md` are computed by release-please from Conventional
+Commit-typed PR titles — do **not** hand-bump `.claude-plugin/plugin.json`
+or hand-write CHANGELOG.md entries. See root `CLAUDE.md`'s "Updating the
+plugin" and "Release process" sections, and
+`docs/solutions/plugin-versioning-requirements.md`.
 
 ### Pre-Commit Checklist
 
 Before committing ANY changes:
 
-- [ ] Version bumped in `.claude-plugin/plugin.json`
-- [ ] CHANGELOG.md updated with changes
+- [ ] PR title uses a Conventional Commit type (`feat:`/`fix:`/`docs:`/`refactor:`/`chore:`/`perf:`)
 - [ ] README.md component counts verified
 - [ ] README.md tables accurate (agents, skills)
 - [ ] plugin.json description matches current counts
+- [ ] Did NOT hand-edit plugin.json's version or CHANGELOG.md
 
 ### Directory Structure
 
