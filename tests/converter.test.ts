@@ -49,6 +49,10 @@ describe("convertClaudeToOpenCode", () => {
     const bashPermission = permission.bash as Record<string, string>;
     expect(bashPermission["ls *"]).toBe("allow");
     expect(bashPermission["git *"]).toBe("allow");
+    // "npm *" is granted only by the tooled-skill fixture's allowed-tools, not by any
+    // fixture command — this is the one assertion that would fail if applyPermissions()
+    // stopped merging plugin.skills into the "from-commands" permission source.
+    expect(bashPermission["npm *"]).toBe("allow");
     expect(permission.webfetch).toBe("allow");
 
     const readPermission = permission.read as Record<string, string>;

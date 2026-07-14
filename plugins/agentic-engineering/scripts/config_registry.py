@@ -54,7 +54,7 @@ CONFIG_FLAGS = [
         kind="enum",
         default="auto-detect",
         description=(
-            "Override which issue tracker /workflows:* commands resolve to. "
+            "Override which issue tracker /workflows-* skills resolve to. "
             "Unset auto-detects: committed board config -> github-project, "
             "gh auth -> github, otherwise none."
         ),
@@ -67,7 +67,7 @@ CONFIG_FLAGS = [
         kind="list",
         default="[]",
         description=(
-            "Review agents /workflows:review and /workflows:work run, beyond "
+            "Review agents /workflows-review and /workflows-work run, beyond "
             "the stack-detected defaults. Written by the setup skill."
         ),
         owner="skills/setup/SKILL.md",

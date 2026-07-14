@@ -167,7 +167,7 @@ question: "How should new issues reach the lifecycle board?"
 header: "Forward binding"
 options:
   - label: "Workflow-only (recommended)"
-    description: "The /workflows:* commands add items themselves as they plan/work. No auto-add, no standing token."
+    description: "The /workflows-* skills add items themselves as they plan/work. No auto-add, no standing token."
   - label: "Auto-add new issues"
     description: "Bootstrap scaffolds an actions/add-to-project workflow so every new issue auto-lands. Needs a PAT secret. Forward-only."
   - label: "None / manual"

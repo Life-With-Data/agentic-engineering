@@ -132,6 +132,7 @@ describe("loadClaudePlugin", () => {
       "Read",
       "Edit",
       "Bash(git:*)",
+      "Bash(npm:*)",
     ]);
 
     const plainSkill = plugin.skills.find(

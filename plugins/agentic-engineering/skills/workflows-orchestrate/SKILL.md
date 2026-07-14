@@ -64,7 +64,7 @@ Segment flags compose with autonomy flags: `--groom --steer` is an interactive g
 
 ## How You Operate
 
-You drive the pipeline by invoking the existing `/workflows:*` sub-commands in order. Each sub-command has its own internal questions. Your role is to **filter those questions**:
+You drive the pipeline by invoking the existing `/workflows-*` sub-skills in order. Each sub-skill has its own internal questions. Your role is to **filter those questions**:
 
 - **Menial prompts** (branch naming, "proceed?", detail level, "continue on this branch?") → answer them yourself with the sensible default below. Do **not** forward them to the user.
 - **Judgment prompts** (which approach to build, approval to start implementing, which findings to fix) → in **`--steer`/`--careful`**, surface them via **AskUserQuestion**. In the **autonomous modes** (default and `--final-review`), answer them yourself per the Decision Policy and record the call in the decision log — only a genuine blocker goes to the user.

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Deterministic repository preflight for /workflows:work.
+Deterministic repository preflight for /workflows-work.
 
 Outputs a JSON object with repository state, branch context, optional PR metadata,
 issue-tracker availability, and a recommended next action so agents can branch on

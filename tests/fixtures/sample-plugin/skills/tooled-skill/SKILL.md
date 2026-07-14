@@ -2,7 +2,7 @@
 name: tooled-skill
 description: A skill that declares allowed-tools and an argument hint
 argument-hint: <path> [--flag]
-allowed-tools: Read, Edit, Bash(git:*)
+allowed-tools: Read, Edit, Bash(git:*), Bash(npm:*)
 ---
 
 Tooled skill body.
