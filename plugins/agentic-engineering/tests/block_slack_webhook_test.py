@@ -33,8 +33,7 @@ _PATH = "/" + "services" + "/T00000000/B00000000/" + ("X" * 24)
 WEBHOOK = "https://" + _HOST + _PATH
 
 
-def _run(tool_name: str, tool_input: dict) -> subprocess.CompletedProcess[str]:
-    payload = {"tool_name": tool_name, "tool_input": tool_input}
+def _run_payload(payload: dict) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         [sys.executable, str(SCRIPT)],
         input=json.dumps(payload),
@@ -42,6 +41,10 @@ def _run(tool_name: str, tool_input: dict) -> subprocess.CompletedProcess[str]:
         text=True,
         timeout=10,
     )
+
+
+def _run(tool_name: str, tool_input: dict) -> subprocess.CompletedProcess[str]:
+    return _run_payload({"tool_name": tool_name, "tool_input": tool_input})
 
 
 def _bash(command: str):
@@ -56,11 +59,19 @@ def _edit(file_path: str, new_string: str):
     return _run("Edit", {"file_path": file_path, "new_string": new_string})
 
 
+def _apply_patch(patch: str):
+    return _run("apply_patch", {"command": patch})
+
+
 class BlockSlackWebhookTest(unittest.TestCase):
     # --- true introductions: MUST block ----------------------------------
 
     def test_blocks_curl_to_webhook(self) -> None:
         self.assertEqual(_bash(f"curl -X POST {WEBHOOK} -d '{{}}'").returncode, BLOCK)
+
+    def test_blocks_cursor_before_shell_execution_payload(self) -> None:
+        result = _run_payload({"command": f"curl -X POST {WEBHOOK} -d '{{}}'"})
+        self.assertEqual(result.returncode, BLOCK)
 
     def test_blocks_write_of_webhook_into_code(self) -> None:
         result = _write("apps/web/notify.ts", f'const url = "{WEBHOOK}";')
@@ -82,6 +93,26 @@ class BlockSlackWebhookTest(unittest.TestCase):
         )
         self.assertEqual(result.returncode, BLOCK)
 
+    def test_blocks_codex_apply_patch_adding_webhook(self) -> None:
+        patch = (
+            "*** Begin Patch\n"
+            "*** Add File: src/notify.ts\n"
+            f'+const url = "{WEBHOOK}";\n'
+            "*** End Patch"
+        )
+        self.assertEqual(_apply_patch(patch).returncode, BLOCK)
+
+    def test_blocks_codex_apply_patch_updating_webhook(self) -> None:
+        patch = (
+            "*** Begin Patch\n"
+            "*** Update File: config/alerts.yaml\n"
+            "@@\n"
+            "-webhook: ${SLACK_WEBHOOK}\n"
+            f"+webhook: {WEBHOOK}\n"
+            "*** End Patch"
+        )
+        self.assertEqual(_apply_patch(patch).returncode, BLOCK)
+
     def test_block_message_is_actionable(self) -> None:
         result = _bash(f"curl {WEBHOOK}")
         self.assertEqual(result.returncode, BLOCK)
@@ -100,6 +131,40 @@ class BlockSlackWebhookTest(unittest.TestCase):
             f"# matches {WEBHOOK}",
         )
         self.assertEqual(result.returncode, ALLOW)
+
+    def test_allows_codex_apply_patch_mention_in_markdown(self) -> None:
+        patch = (
+            "*** Begin Patch\n"
+            "*** Update File: docs/notifications.md\n"
+            "@@\n"
+            f"+Do not hardcode {WEBHOOK}; use a secret.\n"
+            "*** End Patch"
+        )
+        self.assertEqual(_apply_patch(patch).returncode, ALLOW)
+
+    def test_allows_codex_apply_patch_removing_webhook(self) -> None:
+        patch = (
+            "*** Begin Patch\n"
+            "*** Update File: src/notify.ts\n"
+            "@@\n"
+            f'-const url = "{WEBHOOK}";\n'
+            '+const url = process.env["SLACK_WEBHOOK"];\n'
+            "*** End Patch"
+        )
+        self.assertEqual(_apply_patch(patch).returncode, ALLOW)
+
+    def test_blocks_codex_multifile_patch_after_exempt_docs_section(self) -> None:
+        patch = (
+            "*** Begin Patch\n"
+            "*** Update File: docs/notifications.md\n"
+            "@@\n"
+            f"+Example only: {WEBHOOK}\n"
+            "*** Update File: src/notify.ts\n"
+            "@@\n"
+            f'+const url = "{WEBHOOK}";\n'
+            "*** End Patch"
+        )
+        self.assertEqual(_apply_patch(patch).returncode, BLOCK)
 
     # --- unrelated Slack usage: MUST allow (no false positives) ----------
 

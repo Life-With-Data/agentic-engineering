@@ -1,15 +1,39 @@
 # Plugin Hooks
 
-Installing the **agentic-engineering** plugin activates a small set of Claude
-Code hooks (wired in [`.claude-plugin/plugin.json`](../.claude-plugin/plugin.json)).
-They are safety nets that keep the agentic-engineering workflow — plan →
-work → PR → review → merge — from being short-circuited. They fire
-automatically; there is nothing to configure.
+Installing the **agentic-engineering** plugin activates safety-net hooks that
+keep the agentic-engineering workflow — plan → work → PR → review → merge —
+from being short-circuited. They fire automatically once the harness loads the
+plugin (Codex additionally requires reviewing and trusting plugin hooks).
 
-This page explains what each hook does, why it exists, and how to test or
-disable it.
+Python implementations live in this directory and are shared across harnesses.
+Wiring differs per platform:
 
-## `block-no-verify.py` — PreToolUse (Bash)
+| Hook script | Claude | Cursor | Codex | Notes |
+|-------------|--------|--------|-------|-------|
+| `block-no-verify.py` | Ships (`PreToolUse` / Bash) | Ships (`beforeShellExecution`) | Ships (`PreToolUse` / Bash) | Safety net |
+| `prevent-main-commit.py` | Ships | Ships | Ships | Safety net |
+| `block-slack-webhook.py` | Ships (Bash + Write/Edit/MultiEdit) | Ships (shell + `preToolUse` Write) | Ships (Bash + `apply_patch`) | Safety net; Cursor has no MultiEdit matcher |
+| `block-db-push.py` | Ships | Ships | Ships | Safety net |
+| `check-node-version.py` | Ships | Claude-only | Claude-only | Left Claude-primary until verified elsewhere |
+| `block-beads-jsonl-stage.py` | Ships | Claude-only | Claude-only | Claude-primary |
+| `nudge-todowrite-to-tracker.py` | Ships (`TodoWrite`) | N/A | N/A | No TodoWrite equivalent on Cursor/Codex |
+| `plan-tracker-guard.py` | Ships (`Stop`) | Claude-only | Claude-only | Claude-primary until verified |
+| `sdd-cache-pre.py` / `sdd-cache-post.py` | Ships (`WebFetch`, opt-in) | N/A | N/A | WebFetch-specific; opt-in via `AGENTIC_SDD_CACHE=1` |
+
+Harness config files:
+
+| Harness | Config | Path root |
+|---------|--------|-----------|
+| Claude Code | inline `hooks` in [`.claude-plugin/plugin.json`](../.claude-plugin/plugin.json) | `${CLAUDE_PLUGIN_ROOT}` |
+| Cursor | [`hooks/hooks-cursor.json`](../hooks/hooks-cursor.json) | relative `./scripts/...` (plugin root cwd) |
+| Codex | [`hooks/hooks.json`](../hooks/hooks.json) | `${PLUGIN_ROOT}` (also sets `CLAUDE_PLUGIN_ROOT` for compatibility) |
+
+`hook_payload.py` normalizes Cursor `beforeShellExecution` (`{command}`) and
+`tool_name: "Shell"` into `{tool_name:"Bash", tool_input:{command}}`. Codex's
+canonical `apply_patch` name is preserved; `block-slack-webhook.py` inspects the
+added lines in its `tool_input.command` patch directly.
+
+## `block-no-verify.py` — PreToolUse (Bash) / beforeShellExecution
 
 **Blocks** `git commit`/`git push` that carry `--no-verify` (or the `-n` short
 form on commit).
@@ -27,7 +51,7 @@ as the git verb, so `git commit -m ok && echo --no-verify` is allowed.
 
 **If checks are failing:** fix the root cause, or fix the hook — don't bypass.
 
-## `prevent-main-commit.py` — PreToolUse (Bash)
+## `prevent-main-commit.py` — PreToolUse (Bash) / beforeShellExecution
 
 **Blocks** a `git commit` while the current branch is `main`/`master`, and an
 explicit `git push` whose refspec targets `main`/`master`
@@ -42,12 +66,13 @@ mentioning "merge main" is fine), and a branch merely *named* like `main`
 
 **Correct alternative:** `git checkout -b <type>/<description>`, then open a PR.
 
-## `block-slack-webhook.py` — PreToolUse (Bash, Write, Edit, MultiEdit)
+## `block-slack-webhook.py` — PreToolUse (Bash, Write, Edit, MultiEdit, apply_patch) / beforeShellExecution + Write
 
 **Blocks** introducing a Slack *incoming webhook* URL
 (`hooks.slack.com/services/...`) into a Bash command (a `curl`/fetch that posts
 to it) or into a file (Write/Edit/MultiEdit that writes the URL into code or
-config).
+config). On Codex, it scans only added `apply_patch` lines in non-exempt files;
+removed lines and patch context do not false-trigger the guard.
 
 **Why:** A Slack incoming-webhook URL **is a live credential** — anyone holding
 it can post to the channel. Hardcoding one leaks a secret into git history and
@@ -65,7 +90,7 @@ the anti-pattern is exempt, mirroring the other guards here.
 manager instead of inlining it, or send through a connected Slack app / the
 Slack MCP tooling (`chat.postMessage`).
 
-## `block-db-push.py` — PreToolUse (Bash)
+## `block-db-push.py` — PreToolUse (Bash) / beforeShellExecution
 
 **Blocks** `prisma db push` in its wrapper forms (`npx`/`pnpm`/`dotenv`
 prefixes, and `pnpm --filter <pkg> push` script aliases).
@@ -90,7 +115,7 @@ project actually runs `prisma db push`, so a non-Prisma repo pays nothing.
 **Correct alternative:** `prisma migrate dev --name <migration-name>` (or the
 repo's wrapper), which records a migration that keeps the DB and history in sync.
 
-## `nudge-todowrite-to-tracker.py` — PreToolUse (TodoWrite)
+## `nudge-todowrite-to-tracker.py` — PreToolUse (TodoWrite) — Claude-only
 
 **Never blocks** (`exit 0` always). Opt-in only: silent unless the repo sets
 `nudge_todowrite: true` in `agentic-engineering.local.md` frontmatter. When
@@ -119,7 +144,7 @@ frontmatter (same file the `setup` skill writes `issue_tracker:` into). A
 other local-config reads), so the flag only takes effect from an untracked,
 per-machine copy.
 
-## `plan-tracker-guard.py` — Stop
+## `plan-tracker-guard.py` — Stop — Claude-primary
 
 **Blocks** turn termination if a plan file (`docs/plans/*.md`) modified during
 the session lacks a tracker ID (`bead_id` / `linear_issue` / `github_issue`) in
@@ -128,14 +153,14 @@ its YAML frontmatter — unless the plan opts out with `issue_tracker: none`.
 **Why:** Plans that aren't linked to a tracked issue get orphaned. This keeps
 `/workflows:plan` output connected to whatever issue tracker the repo uses.
 
-## `sdd-cache-pre.py` / `sdd-cache-post.py` — PreToolUse / PostToolUse (WebFetch), opt-in
+## `sdd-cache-pre.py` / `sdd-cache-post.py` — PreToolUse / PostToolUse (WebFetch), opt-in — Claude-only
 
 **Off by default.** Unlike the guards above, this pair is a *performance* hook,
 not a safety net, and it is **inert unless the environment sets
 `AGENTIC_SDD_CACHE=1`**. When enabled it caches `WebFetch` results on disk under
 `.claude/sdd-cache/` (gitignored) and serves a page back to the agent instead of
-re-fetching it — but **only after the origin server confirms the page is
-unchanged.** Adapted from
+re-fetching it — but **only** after the origin server confirms the page is
+unchanged. Adapted from
 [`addyosmani/agent-skills`](https://github.com/addyosmani/agent-skills)'s
 `sdd-cache` hooks, ported from bash to python3 (stdlib only).
 
@@ -166,17 +191,25 @@ stale entry for that URL is removed.
 failure) resolves to "let the fetch proceed" — a broken cache can never block a
 legitimate `WebFetch`.
 
+This cache-only policy is intentionally different from the four Cursor safety
+gates above, which set `failClosed: true` so a hook process failure cannot allow
+a prohibited shell or write action.
+
 **Enable it:** export `AGENTIC_SDD_CACHE=1` in the environment you launch Claude
 Code from (a per-machine choice — an env var, unlike a committed config flag,
 can't ride a PR and flip caching on for every clone). Unset it to disable.
 
 ## Testing hooks
 
-Each PreToolUse hook reads a JSON payload on stdin and signals its decision via
-exit code (`0` allows, `2` blocks). Drive one directly:
+Each PreToolUse / beforeShellExecution hook reads a JSON payload on stdin and
+signals its decision via exit code (`0` allows, `2` blocks). Drive one directly:
 
 ```bash
 echo '{"tool_name":"Bash","tool_input":{"command":"git commit --no-verify"}}' \
+  | python3 scripts/block-no-verify.py; echo "exit: $?"   # exit: 2 (blocked)
+
+# Cursor beforeShellExecution shape:
+echo '{"command":"git commit --no-verify"}' \
   | python3 scripts/block-no-verify.py; echo "exit: $?"   # exit: 2 (blocked)
 ```
 
@@ -191,6 +224,7 @@ Automated regression tests live in [`../tests/`](../tests) and run in CI via
 - [`nudge_todowrite_to_tracker_test.py`](../tests/nudge_todowrite_to_tracker_test.py)
 - [`sdd_cache_pre_test.py`](../tests/sdd_cache_pre_test.py)
 - [`sdd_cache_post_test.py`](../tests/sdd_cache_post_test.py)
+- [`hook_payload_test.py`](../tests/hook_payload_test.py)
 
 These pin the tricky false-positive / false-negative edges (prose that mentions
 a flag, chained command segments, branches named like `main`) so the regex
@@ -200,5 +234,9 @@ guards can't silently regress.
 
 These hooks are intentionally conservative and should rarely need disabling. If
 one is genuinely in the way (e.g. a hook itself is broken), override it in your
-project's `.claude/settings.local.json` rather than editing the plugin, so your
-change survives plugin updates.
+project's harness-local settings rather than editing the plugin, so your change
+survives plugin updates:
+
+- Claude Code: `.claude/settings.local.json`
+- Cursor: project/user hooks override or disable the plugin hook entry
+- Codex: `/hooks` to untrust or disable the plugin-bundled hook

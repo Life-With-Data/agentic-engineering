@@ -5,6 +5,19 @@ All notable changes to the agentic-engineering plugin will be documented in this
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.22.0] - 2026-07-13
+
+### Added
+
+- **Native Cursor and Codex packaging** — sync `.cursor-plugin/plugin.json` to Claude version/counts and wire `skills` / `agents` / `commands` / `hooks` (`hooks/hooks-cursor.json`) / MCP; add `.codex-plugin/plugin.json` plus root `.agents/plugins/marketplace.json` so Codex can install from this repo without the Bun CLI. Native Codex surface is skills + MCP + safety hooks (agents/commands stay on Bun `--to codex`).
+- **Cross-platform hook contracts** — Cursor safety hooks now fail closed, and the Slack credential guard understands Codex's canonical `apply_patch` payload while scanning only newly added lines in non-documentation files.
+- **Cross-harness safety hook adapters** — `hooks/hooks-cursor.json` (Cursor `beforeShellExecution` + Write `preToolUse`) and `hooks/hooks.json` (Codex `${PLUGIN_ROOT}`) ship `block-no-verify`, `prevent-main-commit`, `block-slack-webhook`, and `block-db-push`. Shared `scripts/hook_payload.py` normalizes Cursor payloads into the Claude shape. Nudge / SDD-cache / TodoWrite / Stop tracker hooks remain Claude-primary (documented in [`scripts/HOOKS.md`](scripts/HOOKS.md) harness matrix).
+- **Manifest parity CI** — `tests/plugin-consistency.test.ts` asserts Claude / Cursor / Codex plugin versions match and required packaging + hook config files exist, with script-path existence checks for Cursor/Codex hook entries.
+
+### Changed
+
+- **README install section** — Claude / Cursor / Codex native install first; Bun `--to cursor` / `--to codex` marked secondary (legacy / full convert).
+
 ## [3.21.3] - 2026-07-13
 
 ### Fixed

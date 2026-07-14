@@ -7,7 +7,7 @@ A Claude Code plugin built on one idea: **each unit of engineering work should m
 
 Most codebases drift the other way. Every feature adds complexity, every shortcut adds debt, and the work gets slower over time. This plugin inverts that by turning a deliberate loop — explore, plan, build, review, and *capture what you learned* — into first-class tooling: **31 agents, 28 commands, and 35 skills** that compound on each other.
 
-It works in Claude Code first, and converts to a dozen other AI coding tools (OpenCode, Codex, Cursor, Droid, Gemini, Copilot, and more).
+It installs natively in Claude Code, Cursor, and Codex, and converts to other AI coding tools (OpenCode, Droid, Gemini, Copilot, and more) via the Bun CLI.
 
 > An independent project — tracker-aware workflows, a steering orchestrator, and cross-tool conversion, built as our own.
 
@@ -43,26 +43,44 @@ The workflows auto-detect how you track work — a GitHub Projects v2 lifecycle 
 
 ## Install
 
-**Claude Code:**
+Native install is the primary path for Claude Code, Cursor, and Codex. The Bun
+CLI converter remains available for other tools and for full Codex
+agent/command convert.
+
+**1. Claude Code** (agents, commands, skills, MCP, full hooks):
 
 ```bash
 /plugin marketplace add https://github.com/Life-With-Data/agentic-engineering
 /plugin install agentic-engineering
 ```
 
-**Cursor:**
+**2. Cursor** (skills, agents, commands, MCP, safety hooks):
 
 ```text
-/add-plugin agentic-engineering
+/add-plugin agentic-engineering@https://github.com/Life-With-Data/agentic-engineering
 ```
 
-## Configure
+For local development, clone the repo and symlink the nested plugin directory,
+then restart Cursor:
 
-After installing, run **`/setup`** — the plugin's configuration flow. It auto-detects your stack and walks through review agents, the lifecycle board, the operating-principles always-on layer, and installing the **documentation-health CI workflow** (a zero-dependency docs-health gate plus an optional agent audit that reviews docs on every PR — usable with a Claude Pro/Max subscription token). Re-run it anytime; `/config-flags` flips individual settings and `/lifecycle-doctor` verifies the board.
+```bash
+mkdir -p ~/.cursor/plugins/local
+ln -s /absolute/path/to/agentic-engineering/plugins/agentic-engineering \
+  ~/.cursor/plugins/local/agentic-engineering
+```
 
-## Use it in other AI tools
+**3. Codex** (skills, MCP, safety hooks — trust hooks when prompted):
 
-This repo ships a Bun/TypeScript CLI (`agentic-plugin`) that converts the plugin into other tools' native formats. It runs straight from GitHub — no registry involved:
+```bash
+codex plugin marketplace add Life-With-Data/agentic-engineering
+codex plugin add agentic-engineering --marketplace agentic-engineering
+```
+
+Native Codex does **not** ship Claude-style agents/commands. For that surface,
+use the Bun convert path below (`--to codex`). Plugin-bundled hooks are skipped
+until you review and trust them (`/hooks`).
+
+**4. Other tools / full convert** — Bun CLI (secondary):
 
 ```bash
 npx github:Life-With-Data/agentic-engineering install agentic-engineering --to <target>
@@ -73,15 +91,27 @@ npx github:Life-With-Data/agentic-engineering install agentic-engineering --to <
 |--------|--------|-------|
 | `claude` | passthrough | Claude Code format, copied as-is |
 | `opencode` | `~/.config/opencode` | `opencode.json` deep-merged; your `model`/`theme`/`provider` win |
-| `codex` | `~/.codex/prompts`, `~/.codex/skills` | each command → a prompt + a skill |
-| `cursor` | Cursor format | — |
+| `codex` | `~/.codex/prompts`, `~/.codex/skills` | full convert for agents/commands; prefer native install for skills/MCP/hooks |
+| `cursor` | Cursor format | legacy convert; prefer native `/add-plugin` |
 | `droid` | `~/.factory/` | Claude tool names mapped to Factory equivalents |
 | `pi` | `~/.pi/agent/` | includes `mcporter.json` for MCPorter |
 | `gemini` | `.gemini/` | commands as `.toml`; skills pass through unchanged |
 | `copilot` | `.github/` | agents get Copilot frontmatter; MCP env vars prefixed `COPILOT_MCP_` |
 | `kiro` | `.kiro/` | stdio MCP servers only (HTTP skipped) |
 
-All non-Claude targets are **experimental** and may change as the formats evolve.
+Non-native convert targets are **experimental** and may change as the formats evolve.
+
+## Configure
+
+After installing, start the plugin's configuration flow with **`/setup`** in
+Claude Code or Cursor. In Codex, invoke the installed skill as **`$setup`** (or
+select `setup` through `/skills`). It auto-detects your stack and walks through
+review agents, the lifecycle board, the operating-principles always-on layer,
+and installing the **documentation-health CI workflow** (a zero-dependency
+docs-health gate plus an optional agent audit that reviews docs on every PR —
+usable with a Claude Pro/Max subscription token). Re-run it anytime; Claude and
+Cursor also expose `/config-flags` and `/lifecycle-doctor`. Those command-only
+utilities are available in Codex only through the Bun full-convert path.
 
 <details>
 <summary>Local dev & per-provider details</summary>
@@ -131,3 +161,4 @@ The split is roughly **80% planning and review, 20% execution.** Plan thoroughly
 
 - [Documentation site](https://life-with-data.github.io/agentic-engineering/) — full agent, command, and skill reference
 - [FLOWS.md](plugins/agentic-engineering/FLOWS.md) — mermaid diagrams of every workflow and where the orchestrator pauses for you
+- [Multi-platform native plugin guide](docs/multi-platform-native-plugins.md) — extend a Claude Code plugin to Cursor and Codex without duplicating its implementation

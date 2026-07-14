@@ -25,8 +25,7 @@ BLOCK = 2
 ALLOW = 0
 
 
-def _run(command: str, tool_name: str = "Bash") -> subprocess.CompletedProcess[str]:
-    payload = {"tool_name": tool_name, "tool_input": {"command": command}}
+def _run_payload(payload: dict) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         [sys.executable, str(SCRIPT)],
         input=json.dumps(payload),
@@ -34,6 +33,10 @@ def _run(command: str, tool_name: str = "Bash") -> subprocess.CompletedProcess[s
         text=True,
         timeout=10,
     )
+
+
+def _run(command: str, tool_name: str = "Bash") -> subprocess.CompletedProcess[str]:
+    return _run_payload({"tool_name": tool_name, "tool_input": {"command": command}})
 
 
 class BlockDbPushTest(unittest.TestCase):
@@ -70,6 +73,10 @@ class BlockDbPushTest(unittest.TestCase):
 
     def test_blocks_in_chained_command(self) -> None:
         self.assert_blocked("cd packages/database && npx prisma db push")
+
+    def test_blocks_cursor_before_shell_execution_payload(self) -> None:
+        result = _run_payload({"command": "npx prisma db push"})
+        self.assertEqual(result.returncode, BLOCK)
 
     # --- legitimate commands must be allowed ---
 

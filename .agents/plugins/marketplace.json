@@ -1,0 +1,20 @@
+{
+  "name": "agentic-engineering",
+  "interface": {
+    "displayName": "Agentic Engineering"
+  },
+  "plugins": [
+    {
+      "name": "agentic-engineering",
+      "source": {
+        "source": "local",
+        "path": "./plugins/agentic-engineering"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Developer Tools"
+    }
+  ]
+}
