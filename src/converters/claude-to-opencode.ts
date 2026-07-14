@@ -5,6 +5,7 @@ import type {
   ClaudeHooks,
   ClaudePlugin,
   ClaudeMcpServer,
+  ClaudeSkill,
 } from "../types/claude"
 import type {
   OpenCodeBundle,
@@ -75,7 +76,7 @@ export function convertClaudeToOpenCode(
     mcp: mcp && Object.keys(mcp).length > 0 ? mcp : undefined,
   }
 
-  applyPermissions(config, plugin.commands, options.permissions)
+  applyPermissions(config, plugin.commands, plugin.skills, options.permissions)
 
   return {
     config,
@@ -296,6 +297,7 @@ function inferTemperature(agent: ClaudeAgent): number | undefined {
 function applyPermissions(
   config: OpenCodeConfig,
   commands: ClaudeCommand[],
+  skills: ClaudeSkill[],
   mode: PermissionMode,
 ) {
   if (mode === "none") return
@@ -322,9 +324,13 @@ function applyPermissions(
   if (mode === "broad") {
     enabled = new Set(sourceTools)
   } else {
-    for (const command of commands) {
-      if (!command.allowedTools) continue
-      for (const tool of command.allowedTools) {
+    // Derive the permission set from allowedTools declared on BOTH commands
+    // and skills — additive, so a skills-only plugin (empty commands/) still
+    // produces a correct, non-empty set instead of an all-deny one.
+    const sources: Array<{ allowedTools?: string[] }> = [...commands, ...skills]
+    for (const source of sources) {
+      if (!source.allowedTools) continue
+      for (const tool of source.allowedTools) {
         const parsed = parseToolSpec(tool)
         if (!parsed.tool) continue
         enabled.add(parsed.tool)
