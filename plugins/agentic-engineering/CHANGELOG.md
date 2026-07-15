@@ -5,6 +5,13 @@ All notable changes to the agentic-engineering plugin will be documented in this
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.2.0](https://github.com/Life-With-Data/agentic-engineering/compare/agentic-engineering-v4.1.1...agentic-engineering-v4.2.0) (2026-07-15)
+
+
+### Features
+
+* integrate graphify into setup/config and the compound lifecycle ([#165](https://github.com/Life-With-Data/agentic-engineering/issues/165)) ([e085f5b](https://github.com/Life-With-Data/agentic-engineering/commit/e085f5b2d240f8e6884aa28e93148af9a3166aef))
+
 ## [4.1.1](https://github.com/Life-With-Data/agentic-engineering/compare/agentic-engineering-v4.1.0...agentic-engineering-v4.1.1) (2026-07-15)
 
 
