@@ -15,7 +15,6 @@ name: Documentation health
 # see skills/documentation-health/assets/doc-health.yml for that template).
 
 on:
-  pull_request:
   workflow_dispatch:
   schedule:
     - cron: "0 9 * * 1"
@@ -159,6 +158,7 @@ jobs:
           # server needs a tracking comment that agent mode never creates.
           claude_args: >-
             --setting-sources user
+            --model claude-sonnet-5
             --allowedTools mcp__github__create_and_submit_pull_request_review
             --json-schema
             {\"type\":\"object\",\"properties\":{\"must_fix\":{\"type\":\"boolean\"},\"summary\":{\"type\":\"string\"}},\"required\":[\"must_fix\",\"summary\"]}
