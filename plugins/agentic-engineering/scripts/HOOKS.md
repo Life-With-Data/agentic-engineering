@@ -26,7 +26,7 @@ Harness config files:
 |---------|--------|-----------|
 | Claude Code | inline `hooks` in [`.claude-plugin/plugin.json`](../.claude-plugin/plugin.json) | `${CLAUDE_PLUGIN_ROOT}` |
 | Cursor | [`hooks/hooks-cursor.json`](../hooks/hooks-cursor.json) | relative `./scripts/...` (plugin root cwd) |
-| Codex | [`hooks/hooks.json`](../hooks/hooks.json) | `${PLUGIN_ROOT}` (also sets `CLAUDE_PLUGIN_ROOT` for compatibility) |
+| Codex | [`hooks/hooks-codex.json`](../hooks/hooks.json) | `${PLUGIN_ROOT}` (also sets `CLAUDE_PLUGIN_ROOT` for compatibility) |
 
 `hook_payload.py` normalizes Cursor `beforeShellExecution` (`{command}`) and
 `tool_name: "Shell"` into `{tool_name:"Bash", tool_input:{command}}`. Codex's

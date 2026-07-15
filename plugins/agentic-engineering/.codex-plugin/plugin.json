@@ -19,7 +19,7 @@
   ],
   "skills": "./skills/",
   "mcpServers": "./.mcp.json",
-  "hooks": "./hooks/hooks.json",
+  "hooks": "./hooks/hooks-codex.json",
   "interface": {
     "displayName": "Agentic Engineering",
     "shortDescription": "Skills, MCP, and safety hooks for agentic engineering workflows",
