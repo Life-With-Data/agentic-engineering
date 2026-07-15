@@ -97,6 +97,21 @@ CONFIG_FLAGS = [
         file="local",
     ),
     ConfigFlag(
+        key="graphify_refresh",
+        kind="boolean",
+        default="false",
+        description=(
+            "Refresh the graphify knowledge graph at the end of "
+            "/workflows-compound, so a solution doc is linked to the code it "
+            "describes instead of landing as a disconnected file. Requires the "
+            "graphify CLI and an existing graphify-out/graph.json — compound "
+            "never builds a graph from scratch. Needs no API key: semantic "
+            "extraction runs as subagents in the host session."
+        ),
+        owner="skills/workflows-compound/SKILL.md",
+        file="local",
+    ),
+    ConfigFlag(
         key="github_project_owner",
         kind="identity",
         default="",

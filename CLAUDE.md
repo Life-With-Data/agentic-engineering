@@ -28,7 +28,7 @@ Component counts are intentionally not listed here — they drift. The authorita
 
 ## Philosophy: Agentic Engineering
 
-**Each unit of engineering work should make subsequent units of work easier — not harder.** Work the loop: **Plan** the change and its impact → **Delegate** implementation to AI tools → **Assess** that it works → **Codify** learnings back into this file, a skill, or a test.
+**Each unit of engineering work should make subsequent units of work easier — not harder.** Work the loop: **Plan** the change and its impact → **Delegate** implementation to AI tools → **Assess** that it works → **Codify** the learning where it will be found again: [`docs/solutions/`](docs/solutions/) by default (see [Key Learnings](#key-learnings)), a skill or a test when the learning can be *enforced* rather than remembered.
 
 ## Updating the plugin
 
@@ -113,6 +113,8 @@ Releases are driven by [release-please](https://github.com/googleapis/release-pl
 - [Plugin Reference](https://docs.claude.com/en/docs/claude-code/plugins-reference)
 
 ## Key Learnings
+
+> **Compounded knowledge lives in [`docs/solutions/`](docs/solutions/)** — one doc per solved problem, written by `/workflows-compound`, with frontmatter for retrieval. **Put new learnings there, not here**, and search there first: the depth behind the bullets below already lives in it. This section stays a short index of habits that shape everyday work in this repo.
 
 - **2026-07-14 — release-please's `bootstrap-sha` is manifest-wide, not per-package, and `extra-files` paths are package-relative unless prefixed with `/`.** A first-draft `release-please-config.json` nested `bootstrap-sha` inside each package (silently ignored) and gave `extra-files` paths as if they were repo-root-relative (silently double-prefixed with the package directory, pointing at nonexistent files). Caught only because the generated release PR was actually inspected before merging — it proposed a wrong MAJOR bump off ancient history and never touched `plugin.json` at all. See `docs/solutions/adopt-release-please.md` for the fix. Read the tool's actual source (`manifest.ts`, `strategies/base.ts`) when a config field's effect is load-bearing, not just its JSON schema — the schema says a field is *valid*, not *where* it's read from.
 - **2026-07-14 — A fork-disconnect force-push can strand a bot-generated release PR on unreachable history.** Disconnecting from the upstream fork and force-pushing `main` back to the correct state left an already-open release-please PR pointed at the old, now-unreachable commit lineage — 826 files of pure noise, unmergeable, and unregenerable because the workflow that created it no longer existed on the new `main`. Verify with `git merge-base --is-ancestor <PR-branch-tip> <main-tip>` before assuming a stale automation PR can simply be re-triggered; if the answer is no, close it and rebuild the automation fresh rather than trying to reconcile it.

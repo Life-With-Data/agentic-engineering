@@ -1,6 +1,6 @@
 ---
 name: setup
-description: Configure which review agents run for your project. Auto-detects stack, writes agentic-engineering.local.md, and offers to bootstrap the lifecycle board, install the operating-principles always-on layer into CLAUDE.md/AGENTS.md, install the Headroom context-compression CLI, and install the documentation-health CI workflow.
+description: Configure which review agents run for your project. Auto-detects stack, writes agentic-engineering.local.md, and offers to bootstrap the lifecycle board, install the operating-principles always-on layer into CLAUDE.md/AGENTS.md, install the Headroom context-compression CLI, install the graphify knowledge-graph CLI and wire it into /workflows-compound, and install the documentation-health CI workflow.
 disable-model-invocation: true
 ---
 
@@ -429,6 +429,121 @@ Record the outcome (`installed` path, or already-present/skipped) for Step 5. Fo
 secret-free taste of the capability, the same scanner runs locally:
 `python3 "${CLAUDE_PLUGIN_ROOT}/skills/documentation-health/scripts/doc_health_check.py" .`
 
+## Step 3.10: Install graphify (optional)
+
+[graphify](https://github.com/Graphify-Labs/graphify) (MIT) turns a repo into a queryable knowledge
+graph — code is parsed locally with tree-sitter, docs/papers/images get semantic extraction — so the
+agent can query the graph instead of grepping. This plugin ships **no graphify skill**: graphify
+registers its own across Claude Code and other assistants via `graphify install`, and a duplicate
+would collide with it. Setup only installs the CLI, registers the upstream skill, and offers to wire
+the graph into `/workflows-compound`. Strictly opt-in — the plugin never installs a binary without
+consent.
+
+Detect current state (idempotent — skip the offer entirely when already installed):
+
+```bash
+if command -v graphify >/dev/null 2>&1; then
+  echo "state=installed version=$(graphify --version 2>/dev/null) graph=$([ -f graphify-out/graph.json ] && echo present || echo absent)"
+elif command -v uv >/dev/null 2>&1; then
+  echo "state=absent installer=uv"
+elif command -v pipx >/dev/null 2>&1; then
+  echo "state=absent installer=pipx"
+elif command -v pip >/dev/null 2>&1 || command -v pip3 >/dev/null 2>&1; then
+  echo "state=absent installer=pip"
+else
+  echo "state=absent installer=none"
+fi
+```
+
+- If `state=installed`: skip the install offer; go straight to the `graphify_refresh` offer below.
+- If `state=absent installer=none`: neither `uv`, `pipx`, nor `pip` is available — do not offer an
+  install that cannot run. State that graphify needs one of them, and move on.
+
+Otherwise offer with AskUserQuestion:
+
+```
+question: "Install graphify to build a queryable knowledge graph of this repo? It installs as a global CLI via {uv|pipx|pip}."
+header: "Graphify"
+options:
+  - label: "Yes, install"
+    description: "Runs {uv tool install|pipx install|pip install} graphifyy, then `graphify install` to register its skill. Build the graph later with /graphify ."
+  - label: "Skip (Recommended)"
+    description: "Leave it uninstalled. Re-run setup anytime, or install it yourself."
+```
+
+Note the PyPI package is **`graphifyy`** (two y's) while the CLI is `graphify` — a `graphify` install
+grabs an unrelated package. On yes, install with the detected installer (prefer `uv` — it isolates
+the CLI while exposing `graphify` on PATH), then register the skill:
+
+```bash
+if command -v uv >/dev/null 2>&1; then
+  uv tool install graphifyy
+elif command -v pipx >/dev/null 2>&1; then
+  pipx install graphifyy
+else
+  (command -v pip3 >/dev/null 2>&1 && pip3 || echo pip) install graphifyy
+fi
+command -v graphify >/dev/null 2>&1 && graphify install --platform claude && graphify --version
+```
+
+On non-interactive runs (no answer obtainable), never auto-install: print the
+`uv tool install graphifyy` command for later and move on.
+
+**Then offer the lifecycle wiring** — this is the part that makes the graph compound rather than rot.
+Only offer it when graphify is now installed (freshly or already); otherwise skip silently:
+
+```
+question: "Refresh the graphify graph at the end of /workflows-compound?"
+header: "Graph refresh"
+options:
+  - label: "Yes, enable"
+    description: "After compound writes docs/solutions/*.md, the doc is folded into the graph and linked to the code it describes. Only refreshes an existing graph — never builds one."
+  - label: "Skip (Recommended)"
+    description: "Leave the graph refreshed manually via /graphify --update. Flip anytime with /config-flags."
+```
+
+On yes, set the flag **and** ensure `graphify-out/` is gitignored — the two go together, and the
+ignore entry is a precondition of the feature, not a nicety:
+
+```bash
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/config_registry.py" --set graphify_refresh true
+ROOT=$(git rev-parse --show-toplevel 2>/dev/null) || ROOT=""
+if [ -n "$ROOT" ]; then
+  if [ -L "$ROOT/.gitignore" ]; then
+    GRAPHIGNORE="failed (symlinked .gitignore)"   # never write through a link — same rule as Step 4.5
+  elif git -C "$ROOT" check-ignore -q --no-index graphify-out/; then
+    GRAPHIGNORE="entry present"
+  else
+    [ -s "$ROOT/.gitignore" ] && [ -n "$(tail -c1 "$ROOT/.gitignore")" ] && printf '\n' >> "$ROOT/.gitignore"
+    printf 'graphify-out/\n' >> "$ROOT/.gitignore"
+    git -C "$ROOT" check-ignore -q --no-index graphify-out/ && GRAPHIGNORE="added" || GRAPHIGNORE="failed"
+  fi
+fi
+echo "graphify_out_gitignore=${GRAPHIGNORE:-n/a (not a git repo)}"
+```
+
+`graphify-out/` is a **derived artifact** — a rebuildable cache keyed to a commit, not source. Two
+concrete reasons it must be ignored, beyond the general principle:
+
+- **It breaks the compound data lane.** `/workflows-compound`'s Phase 3 ships knowledge via
+  `land-docs`, which enforces a **100%-documentation diff**. A refresh rewrites `graph.html` and
+  `manifest.json` (non-doc) and `GRAPH_REPORT.md` (doc) — tracked, they either abort the autonomous
+  merge or ride the PR as noise. Compound's step 8 therefore **gates** on this entry and skips
+  without it, rather than fixing `.gitignore` mid-run: that edit would itself break the same check.
+- **It churns.** `graph.json` is regenerated wholesale; tracked, every refresh is a large
+  unreviewable diff, and concurrent branches conflict on it constantly.
+
+Two more things worth stating plainly, because both cut against reasonable assumptions:
+
+- **No API key is needed, ever.** graphify reads neither `ANTHROPIC_API_KEY` nor `OPENAI_API_KEY`.
+  Code needs no LLM at all. Semantic extraction (docs/papers/images only) uses Gemini if
+  `GEMINI_API_KEY`/`GOOGLE_API_KEY` happens to be set, and otherwise runs as subagents in the host
+  session. Never prompt for a key here.
+- **Do not offer `graphify hook install`.** It installs a post-commit hook, and any tool that sets
+  `core.hooksPath` (beads, husky, lefthook, pre-commit) redirects git's hook lookup away from
+  `.git/hooks` — so the hook silently never fires and the graph rots with no error. Record the
+  outcome for Step 5.
+
 ## Step 4: Build Agent List and Write File
 
 **Stack-specific agents:**
@@ -570,6 +685,8 @@ Agents:        {count} configured
                {agent list, one per line}
 Always-on:     {operating-principles layer: installed into <files> | already present | skipped}
 Headroom:      {installed now | already present | skipped | unavailable (needs uv or pip) | command printed (non-interactive)}
+Graphify:      {installed now | already present | skipped | unavailable (needs uv, pipx, or pip) | command printed (non-interactive)}
+               graph refresh on compound: {enabled | off}
 Docs CI:       {installed .github/workflows/doc-health.yml | already present | skipped}
 Gitignore:     {entry present | added | failed (see warning) | n/a (not a git repo)}
 Tracked:       {no | untracked now (deletion staged — commit it) | still tracked (declined) | still tracked (no answer — command printed) | n/a (not a git repo)}
