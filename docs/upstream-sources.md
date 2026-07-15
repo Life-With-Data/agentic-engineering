@@ -167,3 +167,35 @@ component confers no trust on v2.
   - skill/writing-skills — shortlisted for adoption as an enhancement into create-agent-skills, not a third authoring skill: TDD-for-skills iron law, subagent pressure-testing protocol, match-the-form-to-the-failure taxonomy, persuasion principles; co-locate adapted testing-skills-with-subagents.md and persuasion-principles.md as references and reconcile the description-only-triggers rule with the official what+when spec at adoption time — @aagnone3 2026-07-10
   - skill/subagent-driven-development — shortlisted for adoption, second wave once the in-flight addyosmani wave (PRs #100-#107) lands: fresh-implementer-per-task execution protocol (four status codes, file-based context handoff, per-task BASE discipline, compaction-proof progress ledger, reviewer anti-pre-judging trip-wires, one-fixer economics) plus three portable clean bash scripts; retarget plan/review/TDD/finish references to workflows:plan, local review agents, test-driven-development, land-pr — @aagnone3 2026-07-10
   - all-unlisted @ d884ae04edebef577e82ff7c4e143debd0bbec99 — bulk-deferred at type level, see docs/upstream-reports/2026-07-10-superpowers-initial-triage.md — @aagnone3 2026-07-10
+
+## Graphify-Labs/graphify
+
+Consumed as an **external CLI**, not by adopting components — the same shape as
+`headroomlabs-ai/headroom` below. The `setup` skill offers `uv tool install graphifyy` (note: the
+PyPI package is `graphifyy`, the CLI is `graphify`), and graphify registers its own assistant skill
+via `graphify install`. Shipping a local copy of that skill would collide with the upstream-installed
+one, so `adopted:` is empty **by design**, not by omission, and `scan: manual-only` stops the scanner
+re-proposing components we have deliberately chosen not to vendor. Wired into `/workflows-compound`
+behind the `graphify_refresh` flag, which refreshes an existing graph and never builds one.
+
+- repo: https://github.com/Graphify-Labs/graphify
+- license: MIT (verified 2026-07-15)
+- visibility: public
+- scan: manual-only
+- adopted:
+- deferred:
+
+## headroomlabs-ai/headroom
+
+Consumed as an **external CLI**, wrapped by the local `headroom` skill — which documents install and
+usage rather than vendoring upstream code — and offered by the `setup` skill. Registered here as a
+backfill: it predates this entry and had none, which quietly broke the "one ledger" invariant in
+[dependency-policy.md](dependency-policy.md) that says every external source has a registry entry.
+`scan: manual-only` because there are no components to mine; `adopted:` is empty by design.
+
+- repo: https://github.com/headroomlabs-ai/headroom
+- license: Apache-2.0 (verified 2026-07-15)
+- visibility: public
+- scan: manual-only
+- adopted:
+- deferred:

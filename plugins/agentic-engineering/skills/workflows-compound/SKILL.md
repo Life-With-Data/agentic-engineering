@@ -103,6 +103,35 @@ The orchestrating agent (main conversation) performs these steps:
    bd remember "<one-line insight>" --link "docs/solutions/[category]/[filename].md"
    ```
    This is universal — it runs whenever `bd` is installed, regardless of the resolved issue tracker. It complements the solution doc; it does not replace it. Skip silently if `bd` is not available.
+8. **Refresh the knowledge graph** — fold the solution doc just written into the repo's graphify graph, so the doc is reachable from the code it describes rather than sitting as an isolated file node. Like step 7 this is knowledge memory, not a lifecycle write: it runs **after** the step 6 stamp and must never block it. A graph is a derived artifact; the board is the source of truth, so a graphify failure is reported and dropped, never escalated.
+
+   Gate on all four — skip this step **silently** unless the recipe prints `graphify_refresh=go`:
+   ```bash
+   REFRESH=$(python3 "${CLAUDE_PLUGIN_ROOT}/scripts/config_registry.py" --get graphify_refresh 2>/dev/null | jq -r '.effective')
+   command -v graphify >/dev/null 2>&1 && CLI=yes || CLI=no
+   [ -f graphify-out/graph.json ] && GRAPH=yes || GRAPH=no
+   git check-ignore -q --no-index graphify-out/ 2>/dev/null && IGNORED=yes || IGNORED=no
+   if [ "$REFRESH" = "true" ] && [ "$CLI" = yes ] && [ "$GRAPH" = yes ] && [ "$IGNORED" = yes ]; then
+     echo "graphify_refresh=go"
+   else
+     echo "graphify_refresh=skip (flag=${REFRESH:-unset} cli=$CLI graph=$GRAPH gitignored=$IGNORED)"
+   fi
+   ```
+
+   `--get` emits a JSON object, not a bare value — read `.effective` (which resolves the default when the flag is unset), never the raw stdout.
+
+   The `graph=` gate is load-bearing: compound **refreshes an existing graph and never builds one**. A first build walks the whole corpus and can cost far more than the compound run itself — that is `/graphify`'s job, chosen deliberately, not a surprise buried in a documentation command.
+
+   The `gitignored=` gate protects Phase 3. A refresh rewrites `graphify-out/graph.html`, `manifest.json`, and `GRAPH_REPORT.md`; if `graphify-out/` is tracked, those land in the working tree and `land-docs` either aborts on the non-doc paths or silently ships regenerated artifacts inside a knowledge PR. **Do not fix this from here** — appending to `.gitignore` is itself a non-doc change that would break the same 100%-docs check. Report `gitignored=no` and point at the setup skill, which ensures the entry when it enables the flag.
+
+   When all three pass, invoke the **graphify skill** with `--update` on the repo root — do **not** shell out to `graphify update`. The distinction is the entire point of this step:
+
+   - `graphify update` (the CLI) is **code-only by design** — it re-parses code via tree-sitter and prints "For doc/paper/image changes run /graphify --update in your AI assistant". It would add the solution doc as a bare file node with no edge to any code, which is precisely the disconnected result this step exists to avoid.
+   - The **skill**'s `--update` path detects that a changed file is a document, so it runs semantic extraction and links the doc's concepts to the code nodes they describe.
+
+   Semantic extraction needs **no API key** — graphify reads neither `ANTHROPIC_API_KEY` nor `OPENAI_API_KEY`. With `GEMINI_API_KEY`/`GOOGLE_API_KEY` set it uses Gemini; otherwise the host session is the LLM and the skill dispatches subagents. Never prompt for a key, and never block on one.
+
+   The graphify skill ships with the [graphify CLI](https://github.com/Graphify-Labs/graphify) (`graphify install`), not with this plugin — the setup skill offers to install it. If the CLI is present but the skill is not registered in this host, report that and move on; do not reimplement the update pipeline here.
 
 </sequential_tasks>
 
