@@ -134,6 +134,44 @@ describe("version parity", () => {
   });
 });
 
+// ---- release-please can bump the docs version -------------------------------
+//
+// docs/index.html embeds the plugin version (data-stat="version"), filled by
+// `bun run docs:build` from plugin.json. On a release PR, release-please bumps
+// plugin.json but NOT generated files — so unless index.html is registered in
+// release-please's extra-files (as a `generic` updater keyed on an
+// `x-release-please-version` comment), its version lags and the "landing-page
+// stats" + "docs in sync" tests fail *only in the release PR*, where the drift
+// exists transiently. The generic updater no-ops silently if the annotation is
+// missing or drifts off the version line, so this asserts the whole mechanism
+// stays wired up — catching a regression on the offending PR, not at release.
+
+describe("release-please bumps the docs version", () => {
+  const rpConfig = JSON.parse(
+    readFileSync(path.join(ROOT, ".github/release-please-config.json"), "utf8"),
+  );
+  const coreExtraFiles: Array<{ type?: string; path?: string }> =
+    rpConfig.packages?.[`plugins/${CORE_PLUGIN_NAME}`]?.["extra-files"] ?? [];
+
+  test("docs/index.html is a generic extra-file of the core package", () => {
+    const entry = coreExtraFiles.find(
+      // leading "/" makes the path repo-root-relative, not package-relative
+      (f) => f.path === "/docs/index.html",
+    );
+    expect(entry).toBeDefined();
+    expect(entry?.type).toBe("generic");
+  });
+
+  test("the x-release-please-version annotation is on the version line", () => {
+    const versionLine = indexHtml
+      .split("\n")
+      .find((l) => /data-stat="version"/.test(l));
+    expect(versionLine).toBeDefined();
+    // Same line, or release-please's generic updater silently skips the bump.
+    expect(versionLine).toContain("x-release-please-version");
+  });
+});
+
 // ---- multi-platform native packaging (Claude / Cursor / Codex) --------------
 
 const cursorPluginJson = JSON.parse(
