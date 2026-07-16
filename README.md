@@ -5,7 +5,7 @@
 
 A Claude Code plugin built on one idea: **each unit of engineering work should make the next one easier — not harder.**
 
-Most codebases drift the other way. Every feature adds complexity, every shortcut adds debt, and the work gets slower over time. This plugin inverts that by turning a deliberate loop — explore, plan, build, review, and *capture what you learned* — into first-class tooling: **31 agents and 62 skills** that compound on each other.
+Most codebases drift the other way. Every feature adds complexity, every shortcut adds debt, and the work gets slower over time. This plugin inverts that by turning a deliberate loop — explore, plan, build, review, and *capture what you learned* — into first-class tooling: **31 agents and 63 skills** that compound on each other.
 
 It installs natively in Claude Code, Cursor, and Codex, and converts to other AI coding tools (OpenCode, Droid, Gemini, Copilot, and more) via the Bun CLI.
 
@@ -43,9 +43,10 @@ The workflows auto-detect how you track work — a GitHub Projects v2 lifecycle 
 
 ## Install
 
-Native install is the primary path for Claude Code, Cursor, and Codex. The Bun
-CLI converter remains available for other tools and for full Codex
-agent/command convert.
+Native install is the primary path for Claude Code, Cursor, and Codex. The
+[skills CLI](https://github.com/vercel-labs/skills) covers skills-only installs
+for ~70 other agents with no tooling from us, and the Bun CLI converter remains
+available for full converts.
 
 **1. Claude Code** (agents, skills, MCP, full hooks):
 
@@ -80,7 +81,22 @@ Native Codex does **not** ship Claude-style agents. For that surface,
 use the Bun convert path below (`--to codex`). Plugin-bundled hooks are skipped
 until you review and trust them (`/hooks`).
 
-**4. Other tools / full convert** — Bun CLI (secondary):
+**4. Any other agent — skills only** ([skills CLI](https://github.com/vercel-labs/skills), ~70 agents):
+
+```bash
+npx skills@latest add Life-With-Data/agentic-engineering
+```
+
+Discovers every skill in this marketplace and installs into whichever agents it
+detects (Claude Code, Cursor, Codex, opencode, Copilot, Cline, Amp, …; narrow
+with `--skill <names>` / `--agent <ids>`). The skills CLI installs **skills
+only** — plugin hooks, agents, and MCP servers do not ride along. After
+installing, invoke the bundled **`install-hooks`** skill to wire the four
+portable safety hooks (block `--no-verify`, prevent main commits, block Slack
+webhook leaks, block `prisma db push`) into your agent, or use a native
+install above for the full surface.
+
+**5. Other tools / full convert** — Bun CLI (secondary):
 
 ```bash
 npx github:Life-With-Data/agentic-engineering install agentic-engineering --to <target>
@@ -147,7 +163,7 @@ Syncs personal skills from `~/.claude/skills/` (as symlinks, so edits reflect im
 | Component | Count |
 |-----------|-------|
 | Specialized agents | 31 |
-| Skills | 62 |
+| Skills | 63 |
 | MCP servers | 1 |
 
 → **[Full component reference](plugins/agentic-engineering/README.md)** — every agent and skill.

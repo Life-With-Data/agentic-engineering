@@ -6,7 +6,12 @@ from being short-circuited. They fire automatically once the harness loads the
 plugin (Codex additionally requires reviewing and trusting plugin hooks).
 
 Python implementations live in this directory and are shared across harnesses.
-Wiring differs per platform:
+Skills-only installs via the [skills CLI](https://github.com/vercel-labs/skills)
+(`npx skills add ...`) never read plugin-level hooks; for that channel the
+[`install-hooks` skill](../skills/install-hooks/SKILL.md) bundles byte-identical
+copies of the four portable safety guards (enforced by
+`tests/install-hooks-skill-sync.test.ts` — update the copies when a canonical
+script changes). Wiring differs per platform:
 
 | Hook script | Claude | Cursor | Codex | Notes |
 |-------------|--------|--------|-------|-------|

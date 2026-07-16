@@ -7,7 +7,7 @@ AI-powered development tools that get smarter with every use. Make each unit of 
 | Component | Count |
 |-----------|-------|
 | Agents | 31 |
-| Skills | 62 |
+| Skills | 63 |
 | MCP Servers | 1 |
 
 > 📊 **[FLOWS.md](FLOWS.md)** — mermaid diagrams of every workflow (brainstorm → plan → work → review → compound) and how `/workflows-orchestrate` drives them.
@@ -136,6 +136,7 @@ stub → brainstormed → planned → in_progress → in_review → shipped
 | `lifecycle-doctor` | Verify the lifecycle board setup — toolchain, repo shape, board schema, delivery topology — and answer "ready for first work item: yes/no" (`--live` for the end-to-end probe) |
 | `deploy-docs` | Validate and prepare documentation for GitHub Pages deployment |
 | `config-flags` | Browse and toggle every opt-in configuration flag the plugin offers for this repo, with current value vs. default |
+| `install-hooks` | Wire the bundled portable safety hooks into the current agent after a skills-only install (`npx skills add`), which never carries plugin-level hooks |
 
 ### Architecture & Design
 
@@ -249,7 +250,16 @@ Installing the plugin wires in a small set of Claude Code hooks (declared in
 [`.claude-plugin/plugin.json`](.claude-plugin/plugin.json), documented in full in
 [`scripts/HOOKS.md`](scripts/HOOKS.md)). Most are always-on safety nets that keep
 the plan → work → PR → review flow from being short-circuited (e.g.
-`block-no-verify`, `prevent-main-commit`, `block-slack-webhook`). One is opt-in:
+`block-no-verify`, `prevent-main-commit`, `block-slack-webhook`).
+
+Skills-only installs (`npx skills@latest add Life-With-Data/agentic-engineering`
+via the [skills CLI](https://github.com/vercel-labs/skills)) do **not** carry
+plugin-level hooks — the CLI reads nothing but `SKILL.md` directories. For that
+path, the [`install-hooks` skill](skills/install-hooks/SKILL.md) bundles the
+four portable safety guards and wires them into the running agent's hook
+config on invocation.
+
+One hook is opt-in:
 
 ### `sdd-cache` — revalidating WebFetch doc cache (opt-in)
 
