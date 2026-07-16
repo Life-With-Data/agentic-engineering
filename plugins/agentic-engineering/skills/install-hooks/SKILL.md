@@ -140,12 +140,19 @@ are now active.
 
 - **Idempotent:** re-running must not duplicate entries — check for each script
   name before appending.
-- **Uninstall:** removing the skill (`skills remove install-hooks`) does not
-  remove the wired config; delete the corresponding entries from the same
-  settings file.
+- **Uninstall — unwire FIRST, then remove.** The guards are fail-closed: if a
+  wired script goes missing, `python3` exits 2 on the unopenable file, and both
+  Claude Code (`PreToolUse` exit 2) and Cursor (`failClosed: true`) treat that
+  as a block — every guarded action (all Bash commands, and file writes for the
+  webhook guard) is then blocked until the config is hand-edited. So when
+  uninstalling: delete the hook entries from the settings file **before**
+  running `skills remove install-hooks`. The same lockout applies to moving or
+  renaming the skill directory after wiring — re-run this skill to re-point the
+  paths.
 - These bundled scripts are copies of the canonical plugin scripts
   (`plugins/agentic-engineering/scripts/` in the source repo); a repository
-  test keeps them byte-identical, and `skills update` refreshes them.
+  test keeps them byte-identical, and `skills update` refreshes GitHub-sourced
+  installs.
 - The full hook set (Node version check, TodoWrite nudge, plan-tracker guard,
   SDD cache) ships only with the native Claude Code plugin install — those
   hooks depend on plugin-level modules that do not travel with this skill.
