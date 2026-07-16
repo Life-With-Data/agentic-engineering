@@ -19,6 +19,8 @@ Wiring differs per platform:
 | `nudge-todowrite-to-tracker.py` | Ships (`TodoWrite`) | N/A | N/A | No TodoWrite equivalent on Cursor/Codex |
 | `plan-tracker-guard.py` | Ships (`Stop`) | Claude-only | Claude-only | Claude-primary until verified |
 | `sdd-cache-pre.py` / `sdd-cache-post.py` | Ships (`WebFetch`, opt-in) | N/A | N/A | WebFetch-specific; opt-in via `AGENTIC_SDD_CACHE=1` |
+| `worktree-session.py` | Ships (`SessionStart` / `startup`) | N/A | N/A | Worktree bootstrap + staleness advisory; no-op outside `.claude/worktrees/*` |
+| `gc-worktrees.py` | Manual git `post-merge` hook | N/A | N/A | Destructive GC; **not** auto-wired — install deliberately |
 
 Harness config files:
 
@@ -199,6 +201,73 @@ a prohibited shell or write action.
 Code from (a per-machine choice — an env var, unlike a committed config flag,
 can't ride a PR and flip caching on for every clone). Unset it to disable.
 
+## `worktree-session.py` — SessionStart (`startup`) — Claude-only
+
+**Never blocks** (`exit 0` always). Bootstraps and advises on Claude Code
+worktrees. Claude Code creates session worktrees under
+`<repo>/.claude/worktrees/<name>` with a bare `git worktree add` — no dependency
+install and no gitignored-file copy. The [`git-worktree`](../skills/git-worktree/SKILL.md)
+skill only helps when a human runs its manager script by hand; it does nothing for
+the worktrees the harness spins up itself (parallel / web sessions and
+`isolation:"worktree"` subagents). This hook closes that gap so a fresh
+harness-created worktree is usable immediately.
+
+Inside a linked `.claude/worktrees/*` tree (a no-op everywhere else — the main
+tree, a non-git dir, or a hand-made worktree elsewhere) it:
+
+1. **Copies gitignored env files** (`.env`, `.env.local`, and one/two levels of
+   `*/.env*`) from the main tree, which `git worktree add` can't carry over.
+2. **Runs an opt-in bootstrap command** once — `$AGENTIC_WORKTREE_BOOTSTRAP_CMD`
+   (e.g. `"pnpm install"`) — gated on a `.claude-worktree-bootstrap-ok` marker so a
+   bootstrapped worktree pays nothing on later sessions. Unset → it just reminds
+   the model that deps aren't installed.
+3. **Emits a staleness advisory** (non-destructive) when the worktree's branch is
+   already merged into the default branch — detected with `git cherry` so
+   rebase/squash merges (different SHAs) are caught, while a fresh commit-less
+   branch or one with unmerged work is left silent.
+
+**Config is by environment variable, not frontmatter** — matching the
+`sdd-cache` precedent: which command installs deps, and whether to bootstrap at
+all, is a per-machine choice that shouldn't ride a PR and flip behavior for every
+clone.
+
+- `WORKTREE_BOOTSTRAP=0` — skip the hook entirely.
+- `AGENTIC_WORKTREE_BOOTSTRAP_CMD` — shell command run once in a fresh worktree.
+- `AGENTIC_WORKTREE_ENV_GLOBS` — `:`-separated globs (relative to the main tree)
+  to copy, overriding the built-in defaults.
+
+**Cursor/Codex:** N/A — neither exposes a `SessionStart` worktree-bootstrap event,
+so this is Claude-only (like `plan-tracker-guard.py`). Adapted and generalized
+from the BlueStar monorepo's `setup-worktree.sh` / `check-stale-worktree.sh`.
+
+## `gc-worktrees.py` — manual git `post-merge` hook — opt-in
+
+**Never auto-wired.** Unlike every hook above, this one is **destructive**
+(it removes worktrees and deletes local branches), so the plugin does not enable
+it anywhere. Install it deliberately as a git `post-merge` hook so it sweeps
+merged Claude worktrees at `git pull` time:
+
+```bash
+printf '#!/bin/sh\npython3 "$(git rev-parse --show-toplevel)/.claude/plugins/agentic-engineering/scripts/gc-worktrees.py"\n' \
+  > .git/hooks/post-merge && chmod +x .git/hooks/post-merge
+```
+
+(Point the path at wherever the plugin is installed, or run the script by hand.)
+
+It removes a `<repo>/.claude/worktrees/<name>` worktree **and** its local branch
+only when ALL hold: it's under `.claude/worktrees/`, it's not the worktree the
+hook is running in, its working tree is clean, it's fully merged (`git cherry`
+shows zero `+` and at least one `-`, so fresh commit-less worktrees and branches
+with new work are protected), and nothing outside `node_modules`/`.git` was
+modified within the grace window (default 30 min) — so a concurrent live session
+is never yanked out from under itself.
+
+- `WORKTREE_GC=0` — skip entirely.
+- `WORKTREE_GC_GRACE_MIN=<n>` — activity window in minutes (default 30).
+
+Always exits 0 — a GC failure never fails the surrounding `git pull`/`merge`.
+Adapted and generalized from the BlueStar monorepo's `gc-worktrees.sh`.
+
 ## Testing hooks
 
 Each PreToolUse / beforeShellExecution hook reads a JSON payload on stdin and
@@ -224,6 +293,7 @@ Automated regression tests live in [`../tests/`](../tests) and run in CI via
 - [`nudge_todowrite_to_tracker_test.py`](../tests/nudge_todowrite_to_tracker_test.py)
 - [`sdd_cache_pre_test.py`](../tests/sdd_cache_pre_test.py)
 - [`sdd_cache_post_test.py`](../tests/sdd_cache_post_test.py)
+- [`worktree_session_test.py`](../tests/worktree_session_test.py)
 - [`hook_payload_test.py`](../tests/hook_payload_test.py)
 
 These pin the tricky false-positive / false-negative edges (prose that mentions
