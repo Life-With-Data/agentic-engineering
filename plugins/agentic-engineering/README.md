@@ -7,7 +7,7 @@ AI-powered development tools that get smarter with every use. Make each unit of 
 | Component | Count |
 |-----------|-------|
 | Agents | 31 |
-| Skills | 63 |
+| Skills | 64 |
 | MCP Servers | 1 |
 
 > 📊 **[FLOWS.md](FLOWS.md)** — mermaid diagrams of every workflow (brainstorm → plan → work → review → compound) and how `/workflows-orchestrate` drives them.
@@ -171,6 +171,7 @@ stub → brainstormed → planned → in_progress → in_review → shipped
 | `interview-me` | Extract the user's true intent via a one-question-at-a-time interview (each with a falsifiable guess) to ~95% confidence before any spec, plan, or code — runs upstream of `brainstorming` |
 | `land-docs` | Ship compounded knowledge (docs-only markdown) as its own PR and merge it on green — the autonomous data lane that closes out a session after the code PR lands |
 | `land-pr` | Drive an open PR through CI, review threads, and approval to merge |
+| `land-plan-docs` | Commit and open a docs-only PR for one or more join-keyed plan docs (`docs/plans/**`) from a single groom/plan run — one branch, one commit, one PR, auto-merge armed; the pre-work, batched counterpart to `land-docs` |
 | `lifecycle` | The shared work-item lifecycle vocabulary — 9 stages, writer contracts, entry gates, claim semantics, and security invariants for the GitHub Projects v2 board |
 | `operating-principles` | How to operate: risk-first decomposition, independent-channel verification, deliberate next-action selection — distilled from Claude Fable 5, with an always-on CLAUDE.md snippet |
 | `resolve-pr-parallel` | Resolve PR review comments in parallel |
