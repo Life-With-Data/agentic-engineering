@@ -170,15 +170,25 @@ Example Cursor shell gate:
 ```
 
 Claude Code and Codex use `PreToolUse` hook groups, but use their respective
-root variables in the command. Exit code `0` allows and exit code `2` blocks.
+root variables in the command. Exit code `2` blocks on every harness. Exit code
+`0` allows on Claude Code and Codex, but **Cursor with `failClosed: true` needs
+more than exit `0`**: it requires a JSON decision on stdout, and treats an empty
+stdout as a hook failure and blocks. So the allow path must also print
+`{"permission": "allow"}`.
 
-Add a small input adapter before shared hook logic:
+Add a small input **and output** adapter around shared hook logic:
 
 - Convert Cursor `{ "command": "..." }` into a common Bash envelope.
 - Normalize Cursor's `Shell` alias to `Bash` when needed.
 - Preserve Codex's canonical `apply_patch` name. For file-content policies,
   inspect added patch lines in `tool_input.command`; do not pretend the payload
   is Claude `Write` or `Edit` input.
+- On the allow path, print `{"permission": "allow"}` and exit `0`. This is
+  required by Cursor `failClosed` and inert elsewhere — Claude Code parses
+  stdout only on exit `0` and ignores fields outside its `hookSpecificOutput`
+  schema, and Codex uses the exit-code contract — so one shared emitter works on
+  all three with no per-platform branching. The deny path is unchanged: stderr
+  message + exit `2`.
 - Fail closed for security enforcement and fail open only for explicitly
   non-critical helpers such as caches or telemetry.
 

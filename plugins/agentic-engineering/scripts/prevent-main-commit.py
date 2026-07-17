@@ -13,7 +13,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from hook_payload import normalize
+from hook_payload import emit_allow, normalize
 
 PROTECTED_BRANCHES = {"main", "master"}
 
@@ -26,7 +26,7 @@ def main():
     command = tool_input.get("command", "")
 
     if tool_name != "Bash":
-        sys.exit(0)
+        emit_allow()
 
     stripped = strip_quotes(command)
 
@@ -37,7 +37,7 @@ def main():
     push_segs = [s for s in split_segments(stripped) if re.search(r"\bgit\s+push\b", s)]
 
     if not is_commit and not push_segs:
-        sys.exit(0)
+        emit_allow()
 
     branch = current_branch()
 
@@ -55,7 +55,7 @@ def main():
             "  git push -u origin <your-branch>",
         )
 
-    sys.exit(0)
+    emit_allow()
 
 
 def strip_quotes(command: str) -> str:

@@ -19,7 +19,9 @@ first (step 1) and stop if they are already active.
 ## What gets installed
 
 Four PreToolUse guards, shared across harnesses. Each reads a JSON payload on
-stdin and signals its decision via exit code (`0` allows, `2` blocks):
+stdin and signals its decision via exit code (`0` allows, `2` blocks); the allow
+path also prints `{"permission": "allow"}` on stdout, which Cursor's
+`failClosed: true` hooks require and which is inert on Claude Code / Codex:
 
 | Script | Blocks |
 |--------|--------|

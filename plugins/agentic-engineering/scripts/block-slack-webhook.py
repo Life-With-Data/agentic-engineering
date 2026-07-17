@@ -29,7 +29,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from hook_payload import normalize
+from hook_payload import emit_allow, normalize
 
 # Canonical Slack incoming-webhook host + path prefix. Matches both
 # https://hooks.slack.com/services/... URLs and bare references.
@@ -70,7 +70,7 @@ def main():
         print(ERROR_MSG, file=sys.stderr)
         sys.exit(2)  # Exit code 2 blocks the tool call
 
-    sys.exit(0)
+    emit_allow()
 
 
 def extract_text(tool_name: str, tool_input: dict) -> str:
