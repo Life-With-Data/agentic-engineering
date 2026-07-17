@@ -34,7 +34,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from hook_payload import normalize
+from hook_payload import emit_allow, normalize
 
 # Direct invocation in any wrapper form: `prisma db push`, `npx prisma db
 # push`, `pnpm prisma db push`, `pnpm dlx prisma db push`, `dotenv -- prisma db
@@ -64,7 +64,7 @@ def main():
     input_data = normalize(json.load(sys.stdin))
 
     if input_data.get("tool_name") != "Bash":
-        sys.exit(0)
+        emit_allow()
 
     command = input_data.get("tool_input", {}).get("command", "")
 
@@ -72,7 +72,7 @@ def main():
         print(ERROR_MSG, file=sys.stderr)
         sys.exit(2)
 
-    sys.exit(0)
+    emit_allow()
 
 
 def evaluate(command: str) -> bool:

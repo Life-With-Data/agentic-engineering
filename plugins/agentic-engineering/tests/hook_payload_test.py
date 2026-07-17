@@ -2,7 +2,10 @@
 from __future__ import annotations
 
 import importlib.util
+import io
+import json
 import unittest
+from contextlib import redirect_stdout
 from pathlib import Path
 
 SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "hook_payload.py"
@@ -11,6 +14,7 @@ assert spec and spec.loader
 hook_payload = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(hook_payload)
 normalize = hook_payload.normalize
+emit_allow = hook_payload.emit_allow
 
 
 class HookPayloadTest(unittest.TestCase):
@@ -41,6 +45,28 @@ class HookPayloadTest(unittest.TestCase):
         out = normalize({"tool_name": "apply_patch", "tool_input": {"command": patch}})
         self.assertEqual(out["tool_name"], "apply_patch")
         self.assertEqual(out["tool_input"]["command"], patch)
+
+
+class EmitAllowTest(unittest.TestCase):
+    """emit_allow() must print Cursor's allow decision and exit 0.
+
+    Cursor `failClosed: true` hooks treat empty stdout as a failure and block,
+    so the allow path must emit `{"permission": "allow"}`. exit 0 keeps Claude
+    Code / Codex (exit-code contract) allowing the call.
+    """
+
+    def _capture(self) -> str:
+        buf = io.StringIO()
+        with self.assertRaises(SystemExit) as cm, redirect_stdout(buf):
+            emit_allow()
+        self.assertEqual(cm.exception.code, 0)
+        return buf.getvalue()
+
+    def test_exits_zero(self):
+        self._capture()  # asserts SystemExit(0) internally
+
+    def test_stdout_is_cursor_allow_json(self):
+        self.assertEqual(json.loads(self._capture()), {"permission": "allow"})
 
 
 if __name__ == "__main__":

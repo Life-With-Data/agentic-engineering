@@ -25,7 +25,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from hook_payload import normalize
+from hook_payload import emit_allow, normalize
 
 COMMIT_BYPASS = re.compile(r"\bgit\s+commit\b[^&|;]*?(?:^|\s)(?:-n|--no-verify)\b")
 PUSH_BYPASS = re.compile(r"\bgit\s+push\b[^&|;]*?(?:^|\s)--no-verify\b")
@@ -47,7 +47,7 @@ def main():
     input_data = normalize(json.load(sys.stdin))
 
     if input_data.get("tool_name") != "Bash":
-        sys.exit(0)
+        emit_allow()
 
     command = input_data.get("tool_input", {}).get("command", "")
 
@@ -55,7 +55,7 @@ def main():
         print(ERROR_MSG, file=sys.stderr)
         sys.exit(2)
 
-    sys.exit(0)
+    emit_allow()
 
 
 def uses_no_verify_bypass(command: str) -> bool:

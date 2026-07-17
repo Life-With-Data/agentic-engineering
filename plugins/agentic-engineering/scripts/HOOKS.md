@@ -276,13 +276,23 @@ Adapted and generalized from the BlueStar monorepo's `gc-worktrees.sh`.
 ## Testing hooks
 
 Each PreToolUse / beforeShellExecution hook reads a JSON payload on stdin and
-signals its decision via exit code (`0` allows, `2` blocks). Drive one directly:
+signals its decision via exit code — `2` blocks (with the reason on stderr), `0`
+allows. The **allow** path additionally prints `{"permission": "allow"}` on
+stdout via `emit_allow()`: Cursor's `failClosed: true` hooks treat an empty
+stdout as a failure and block, so the exit code alone is not enough there. The
+JSON is inert on Claude Code (stdout parsed only on exit 0, and the `permission`
+field is outside its `hookSpecificOutput` schema, so it is ignored) and on Codex
+(exit-code contract), so one shared emitter covers all three. Drive one directly:
 
 ```bash
 echo '{"tool_name":"Bash","tool_input":{"command":"git commit --no-verify"}}' \
   | python3 scripts/block-no-verify.py; echo "exit: $?"   # exit: 2 (blocked)
 
-# Cursor beforeShellExecution shape:
+# Cursor beforeShellExecution shape — allowed command emits the allow decision:
+echo '{"command":"git status"}' \
+  | python3 scripts/block-no-verify.py; echo " exit: $?"
+  # {"permission": "allow"}  exit: 0
+
 echo '{"command":"git commit --no-verify"}' \
   | python3 scripts/block-no-verify.py; echo "exit: $?"   # exit: 2 (blocked)
 ```
