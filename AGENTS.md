@@ -12,7 +12,7 @@ This repository is a **Claude Code plugin marketplace** that distributes the `ag
 
 ## Adding a New Target Provider (e.g., Codex)
 
-Use this checklist when introducing a new target provider:
+Use this checklist when introducing a new target provider. Which assets a provider may convert (and how faithfully) is bounded by [docs/conversion-policy.md](docs/conversion-policy.md) — notably, do **not** add hook conversion to a new target (enforced by `tests/conversion-policy.test.ts`).
 
 1. **Define the target entry**
    - Add a new handler in `src/targets/index.ts` with `implemented: false` until complete.

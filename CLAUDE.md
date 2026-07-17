@@ -61,6 +61,8 @@ Work from other repos enters this marketplace via exactly one of two tracks per 
 
 The core `agentic-engineering` plugin stays dependency-free; formal dependencies live only in thin domain plugins.
 
+Which Claude assets the converter CLI may transpile to other agents (and how faithfully) is governed by `docs/conversion-policy.md` (enforced by `tests/conversion-policy.test.ts`) — hooks are Claude-only, frozen at the opencode exception.
+
 ## Documentation Site
 
 The docs site (`/docs`, served by GitHub Pages) is plain HTML/CSS/JS — no build step to view. Open `docs/index.html`, or serve with `python -m http.server 8000` from `docs/`.
