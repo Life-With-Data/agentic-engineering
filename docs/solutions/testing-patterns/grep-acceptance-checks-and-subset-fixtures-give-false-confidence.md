@@ -1,8 +1,8 @@
 ---
 title: "Grep-based 'zero references remain' checks and subset fixtures both give false confidence"
 category: testing-patterns
-tags: [migration, rename, cross-reference-sweep, grep, fixtures, false-confidence, plugin, opencode]
-module: plugins/agentic-engineering, src/parsers/claude.ts, src/converters/claude-to-opencode.ts
+tags: [migration, rename, cross-reference-sweep, grep, fixtures, false-confidence, plugin, opencode, guardrail, policy-test, structural-detection]
+module: plugins/agentic-engineering, src/parsers/claude.ts, src/converters/claude-to-opencode.ts, tests/conversion-policy.test.ts, docs/conversion-policy.md
 symptom: "Two independently-written 'zero references remain' greps both passed clean while 9 stale references shipped; a converter test stayed green whether or not its own fix was reverted"
 root_cause: "The grep was scoped by file extension and anchored to literal known names; the fixture's new-source contribution was a strict subset of its old-source contribution, so neither check could distinguish fix-present from fix-absent"
 ---
@@ -116,8 +116,48 @@ again.
   no signal. What actually caught the gap was a reviewer diffing against every file type rather than
   re-running the same grep shape.
 
+## Recurrence: a policy-guardrail test born keyed on literal spellings (PR #180)
+
+The same failure class showed up again — this time in a brand-new guardrail rather than a migration
+sweep. Issue #176 / [PR #180](https://github.com/Life-With-Data/agentic-engineering/pull/180) added
+`tests/conversion-policy.test.ts` (mirroring `tests/dependency-policy.test.ts`) to freeze the
+converter hook surface so nobody can quietly grow hook conversion into a new target. The first draft
+passed 10/10 and even survived a negative-proof (inject `plugin.hooks` into `claude-to-codex.ts` →
+red) — yet an `integration-boundary-reviewer` pass found **four ways it silently false-passed**, every
+one because an assertion keyed on a *frozen literal spelling* instead of the *category*:
+
+1. **Emitter detection tied to one filename.** `src.includes("converted-hooks")` — a converter that
+   emits a hook file named anything else (`plugin-hooks.ts`) stays invisible.
+2. **Field access tied to one syntax.** `/plugin\.hooks/` — `plugin["hooks"]`, `plugin?.hooks`, or
+   `const { hooks } = plugin` all reference hooks while matching nothing.
+3. **Scan scoped to two flat dirs.** Hook logic moved into a helper module imported by the converter
+   escapes a scan that only reads `claude-to-*.ts` / `targets/*.ts`.
+4. **Hardcoded curated-manifest list.** `CURATED = ["hooks-codex.json", "hooks-cursor.json"]` — a
+   third `hooks-*.json` added later drifts straight past a frozen list.
+
+The fix was the same move as above: **detect by category, not by literal.** Match any hook-named
+emitted artifact (`/name:\s*["'`][^"'`]*hooks?[^"'`]*\.(ts|js|...)/`); require the supposed-hook-free
+converters to contain **no** `/hook/i` in *any* form (catches destructuring, imports, comments);
+derive the curated set from `readdirSync(plugins/agentic-engineering/hooks)`; and add a guard that no
+converter imports a hook-logic helper (hook logic must stay inline where the scan can see it). Each
+new guard was fail-first-verified: a renamed emitter and a bracket-access leak now both go red where
+the literal versions stayed green.
+
+The lesson generalizes the Prevention list below to guardrail/policy tests, not just migration greps:
+**a test that freezes a surface must assert the invariant's *category*, or a plausible refactor slips
+under a differently-spelled variant while the test stays green.** As in PR #146, it was the mandatory
+independent `integration-boundary-reviewer`, not the implementer's own passing test + negative-proof,
+that caught it.
+
 ## Resources
 
+- Recurrence fixed in: [PR #180](https://github.com/Life-With-Data/agentic-engineering/pull/180)
+  (issue #176) — `tests/conversion-policy.test.ts` / `docs/conversion-policy.md`, structural-detection
+  hardening driven by `integration-boundary-reviewer`. Secondary catch from the same PR: the plan
+  asserted the sole hook-emitter lived in `src/targets/opencode.ts`, but a pickup-time source audit
+  showed targets are hook-agnostic and emission lives in the converter
+  `src/converters/claude-to-opencode.ts` — verify a plan's load-bearing source claims against the tree
+  before a test encodes them.
 - Fixed in: [PR #146](https://github.com/Life-With-Data/agentic-engineering/pull/146) (issue #134),
   commits `af80d65` (original sweep), `5041209` (first follow-up), `e17eef4` (review-driven fix: 8
   leftover references + the weak-fixture-test fix), `9376167` (final leftover, found by a fully
