@@ -82,21 +82,30 @@ manifests. No converter and no build script generates them (zero references unde
 
 ## Invariants
 
-Each item maps 1:1 to a test case in `tests/conversion-policy.test.ts`. The
-frozen sets live in clearly-commented constants there; a deliberate policy change
-is a one-line, reviewed edit — not a relaxed assertion.
+Each numbered item maps to a `describe` block in `tests/conversion-policy.test.ts`.
+The frozen sets live in clearly-commented constants there; a deliberate policy
+change is a one-line, reviewed edit — not a relaxed assertion. Detection is
+deliberately **structural** — it keys on the *category* (any read of the hooks
+field, any hook-named emitted artifact, any curated `hooks-*.json`) rather than a
+single frozen spelling — so the guard fails **closed** against the realistic ways
+hook conversion could grow, per the repo learning that grep/substring "zero
+references" checks give false confidence.
 
 1. **Frozen hook surface.** Among `src/converters/claude-to-*.ts`, the converters
-   that reference `plugin.hooks` are **exactly** `{cursor, copilot, gemini, kiro,
-   opencode}`; `{claude, codex, droid, pi}` reference it **nowhere**.
+   that read the plugin hooks field (`plugin.hooks`, `plugin?.hooks`, or
+   `plugin["hooks"]`) are **exactly** `{cursor, copilot, gemini, kiro, opencode}`;
+   `{claude, codex, droid, pi}` mention hooks **in no form at all** (not via
+   destructuring, a helper import, or even a comment).
 2. **Warn-droppers drop.** Each of `{cursor, copilot, gemini, kiro}` contains a
-   hooks-related `console.warn` **and** emits no hook artifact (no
-   `converted-hooks`).
+   hooks-related `console.warn` **and** emits no hook-named artifact.
 3. **opencode is the sole hook-emitter.** Among the converters, exactly
-   `claude-to-opencode.ts` contains `converted-hooks`; and no `src/targets/*.ts`
-   writer references hooks at all (targets are hook-agnostic).
+   `claude-to-opencode.ts` emits a hook-named artifact (its `converted-hooks.ts`);
+   no converter imports a hook-logic helper (hook logic stays inline where the
+   scans can see it); and no `src/targets/*.ts` writer references hooks at all
+   (targets are hook-agnostic).
 4. **Safety hooks are curated, not generated.** No file under `src/` or
-   `scripts/` references `hooks-codex.json` or `hooks-cursor.json` — nothing
-   generates them.
+   `scripts/` references any curated `hooks-*.json` manifest (the set is derived
+   from `plugins/agentic-engineering/hooks/`, so new manifests are covered
+   automatically) — nothing generates them.
 5. **Doc↔test linkage.** This document exists and names
    `tests/conversion-policy.test.ts` as its source of enforcement.
