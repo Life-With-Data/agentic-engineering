@@ -2,7 +2,6 @@
 name: land-docs
 description: Ship compounded knowledge (docs-only markdown) as its own pull request, submitted with auto-merge enabled so it lands on green unattended. Use after a code PR has merged and the compound step has written docs/solutions or other markdown — this opens the "data PR", arms GitHub auto-merge, follows its checks, and lets it merge when green without another user turn. Triggers on "land the docs PR", "ship the compound knowledge", "open a data PR for these docs".
 argument-hint: "[optional: issue number the knowledge came from — e.g. 92]"
-disable-model-invocation: true
 allowed-tools: Bash(gh *), Bash(git *), Read
 ---
 

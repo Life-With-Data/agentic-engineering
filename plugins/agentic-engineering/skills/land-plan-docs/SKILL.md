@@ -2,7 +2,6 @@
 name: land-plan-docs
 description: Commit and open a docs-only PR for one or more join-keyed plan docs (docs/plans/**) written in a single groom/plan run, with auto-merge armed at creation so they land on green unattended. Use after /workflows-groom or /workflows-plan writes plan doc(s) carrying a github_issue join key — this batches a simple item (1 doc) or an epic plus its children (N+1 docs) into one branch, one commit, one PR. The pre-work, possibly-multi-doc counterpart to land-docs (which ships post-merge compound knowledge); the two are parallel but distinct. Triggers on "land the plan docs", "open the plan PR", "ship these groomed plans".
 argument-hint: "[batch of {issue_number, plan_doc_path} pairs — the join-keyed docs/plans/** files for this run]"
-disable-model-invocation: true
 allowed-tools: Bash(gh *), Bash(git *), Read
 ---
 

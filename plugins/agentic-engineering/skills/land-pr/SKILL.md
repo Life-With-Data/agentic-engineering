@@ -2,7 +2,6 @@
 name: land-pr
 description: Drive an open PR through its review cycle to completion and merge it. Use after a PR is opened to wait on CI, resolve review threads and findings, confirm it has been independently reviewed and is mergeable, then merge and clean up. Triggers on "land this PR", "get this PR merged", "merge when green", "take this PR to completion".
 argument-hint: "[optional: PR number — defaults to the current branch's PR] [--auto]"
-disable-model-invocation: true
 allowed-tools: Bash(gh *), Bash(git *), Read
 ---
 
