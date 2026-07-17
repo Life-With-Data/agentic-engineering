@@ -5,6 +5,14 @@ All notable changes to the agentic-engineering plugin will be documented in this
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.3.0](https://github.com/Life-With-Data/agentic-engineering/compare/agentic-engineering-v4.2.0...agentic-engineering-v4.3.0) (2026-07-16)
+
+
+### Features
+
+* add git-worktree lifecycle hooks (bootstrap, staleness, GC) ([#167](https://github.com/Life-With-Data/agentic-engineering/issues/167)) ([d513a79](https://github.com/Life-With-Data/agentic-engineering/commit/d513a790b5f42f8ccad608c15859720b7eab8dd1))
+* distribute skills via the vercel-labs skills CLI, add install-hooks skill ([#168](https://github.com/Life-With-Data/agentic-engineering/issues/168)) ([bf3afcd](https://github.com/Life-With-Data/agentic-engineering/commit/bf3afcd8b31db95c28eeb7ad67a47061d79ba728))
+
 ## [4.2.0](https://github.com/Life-With-Data/agentic-engineering/compare/agentic-engineering-v4.1.1...agentic-engineering-v4.2.0) (2026-07-15)
 
 
