@@ -53,10 +53,11 @@ docs-only), a plan run legitimately coexists with dirty product code, so:
 # The exact join-keyed paths for this run (one per plan doc in the batch):
 RUN_DOCS=( docs/plans/<doc-1>.md docs/plans/<doc-2>.md )   # fill from the input batch
 
-# Any dirty docs/plans/** path NOT in RUN_DOCS = ambiguous ownership → STOP.
-comm -23 \
-  <(git status --porcelain -- 'docs/plans/**' | sed 's/^...//' | sort -u) \
-  <(printf '%s\n' "${RUN_DOCS[@]}" | sort -u) \
+# List every dirty docs/plans/** path, then drop this run's own paths. Anything left is a
+# *different* plan doc in flight = ambiguous ownership → STOP. The pipeline leads with `git` so
+# the Bash(git *) allow-list covers it (same convention as land-docs — do not widen allowed-tools).
+git status --porcelain -- 'docs/plans/**' | sed 's/^...//' \
+  | grep -vFxf <(printf '%s\n' "${RUN_DOCS[@]}") \
   | grep . && echo "OTHER docs/plans CHANGES PRESENT — ambiguous ownership; escalate to user" \
            || echo "plan-doc scope clean ✓"
 ```
@@ -70,10 +71,13 @@ branch-name prefix (`plan-docs/<primary-issue>-...`) and/or a label, checking al
 ```bash
 PRIMARY="<lowest or epic issue number in the batch>"
 
-# Existing PR from a prior run of this skill for the same primary join key?
+# Existing PR from a prior run of this skill for the same primary join key? Our branches are
+# named plan-docs/<PRIMARY>-<suffix>, so filter on the prefix client-side. Do NOT use a
+# `--search "head:plan-docs/${PRIMARY}"` query — GitHub's `head:` qualifier matches the ref
+# *exactly* and would never match the suffixed branch, silently re-branching on every re-run.
 EXISTING=$(gh pr list --repo "$ORIGIN" --state all \
-  --search "head:plan-docs/${PRIMARY}" \
-  --json number,url,state,headRefName --jq '.[0]')
+  --json number,url,state,headRefName \
+  --jq '[.[] | select(.headRefName | startswith("plan-docs/'"${PRIMARY}"'-"))][0]')
 
 if [ -n "$EXISTING" ] && [ "$EXISTING" != "null" ]; then
   # No-op: report the existing PR link and status; do NOT re-branch.
@@ -116,7 +120,7 @@ auto-merge or explicit human approval.
 
 ```bash
 ORIGIN=$(gh repo view --json nameWithOwner --jq '.nameWithOwner')   # owner/repo of origin
-BASE=$(git rev-parse --abbrev-ref origin/HEAD | sed 's@^origin/@@')  # default branch
+BASE=$(gh repo view --repo "$ORIGIN" --json defaultBranchRef --jq '.defaultBranchRef.name')  # default branch — resolve via the API; local origin/HEAD is often unset in a fresh worktree (exactly this skill's context)
 PRIMARY="<epic or lowest issue number in the batch>"                 # names the branch
 RUN_DOCS=( docs/plans/<doc-1>.md docs/plans/<doc-2>.md )             # this run's join-key paths
 ```
@@ -139,20 +143,22 @@ report and stop. Otherwise run the **scope check** above; abort if a `docs/plans
 Run the **existing-PR detection** above. If an open or merged PR already covers this primary join
 key, no-op — report its link and status (`skipped: existing PR #<n>`) and stop. Do not re-branch.
 
-### 4. Branch from a synced default
+### 4. Branch for the plan docs
 
-Move the plan docs onto their own branch so the default branch stays clean. Commit only the
-join-keyed paths — never a blanket add:
+Create the branch directly from the current `HEAD` and stage only the join-keyed paths. Branch
+**in place** rather than switching to `$BASE` first: at groom/plan time `HEAD` already sits on the
+default branch with only the freshly-written (untracked) plan docs, and a `git checkout "$BASE"`
+would *abort* the moment any unrelated tracked product file is dirty — the very coexistence this
+skill is built to tolerate. Forking from `HEAD` sidesteps that strand entirely.
 
 ```bash
-git stash push -u -- "${RUN_DOCS[@]}"           # park just this run's plan docs
-git checkout "$BASE" && git pull --ff-only
-git checkout -b "plan-docs/${PRIMARY}-$(date +%s)"   # unique suffix for race-retry (step 6)
-git stash pop
+git checkout -b "plan-docs/${PRIMARY}-$(date +%s)-$RANDOM"   # unique suffix for race-retry (step 6)
 ```
 
-If a stash is awkward, an equivalent is to create the branch first, then `git add "${RUN_DOCS[@]}"`
-explicitly.
+A docs-only PR forked from `HEAD` is diffed against `$BASE` by GitHub regardless; auto-merge
+(step 7) squashes onto the current default at merge time. Only if `HEAD` carries unrelated *commits*
+ahead of `$BASE` (not the groom/plan case) sync first — `git fetch origin "$BASE"` and branch from
+`origin/$BASE`.
 
 ### 5. Commit and open one PR for the whole batch
 
@@ -204,7 +210,7 @@ If `git push` is rejected because a concurrent run raced to the same branch name
 **fresh** branch-name suffix — bounded to ~2 attempts:
 
 ```bash
-git checkout -b "plan-docs/${PRIMARY}-$(date +%s)-retry"   # new unique suffix
+git checkout -b "plan-docs/${PRIMARY}-$(date +%s)-$RANDOM-retry"   # new unique suffix (fresh entropy)
 git push -u origin "$(git rev-parse --abbrev-ref HEAD)"
 ```
 
