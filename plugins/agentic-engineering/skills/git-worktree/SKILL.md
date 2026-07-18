@@ -178,6 +178,24 @@ bash "$(git rev-parse --show-toplevel)/.worktrees/../<plugin-path>/scripts/workt
 ```
 `gc` always exits 0, so it never fails the surrounding git operation.
 
+### Companion note: the land-* skills defer teardown to `gc`
+
+The land-* skills — [`land-pr`](../land-pr/SKILL.md), [`land-docs`](../land-docs/SKILL.md), and
+[`land-plan-docs`](../land-plan-docs/SKILL.md) — are worktree-aware by design and **do not**
+`git checkout <default>` from a linked worktree (the default branch is held by the primary tree, so
+that checkout would fail). Instead they refresh `origin/<base>` with `git fetch` and **defer local
+worktree + branch teardown to `gc`** rather than deleting inline. See land-pr's context-aware
+post-merge cleanup (its step 6) for the canonical pattern.
+
+Because teardown is deferred to `gc`, mind its two coverage limits (both from the rules above):
+- **It cannot self-reap the active worktree.** `gc` skips the worktree it runs from and any worktree
+  touched within the grace window (`WORKTREE_GC_GRACE_MIN`, default 30m) — so a skill landing *from* a
+  worktree can never reap that same worktree in the same pass. It is reaped by a later `gc`, or by
+  running `gc` from the primary tree.
+- **It only reaps `$GIT_ROOT/.worktrees/`.** A worktree created elsewhere — e.g. a harness worktree
+  under `.claude/worktrees/` — is outside `gc`'s scope and needs a manual
+  `git worktree remove <path>` from the primary tree.
+
 ## Workflow Examples
 
 ### Code Review with Worktree

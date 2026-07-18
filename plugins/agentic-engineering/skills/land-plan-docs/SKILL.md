@@ -122,6 +122,13 @@ ORIGIN=$(gh repo view --json nameWithOwner --jq '.nameWithOwner')   # owner/repo
 BASE=$(gh repo view --repo "$ORIGIN" --json defaultBranchRef --jq '.defaultBranchRef.name')  # default branch — resolve via the API; local origin/HEAD is often unset in a fresh worktree (exactly this skill's context)
 PRIMARY="<epic or lowest issue number in the batch>"                 # names the branch
 RUN_DOCS=( docs/plans/<doc-1>.md docs/plans/<doc-2>.md )             # this run's join-key paths
+
+# true (linked worktree) when the per-worktree git-dir differs from the shared common-dir.
+# Absolute path-format avoids relative-vs-absolute false matches across git versions.
+is_linked_worktree() {
+  [ "$(git rev-parse --path-format=absolute --git-common-dir)" \
+    != "$(git rev-parse --path-format=absolute --git-dir)" ]
+}
 ```
 
 Every `gh` write carries an explicit `--repo "$ORIGIN"` (fork-trap guardrail) — resolve `ORIGIN`
@@ -234,11 +241,20 @@ gh pr checks "$PR_NUM" --watch          # follow the checks to their conclusion
 Then branch on the outcome per the decision tree above:
 
 - **Green** → GitHub auto-merges. Confirm `gh pr view "$PR_NUM" --repo "$ORIGIN" --json state`
-  (expect `MERGED`), then sync locally:
+  (expect `MERGED`), then sync locally — context-aware, since a linked worktree (this skill's usual
+  context) cannot check out `$BASE`:
   ```bash
-  git checkout "$BASE" && git pull --ff-only
-  git branch -D "$BRANCH" 2>/dev/null || true    # branch auto-deleted on merge
+  if is_linked_worktree; then
+    git fetch origin "$BASE"    # refresh origin/<base>; primary tree FFs on its next checkout — defer worktree/branch teardown to gc
+  else
+    git checkout "$BASE" && git pull --ff-only
+    git branch -D "$BRANCH" 2>/dev/null || true    # branch auto-deleted on merge
+  fi
   ```
+  In a worktree, local branch + worktree teardown is **deferred to `gc`** (see the
+  [`git-worktree`](../git-worktree/SKILL.md) gc note — it can't self-reap the active worktree and only
+  covers `$GIT_ROOT/.worktrees/`; `.claude/worktrees/` needs a manual `git worktree remove` from the
+  primary tree).
 - **Red + mechanical** → read the failing job (`gh run view <run-id> --log-failed`), fix, `git push`,
   re-watch. Auto-merge stays armed and re-evaluates. Max ~2 attempts that make measurable progress.
 - **Red + warrants input**, or still red after 2 dry attempts → **stop and ask the user** with the

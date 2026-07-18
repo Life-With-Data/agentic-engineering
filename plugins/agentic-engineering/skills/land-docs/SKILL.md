@@ -71,8 +71,15 @@ a generated artifact). "Warrants input" = a judgment about the knowledge itself.
 
 ```bash
 ORIGIN=$(gh repo view --json nameWithOwner --jq '.nameWithOwner')   # owner/repo of origin
-BASE=$(git rev-parse --abbrev-ref origin/HEAD | sed 's@^origin/@@')  # default branch
+BASE=$(gh repo view --repo "$ORIGIN" --json defaultBranchRef --jq '.defaultBranchRef.name')  # default branch — via the API; local origin/HEAD is often unset in a fresh worktree
 N="${1:-}"                                                           # source issue number, if any
+
+# true (linked worktree) when the per-worktree git-dir differs from the shared common-dir.
+# Absolute path-format avoids relative-vs-absolute false matches across git versions.
+is_linked_worktree() {
+  [ "$(git rev-parse --path-format=absolute --git-common-dir)" \
+    != "$(git rev-parse --path-format=absolute --git-dir)" ]
+}
 ```
 
 Every `gh` write carries an explicit `--repo "$ORIGIN"` (fork-trap guardrail).
@@ -91,13 +98,25 @@ commit, or merge.
 ### 3. Branch from a synced default
 
 The compound step wrote into the working tree of the (post-merge) default branch. Move that work
-onto its own branch so the default branch stays clean:
+onto its own branch so the default branch stays clean. This branches on worktree context — a linked
+worktree cannot check out `$BASE` (the primary tree holds it):
+
+**Classic single tree** (`is_linked_worktree` false):
 
 ```bash
 git stash push -u -- docs                # park the doc changes (adjust paths to what compound wrote)
 git checkout "$BASE" && git pull --ff-only
 git checkout -b "docs/${N:-compound}-knowledge"
 git stash pop
+```
+
+**Linked worktree** (`is_linked_worktree` true) — do **not** `git checkout "$BASE"`. Branch in place
+from the current `HEAD` (already on the default branch with the freshly-written docs) and refresh the
+remote ref; GitHub diffs the docs-only PR against `$BASE` regardless:
+
+```bash
+git fetch origin "$BASE"                          # refresh origin/<base>; do not check it out
+git checkout -b "docs/${N:-compound}-knowledge"   # branch in place from HEAD
 ```
 
 If a stash is awkward (many scattered paths), an equivalent is to create the branch first, then
@@ -167,11 +186,20 @@ gh pr checks "$PR_NUM" --watch          # follow GitHub Actions to their conclus
 Then branch on the outcome per the decision tree above:
 
 - **Green** → GitHub auto-merges. Confirm with `gh pr view "$PR_NUM" --repo "$ORIGIN" --json state`
-  (expect `MERGED`), then sync locally:
+  (expect `MERGED`), then sync locally — context-aware, since a linked worktree cannot check out
+  `$BASE`:
   ```bash
-  git checkout "$BASE" && git pull --ff-only
-  git branch -D "docs/${N:-compound}-knowledge" 2>/dev/null || true   # branch auto-deleted on merge
+  if is_linked_worktree; then
+    git fetch origin "$BASE"    # refresh origin/<base>; primary tree FFs on its next checkout — defer worktree/branch teardown to gc
+  else
+    git checkout "$BASE" && git pull --ff-only
+    git branch -D "docs/${N:-compound}-knowledge" 2>/dev/null || true   # branch auto-deleted on merge
+  fi
   ```
+  In a worktree, local branch + worktree teardown is **deferred to `gc`** (see the
+  [`git-worktree`](../git-worktree/SKILL.md) gc note — it can't self-reap the active worktree and only
+  covers `$GIT_ROOT/.worktrees/`; `.claude/worktrees/` needs a manual `git worktree remove` from the
+  primary tree).
 - **Red + simple** → read the failing job (`gh run view <run-id> --log-failed`), fix, `git push`,
   re-watch. Auto-merge stays armed and re-evaluates the new commit. Max ~2 attempts that make
   measurable progress (fewer failing checks each time).
