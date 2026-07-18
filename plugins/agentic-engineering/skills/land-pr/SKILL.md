@@ -227,9 +227,11 @@ teardown to gc (below):
 git fetch origin "$BASE"    # origin/<base> now current; primary tree FFs on its next checkout
 ```
 
-**Leaf C — feature branch checked out in another worktree** (guard before any `git branch -d`, in
-either tree). Deleting a branch that is live in another worktree fails with
-`Cannot delete branch '<b>' checked out at '<path>'`; detect it and skip the delete, deferring to gc:
+**Leaf C — feature branch checked out in another worktree.** This is a **guard that runs before any
+`git branch -d`** — including Leaf A's — in either tree: check it first, and use it in place of a bare
+`git branch -d` wherever this recipe deletes the feature branch. Deleting a branch that is live in
+another worktree fails with `Cannot delete branch '<b>' checked out at '<path>'`; detect it and skip
+the delete, deferring to gc:
 
 ```bash
 git worktree list --porcelain | grep -qF "branch refs/heads/<feature-branch>" \
