@@ -676,37 +676,40 @@ Then dispatch on `issue_tracker_resolved`:
 
 ### `github-project`
 
-The board is the source of truth. Perform the full `→ planned` transition:
+The board is the source of truth. The full `→ planned` transition — parent create/update, `github_issue:` stamp-back, every sub-issue, dependency wiring, and the board write — is **one atomic scripted verb**. Your job is to author the inputs; the script performs the writes in the correct order with no room for a `tail -1` miscount or a half-written board.
 
-1. **Create or update the parent issue** (body via `--body-file`, never inline):
-
-   ```bash
-   gh issue create --repo "$ORIGIN" --title "<type>: <title>" --body-file <plan_path>
-   # OR, if a parent issue already exists (gate resolved --issue <N>):
-   gh issue edit <N> --repo "$ORIGIN" --body-file <plan_path>
-   ```
-
-   Capture the parent issue number `<N>` and write `github_issue: <N>` back into the plan frontmatter.
-
-2. **Decompose into sub-issues** — for each actionable task in the plan, create a sub-issue under the parent, and express ordering with dependencies where the plan sequences tasks. Write each `<task_body_file>` from the canonical sub-issue template so every task carries the same standard sections (Overview, Context, Implementation Notes, Acceptance Criteria, **Validation**, Dependencies):
+1. **Author the sub-issue bodies.** For each actionable task in the plan, copy the canonical template and fill it in so every task carries the same standard sections (Overview, Context, Implementation Notes, Acceptance Criteria, **Validation**, Dependencies):
 
    ```bash
-   # start each sub-issue body from the template, then fill it in for the task
    cp "${CLAUDE_PLUGIN_ROOT}/scripts/templates/sub-issue-template.md" <task_body_file>
-   gh issue create --repo "$ORIGIN" --parent <N> --title "<task title>" --body-file <task_body_file>
-   # add a dependency when a task must follow another:
-   gh issue edit <sub-issue> --repo "$ORIGIN" --add-blocked-by <prerequisite-sub-issue>
    ```
 
    (Sub-issues are the claim/task unit; they carry no stage values — open/closed only. Native dependencies express ordering.)
 
-3. **Advance the board to `planned`** via the shared verb — it board-adds the parent if it is not already on the board and stamps Status in one sequence (never a raw `gh project item-edit`, never hand-assembled GraphQL):
+2. **Write a decomposition spec** (`spec.json`) naming the plan, the parent title (only used if no parent exists yet), and the ordered sub-issues. `blocked_by` holds the **0-based indices of earlier sub-issues** in this list — a task can only depend on one created before it, and the script rejects a forward/self reference:
 
-   ```bash
-   python3 "${CLAUDE_PLUGIN_ROOT}/scripts/lifecycle_board.py" --set-status <N> planned
+   ```json
+   {
+     "plan_path": "docs/plans/<plan-file>.md",
+     "parent_title": "<type>: <title>",
+     "sub_issues": [
+       { "title": "<task 1 title>", "body_file": "<task_body_file_1>", "blocked_by": [] },
+       { "title": "<task 2 title>", "body_file": "<task_body_file_2>", "blocked_by": [0] }
+     ]
+   }
    ```
 
-If any `gh` or `--set-status` write fails, STOP and surface the error — do not proceed to Post-Generation Options without a recorded `github_issue` and a `planned` board item.
+   For a genuinely single-task item, use `"sub_issues": []`.
+
+3. **Run the decompose verb** — creates/updates the parent from `<plan_path>`, writes `github_issue: <N>` back into the plan frontmatter, creates each sub-issue under the parent (capturing the real returned numbers), wires every `--add-blocked-by` edge, and advances the board to `planned` — board-adding the parent if needed. Pass `--decompose <N>` when the gate already resolved an existing parent `--issue <N>`; pass a bare `--decompose` (no number) to create the parent from `parent_title`:
+
+   ```bash
+   python3 "${CLAUDE_PLUGIN_ROOT}/scripts/lifecycle_board.py" --decompose <N> --spec spec.json
+   # OR, no parent issue yet:
+   python3 "${CLAUDE_PLUGIN_ROOT}/scripts/lifecycle_board.py" --decompose --spec spec.json
+   ```
+
+   The reply lists `parent`, `stage: planned`, and every `sub_issues[].number` with its resolved `blocked_by`. If it exits non-zero, STOP and surface the `error`/`fix` — a malformed spec writes nothing, and a mid-sequence failure names exactly what was created so far so you can re-run with `--issue <parent>` against only the missing tasks. Do not proceed to Post-Generation Options without a recorded `github_issue` and a `planned` board item.
 
 ### `github` (plain)
 

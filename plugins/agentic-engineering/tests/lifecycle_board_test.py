@@ -11,8 +11,10 @@ import importlib.util
 import json
 import subprocess
 import sys
+import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 SCRIPT = Path(__file__).resolve().parent.parent / "scripts" / "lifecycle_board.py"
 
@@ -1091,6 +1093,241 @@ class FixtureReplayTest(unittest.TestCase):
                         "every recorded Issue item must resolve to an int number")
         # content.repository is a plain string in item-list output (not {nameWithOwner}).
         self.assertIsInstance(items[0]["content"]["repository"], str)
+
+
+class GroomRouteTest(unittest.TestCase):
+    """The groom Routing Ladder as data — one row per current stage, each a
+    whole run path ending at STOP. Only `intake` leaves a decision to the model."""
+
+    def _route(self, **kw):
+        base = dict(has_issue=True, stage=None, plan_doc=None, brainstorm_doc=None,
+                    provenance="trusted", stale_join_key=False)
+        base.update(kw)
+        return lb.route_for_groom(**base)
+
+    def test_no_issue_or_stub_is_intake(self) -> None:
+        self.assertEqual(self._route(has_issue=False).route, "intake")
+        self.assertEqual(self._route(stage="stub").route, "intake")
+        # intake hands exactly one decision back to the model.
+        self.assertIsNotNone(self._route(stage="stub").next)
+
+    def test_brainstormed_plans_directly(self) -> None:
+        self.assertEqual(self._route(stage="brainstormed", brainstorm_doc="b.md").route, "plan")
+        # even without the doc present it routes to plan (plan repairs it)
+        self.assertEqual(self._route(stage="brainstormed").route, "plan")
+
+    def test_planned_with_doc_is_already_planned(self) -> None:
+        self.assertEqual(self._route(stage="planned", plan_doc="p.md").route, "already_planned")
+
+    def test_planned_without_doc_is_repair(self) -> None:
+        self.assertEqual(self._route(stage="planned", plan_doc=None).route, "repair")
+
+    def test_in_flight_stages_are_past(self) -> None:
+        self.assertEqual(self._route(stage="in_progress").route, "past")
+        self.assertEqual(self._route(stage="in_review").route, "past")
+
+    def test_terminal_and_abandoned(self) -> None:
+        for s in ("shipped", "deployed", "compounded"):
+            self.assertEqual(self._route(stage=s).route, "terminal")
+        self.assertEqual(self._route(stage="abandoned").route, "abandoned")
+
+    def test_untrusted_provenance_blocks_before_any_stage_routing(self) -> None:
+        r = self._route(stage="planned", plan_doc="p.md", provenance="untrusted")
+        self.assertEqual(r.route, "blocked")
+        self.assertEqual(r.blocker, "untrusted_provenance")
+
+    def test_stale_join_key_blocks(self) -> None:
+        r = self._route(stage=None, stale_join_key=True)
+        self.assertEqual(r.route, "blocked")
+        self.assertEqual(r.blocker, "stale_join_key")
+
+
+class ParseCreatedIssueNumberTest(unittest.TestCase):
+    def test_parses_trailing_number_from_create_url(self) -> None:
+        self.assertEqual(lb.parse_created_issue_number("https://github.com/o/r/issues/183\n"), 183)
+
+    def test_ignores_noise_and_trailing_slash_takes_last_url(self) -> None:
+        out = "Creating issue\nhttps://github.com/o/r/issues/9/\n"
+        self.assertEqual(lb.parse_created_issue_number(out), 9)
+
+    def test_no_url_raises_rather_than_guessing(self) -> None:
+        with self.assertRaises(lb.BoardError) as cm:
+            lb.parse_created_issue_number("some unrelated output")
+        self.assertEqual(cm.exception.code, "issue_create_parse_failed")
+
+
+class DecomposeSpecValidationTest(unittest.TestCase):
+    def test_valid_spec_returns_ordered_subs(self) -> None:
+        spec = {"plan_path": "docs/plans/p.md", "sub_issues": [
+            {"title": "a", "body_file": "s1.md"},
+            {"title": "b", "body_file": "s2.md", "blocked_by": [0]}]}
+        subs = lb.validate_decompose_spec(spec, has_parent=True)
+        self.assertEqual(len(subs), 2)
+
+    def test_missing_plan_path_rejected(self) -> None:
+        with self.assertRaises(lb.BoardError) as cm:
+            lb.validate_decompose_spec({"sub_issues": []}, has_parent=True)
+        self.assertEqual(cm.exception.code, "invalid_decompose_spec")
+
+    def test_forward_and_self_dependency_rejected(self) -> None:
+        # forward: sub 0 depends on sub 1 (not yet created)
+        fwd = {"plan_path": "p", "sub_issues": [{"title": "a", "body_file": "s", "blocked_by": [1]}]}
+        # self: sub 0 depends on itself
+        selfdep = {"plan_path": "p", "sub_issues": [{"title": "a", "body_file": "s", "blocked_by": [0]}]}
+        for bad in (fwd, selfdep):
+            with self.assertRaises(lb.BoardError) as cm:
+                lb.validate_decompose_spec(bad, has_parent=True)
+            self.assertEqual(cm.exception.code, "invalid_decompose_spec")
+
+    def test_parent_title_required_only_when_creating(self) -> None:
+        spec = {"plan_path": "p", "sub_issues": []}
+        # creating (no parent number) needs a title
+        with self.assertRaises(lb.BoardError):
+            lb.validate_decompose_spec(spec, has_parent=False)
+        # updating an existing parent does not
+        self.assertEqual(lb.validate_decompose_spec(spec, has_parent=True), [])
+
+
+class SubIssueParsingTest(unittest.TestCase):
+    """parse_issue_state must surface EVERY sub-issue (open + closed) with its
+    blocked-by count — the exact data the groom postcondition reports."""
+
+    def test_all_sub_issues_and_blocked_counts(self) -> None:
+        payload = {"data": {"repository": {"issue": {
+            "number": 182, "state": "OPEN", "authorAssociation": "MEMBER", "url": "u",
+            "subIssues": {"nodes": [
+                {"number": 183, "state": "OPEN", "blockedBy": {"totalCount": 0}},
+                {"number": 184, "state": "OPEN", "blockedBy": {"totalCount": 1}},
+                {"number": 185, "state": "CLOSED", "blockedBy": {"totalCount": 1}}]},
+            "projectItems": {"nodes": []}}}}}
+        st = lb.parse_issue_state(payload, lb.BoardConfig(owner="o", number=1, source="committed"))
+        self.assertEqual(len(st.all_sub_issues), 3)  # closed ones counted too
+        self.assertEqual(sum(1 for s in st.all_sub_issues if s["blocked_by"] > 0), 2)
+        self.assertEqual(st.open_sub_issues, [183, 184])  # unchanged contract
+
+
+def _ctx(root: str, slug=("o", "r")) -> "lb.RepoContext":
+    return lb.RepoContext(root=root, main_root=root, origin_owner=slug[0],
+                          origin_repo=slug[1], default_branch="main")
+
+
+class DecomposeVerbTest(unittest.TestCase):
+    """The effectful decompose verb, driven by an argv-recording FakeRunner and
+    an injected set_status seam. Proves the create->wire->stamp sequence and that
+    sub-issue numbers come from gh's returned URLs (not positional guessing)."""
+
+    def test_updates_parent_creates_subs_wires_deps_and_stamps(self) -> None:
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            (root / "docs" / "plans").mkdir(parents=True)
+            plan = root / "docs" / "plans" / "p.md"
+            plan.write_text("---\ntitle: t\n---\n\nbody\n", encoding="utf-8")
+            (root / "s1.md").write_text("sub1", encoding="utf-8")
+            (root / "s2.md").write_text("sub2", encoding="utf-8")
+            spec = {"plan_path": "docs/plans/p.md", "sub_issues": [
+                {"title": "core", "body_file": "s1.md"},
+                {"title": "follow", "body_file": "s2.md", "blocked_by": [0]}]}
+            spec_path = root / "spec.json"
+            spec_path.write_text(json.dumps(spec), encoding="utf-8")
+
+            runner = FakeRunner([
+                (["issue", "edit", "182", "--repo", "o/r", "--body-file"],
+                 _ok("https://github.com/o/r/issues/182\n")),
+                (["issue", "create", "--repo", "o/r", "--parent", "182", "--title", "core"],
+                 _ok("https://github.com/o/r/issues/183\n")),
+                (["issue", "create", "--repo", "o/r", "--parent", "182", "--title", "follow"],
+                 _ok("https://github.com/o/r/issues/184\n")),
+                (["issue", "edit", "184", "--repo", "o/r", "--add-blocked-by", "183"],
+                 _ok("")),
+            ])
+            seen = {}
+
+            def fake_set_status(parent, stage, ctx, run, force=False):
+                seen["call"] = (parent, stage)
+                return {"issue": parent, "stage": stage, "previous_stage": None}
+
+            with mock.patch.object(lb, "read_board_config",
+                                   return_value=lb.BoardConfig(owner="o", number=1, source="committed")):
+                out = lb.verb_decompose(182, str(spec_path), _ctx(str(root)), runner,
+                                        set_status=fake_set_status)
+
+            self.assertEqual(out["parent"], 182)
+            self.assertEqual(out["sub_issue_count"], 2)
+            self.assertEqual([s["number"] for s in out["sub_issues"]], [183, 184])
+            self.assertEqual(out["sub_issues"][1]["blocked_by"], [183])
+            self.assertEqual(out["dependencies_wired"], 1)
+            self.assertEqual(seen["call"], (182, "planned"))
+            # join key stamped back into the plan frontmatter
+            self.assertIn("github_issue: 182", plan.read_text(encoding="utf-8"))
+            # every queued gh response was consumed in the exact expected order
+            self.assertEqual(runner.responses, [])
+
+    def test_bad_spec_writes_nothing(self) -> None:
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            spec_path = root / "spec.json"
+            spec_path.write_text(json.dumps({"sub_issues": []}), encoding="utf-8")  # no plan_path
+            runner = FakeRunner([])  # must never be called
+            with mock.patch.object(lb, "read_board_config",
+                                   return_value=lb.BoardConfig(owner="o", number=1, source="committed")):
+                with self.assertRaises(lb.BoardError) as cm:
+                    lb.verb_decompose(182, str(spec_path), _ctx(str(root)), runner,
+                                      set_status=lambda *a, **k: None)
+            self.assertEqual(cm.exception.code, "invalid_decompose_spec")
+            self.assertEqual(runner.calls, [])  # no gh writes on a malformed spec
+
+
+class GroomVerifyVerbTest(unittest.TestCase):
+    """The postcondition verb: stage>=planned AND a join-keyed plan doc, with an
+    exact sub-issue/blocked count straight from the parent's sub-issue nodes."""
+
+    @staticmethod
+    def _issue_payload(stage, subs):
+        return json.dumps({"data": {"repository": {"issue": {
+            "number": 182, "state": "OPEN", "authorAssociation": "MEMBER", "url": "u",
+            "subIssues": {"nodes": subs},
+            "projectItems": {"nodes": [{
+                "id": "IT_1",
+                "project": {"id": "PJ", "number": 1, "owner": {"login": "o"}},
+                "fieldValueByName": {"name": stage}}]}}}}})
+
+    def _run(self, root, stage, subs):
+        runner = FakeRunner([(["api", "graphql"], _ok(self._issue_payload(stage, subs)))])
+        with mock.patch.object(lb, "read_board_config",
+                               return_value=lb.BoardConfig(owner="o", number=1, source="committed")):
+            return lb.verb_groom_verify(182, _ctx(str(root)), runner)
+
+    def _write_plan(self, root, number=182):
+        (root / "docs" / "plans").mkdir(parents=True, exist_ok=True)
+        (root / "docs" / "plans" / "p.md").write_text(
+            f"---\ntitle: t\ngithub_issue: {number}\n---\nbody\n", encoding="utf-8")
+
+    def test_groomed_when_planned_with_plan_doc(self) -> None:
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            self._write_plan(root)
+            out = self._run(root, "planned", [
+                {"number": 183, "state": "OPEN", "blockedBy": {"totalCount": 0}},
+                {"number": 184, "state": "OPEN", "blockedBy": {"totalCount": 1}},
+                {"number": 185, "state": "OPEN", "blockedBy": {"totalCount": 1}}])
+            self.assertTrue(out["groomed"])
+            self.assertEqual(out["sub_issue_count"], 3)
+            self.assertEqual(out["sub_issues_with_dependencies"], 2)
+            self.assertEqual(out["failures"], [])
+
+    def test_not_groomed_when_no_plan_doc(self) -> None:
+        with tempfile.TemporaryDirectory() as d:
+            out = self._run(Path(d), "planned", [])  # no plan file written
+            self.assertFalse(out["groomed"])
+            self.assertTrue(any("plan doc" in f for f in out["failures"]))
+
+    def test_not_groomed_when_stage_below_planned(self) -> None:
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            self._write_plan(root)
+            out = self._run(root, "brainstormed", [])
+            self.assertFalse(out["groomed"])
+            self.assertTrue(any("expected >= planned" in f for f in out["failures"]))
 
 
 if __name__ == "__main__":
