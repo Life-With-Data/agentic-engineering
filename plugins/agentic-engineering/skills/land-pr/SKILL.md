@@ -206,9 +206,11 @@ is_linked_worktree() {
 }
 ```
 
-Then take exactly one leaf:
+Then take exactly one **path** — A (classic) or B (linked worktree) — and, before any feature-branch
+delete in either path, apply the shared **pre-delete guard** below. (The guard is not a third path; it
+is a check that precedes `git branch -d`.)
 
-**Leaf A — classic single tree** (`is_linked_worktree` false). Today's path, unchanged.
+**Path A — classic single tree** (`is_linked_worktree` false). Today's path, unchanged.
 `gh pr merge --delete-branch` already pruned the remote and local branch, so this is mostly
 confirmation:
 
@@ -218,7 +220,7 @@ git pull --ff-only
 git branch -d <feature-branch>   # safe-delete; already merged (no-op if gh already pruned it)
 ```
 
-**Leaf B — current linked worktree** (`is_linked_worktree` true). Do **not** `git checkout "$BASE"` —
+**Path B — current linked worktree** (`is_linked_worktree` true). Do **not** `git checkout "$BASE"` —
 the base is checked out in the primary tree and the checkout would fail. Just refresh the
 remote-tracking ref so the primary tree fast-forwards on its next checkout; defer worktree + branch
 teardown to gc (below):
@@ -227,14 +229,13 @@ teardown to gc (below):
 git fetch origin "$BASE"    # origin/<base> now current; primary tree FFs on its next checkout
 ```
 
-**Leaf C — feature branch checked out in another worktree.** This is a **guard that runs before any
-`git branch -d`** — including Leaf A's — in either tree: check it first, and use it in place of a bare
-`git branch -d` wherever this recipe deletes the feature branch. Deleting a branch that is live in
-another worktree fails with `Cannot delete branch '<b>' checked out at '<path>'`; detect it and skip
-the delete, deferring to gc:
+**Pre-delete guard — feature branch checked out in another worktree** (applies before any
+`git branch -d` above, in either path). Use it in place of a bare `git branch -d` wherever this recipe
+deletes the feature branch: deleting a branch that is live in another worktree fails with
+`Cannot delete branch '<b>' checked out at '<path>'`, so detect it and skip the delete, deferring to gc:
 
 ```bash
-git worktree list --porcelain | grep -qF "branch refs/heads/<feature-branch>" \
+git worktree list --porcelain | grep -qxF "branch refs/heads/<feature-branch>" \
   && echo "branch held in another worktree — skip delete, defer to gc" \
   || git branch -d <feature-branch>
 ```

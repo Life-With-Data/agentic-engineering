@@ -241,15 +241,18 @@ gh pr checks "$PR_NUM" --watch          # follow the checks to their conclusion
 Then branch on the outcome per the decision tree above:
 
 - **Green** → GitHub auto-merges. Confirm `gh pr view "$PR_NUM" --repo "$ORIGIN" --json state`
-  (expect `MERGED`), then sync locally — context-aware, since a linked worktree (this skill's usual
-  context) cannot check out `$BASE`:
+  (expect `MERGED`), then sync locally. Pick the path by evaluating `is_linked_worktree` — a linked
+  worktree (this skill's usual context) cannot check out `$BASE` (the primary tree holds it):
+
+  **Classic single tree:**
   ```bash
-  if is_linked_worktree; then
-    git fetch origin "$BASE"    # refresh origin/<base>; primary tree FFs on its next checkout — defer worktree/branch teardown to gc
-  else
-    git checkout "$BASE" && git pull --ff-only
-    git branch -D "$BRANCH" 2>/dev/null || true    # branch auto-deleted on merge
-  fi
+  git checkout "$BASE" && git pull --ff-only
+  git branch -D "$BRANCH" 2>/dev/null || true    # branch auto-deleted on merge
+  ```
+
+  **Linked worktree** — do **not** check out `$BASE`:
+  ```bash
+  git fetch origin "$BASE"    # refresh origin/<base>; primary tree FFs on its next checkout
   ```
   In a worktree, local branch + worktree teardown is **deferred to `gc`** (see the
   [`git-worktree`](../git-worktree/SKILL.md) gc note — it can't self-reap the active worktree and only
