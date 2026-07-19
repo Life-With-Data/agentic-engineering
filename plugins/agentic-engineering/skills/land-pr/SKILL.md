@@ -79,6 +79,7 @@ script alone, and never skipped because the run looks autonomous. If it cannot b
 ```bash
 # Default to the current branch's PR; or pass a number as the first argument.
 PR_NUM=${PR_NUM:-$(gh pr view --json number --jq '.number')}
+ORIGIN=$(gh repo view --json nameWithOwner --jq '.nameWithOwner')   # owner/repo of origin — every gh write carries it (fork-trap)
 ```
 
 Confirm it is open. If `gh pr view` reports the PR is already `MERGED` or `CLOSED`, stop and report —
@@ -164,21 +165,97 @@ P1s clear, mergeable), then decide how to merge:
 ### 5. Merge
 
 ```bash
-gh pr merge "$PR_NUM" --squash --delete-branch
+gh pr merge "$PR_NUM" --repo "$ORIGIN" --squash --delete-branch
 ```
 
 Use `--squash` by default (clean, single-commit history). Honor a different method if the repo
 convention or the user calls for `--merge` or `--rebase`. If required checks are configured but you
 want GitHub to merge the instant they pass, `--auto --squash` enables auto-merge instead of blocking.
 
-### 6. Post-merge cleanup
+**Verify the merge from server state, never from the exit code.** When land-pr runs from a linked
+worktree, `--delete-branch`'s *local* housekeeping can fail with
+`fatal: '<base>' is already used by worktree at '<primary-path>'` **even though the PR merged and the
+remote branch was deleted server-side**. That error reads like the merge failed and invites a wrong
+retry. So after any non-clean return, confirm the outcome from GitHub — do **not** parse stderr or the
+exit code (the message is locale- and version-dependent):
 
 ```bash
-# Sync the local default branch and prune the merged feature branch.
-git checkout <default-branch>
-git pull --ff-only
-git branch -d <feature-branch>   # safe-delete; already merged
+gh pr view "$PR_NUM" --repo "$ORIGIN" --json state,mergedAt --jq '.state'
 ```
+
+If `state == MERGED`, the merge **succeeded** — the failure was local cleanup only. Do **not** re-run
+`gh pr merge`; proceed to step 6, which performs the worktree-safe teardown. Only a `state` other than
+`MERGED` means the merge itself did not happen and may be retried.
+
+### 6. Post-merge cleanup (context-aware)
+
+Cleanup **branches on worktree context**. The classic single-tree path is unchanged; a linked
+worktree cannot check out a base branch that the primary tree already holds, so it takes a deferred
+path instead. Resolve two facts first — the PR's **base branch** (from the PR, not the repo default: a
+PR merged into a release/maintenance branch must clean up *that* base, and `git rev-parse origin/HEAD`
+is often unset in a fresh worktree) and whether this is a **linked worktree**:
+
+```bash
+BASE=$(gh pr view "$PR_NUM" --repo "$ORIGIN" --json baseRefName --jq '.baseRefName')
+
+# true (linked worktree) when the per-worktree git-dir differs from the shared common-dir.
+# Absolute path-format avoids relative-vs-absolute false matches across git versions.
+is_linked_worktree() {
+  [ "$(git rev-parse --path-format=absolute --git-common-dir)" \
+    != "$(git rev-parse --path-format=absolute --git-dir)" ]
+}
+```
+
+Then take exactly one **path** — A (classic) or B (linked worktree) — and, before any feature-branch
+delete in either path, apply the shared **pre-delete guard** below. (The guard is not a third path; it
+is a check that precedes `git branch -d`.)
+
+**Path A — classic single tree** (`is_linked_worktree` false). Today's path, unchanged.
+`gh pr merge --delete-branch` already pruned the remote and local branch, so this is mostly
+confirmation:
+
+```bash
+git checkout "$BASE"
+git pull --ff-only
+git branch -d <feature-branch>   # safe-delete; already merged (no-op if gh already pruned it)
+```
+
+**Path B — current linked worktree** (`is_linked_worktree` true). Do **not** `git checkout "$BASE"` —
+the base is checked out in the primary tree and the checkout would fail. Just refresh the
+remote-tracking ref so the primary tree fast-forwards on its next checkout; defer worktree + branch
+teardown to gc (below):
+
+```bash
+git fetch origin "$BASE"    # origin/<base> now current; primary tree FFs on its next checkout
+```
+
+**Pre-delete guard — feature branch checked out in another worktree** (applies before any
+`git branch -d` above, in either path). Use it in place of a bare `git branch -d` wherever this recipe
+deletes the feature branch: deleting a branch that is live in another worktree fails with
+`Cannot delete branch '<b>' checked out at '<path>'`, so detect it and skip the delete, deferring to gc:
+
+```bash
+git worktree list --porcelain | grep -qxF "branch refs/heads/<feature-branch>" \
+  && echo "branch held in another worktree — skip delete, defer to gc" \
+  || git branch -d <feature-branch>
+```
+
+**Teardown of a linked worktree + its orphaned branch is deferred to `gc_worktrees`**, the
+worktree-safe reaper (it uses `git cherry` to catch squash/rebase merges, removes the worktree from
+*outside* it, and deletes the orphaned local branch). Point at it in prose — do not add it to the
+recipe or widen `allowed-tools`:
+
+```
+bash ${CLAUDE_PLUGIN_ROOT}/skills/git-worktree/scripts/worktree-manager.sh gc
+```
+
+Two coverage limits make this teardown **inherently deferred** — land-pr must not report it done:
+- gc **skips the worktree it runs from** and any worktree active within `WORKTREE_GC_GRACE_MIN`
+  (default 30 minutes) — so land-pr **cannot self-reap** the worktree it just merged from. That
+  worktree is reaped by a later gc pass, or by running gc from the primary tree.
+- gc only reaps worktrees under `$GIT_ROOT/.worktrees/`. A worktree under `.claude/worktrees/`
+  (harness-created — including this pipeline's own runs) is **not** covered; for those, teardown is a
+  manual `git worktree remove <path>` from the primary tree.
 
 **Verify the lifecycle stamp.** The merge closes the issue via `Closes #N` in the PR body;
 GitHub's built-in "Item closed" board automation then stamps the tracked item `shipped` —
@@ -201,8 +278,11 @@ one implementation every command uses.
 
 ### 7. Report
 
-Summarize: the merged PR (number + URL), the merge method, that the branch was deleted and the local
-default branch synced, and the tracker state. Note any follow-on work discovered while landing.
+Summarize: the merged PR (number + URL), the merge method, and the tracker state. Report cleanup **by
+mode** — classic single tree: feature branch deleted and local base synced; **linked worktree: name
+the worktree + feature branch left for gc or a manual `git worktree remove` from the primary tree**
+(teardown is deferred, not done — never claim a local fast-forward + delete that did not happen). Note
+any follow-on work discovered while landing.
 
 ## Scripts
 
@@ -210,9 +290,15 @@ default branch synced, and the tracker state. Note any follow-on work discovered
 
 ## Success criteria
 
-- PR shows `MERGED`.
-- Feature branch deleted (remote and local); local default branch fast-forwarded.
+- PR shows `MERGED` (confirmed from `gh pr view --json state`, not from the merge command's exit code).
 - Lifecycle stamp verified (reconciler) / legacy close done.
+- **Cleanup, by mode:**
+  - **Classic single tree** — remote **and** local feature branch deleted; local base branch
+    fast-forwarded.
+  - **Linked worktree** — remote branch deleted (by `gh`) and `origin/<base>` fetched; local base
+    fast-forward and worktree/branch teardown are **deferred**, and the report **names the worktree +
+    branch left behind** for gc or a manual `git worktree remove` — never claiming a local FF + delete
+    that did not happen.
 - In autonomous mode, the merge happened only because CI was green, an independent `/workflows-review`
   pass had run with P1s resolved, threads were resolved, and the PR was mergeable — never on an unmet
   condition, and never blocked waiting on a human GitHub approval the run was never going to receive.
