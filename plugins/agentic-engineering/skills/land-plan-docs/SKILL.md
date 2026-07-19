@@ -119,7 +119,7 @@ auto-merge or explicit human approval.
 
 ```bash
 ORIGIN=$(gh repo view --json nameWithOwner --jq '.nameWithOwner')   # owner/repo of origin
-BASE=$(gh repo view --repo "$ORIGIN" --json defaultBranchRef --jq '.defaultBranchRef.name')  # default branch — resolve via the API; local origin/HEAD is often unset in a fresh worktree (exactly this skill's context)
+BASE=$(gh repo view "$ORIGIN" --json defaultBranchRef --jq '.defaultBranchRef.name')  # default branch — resolve via the API; local origin/HEAD is often unset in a fresh worktree (exactly this skill's context). NB: `gh repo view` takes the repo POSITIONALLY (no --repo flag)
 PRIMARY="<epic or lowest issue number in the batch>"                 # names the branch
 RUN_DOCS=( docs/plans/<doc-1>.md docs/plans/<doc-2>.md )             # this run's join-key paths
 

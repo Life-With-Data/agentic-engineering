@@ -63,10 +63,13 @@ propagates silently until `git checkout ""` or `gh pr create --base ""` fails la
 already been mutated. This matters far more for `land-plan-docs` than for `land-docs`, because its whole
 motivation is the multi-worktree case ("grooming in one worktree and implementing in another").
 
-**Fix.** Resolve the default branch from the API, which does not depend on a local symbolic ref:
+**Fix.** Resolve the default branch from the API, which does not depend on a local symbolic ref.
+**`gh repo view` takes the repository POSITIONALLY — it has no `-R`/`--repo` flag** (unlike
+`gh pr`/`gh issue`/`gh api`); passing `--repo "$ORIGIN"` fails with `unknown flag: --repo`, empties
+`BASE`, and reintroduces gotcha #2 by a different door:
 
 ```bash
-BASE=$(gh repo view --repo "$ORIGIN" --json defaultBranchRef --jq '.defaultBranchRef.name')
+BASE=$(gh repo view "$ORIGIN" --json defaultBranchRef --jq '.defaultBranchRef.name')
 ```
 
 (`git remote set-head origin -a` also repairs the local ref, but the API call is one line and has no
