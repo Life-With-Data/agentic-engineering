@@ -71,7 +71,7 @@ a generated artifact). "Warrants input" = a judgment about the knowledge itself.
 
 ```bash
 ORIGIN=$(gh repo view --json nameWithOwner --jq '.nameWithOwner')   # owner/repo of origin
-BASE=$(gh repo view --repo "$ORIGIN" --json defaultBranchRef --jq '.defaultBranchRef.name')  # default branch — via the API; local origin/HEAD is often unset in a fresh worktree
+BASE=$(gh repo view "$ORIGIN" --json defaultBranchRef --jq '.defaultBranchRef.name')  # default branch — via the API; local origin/HEAD is often unset in a fresh worktree. NB: `gh repo view` takes the repo POSITIONALLY (no --repo flag)
 N="${1:-}"                                                           # source issue number, if any
 
 # true (linked worktree) when the per-worktree git-dir differs from the shared common-dir.
