@@ -74,18 +74,18 @@ PRIMARY="<lowest or epic issue number in the batch>"
 # named plan-docs/<PRIMARY>-<suffix>, so filter on the prefix client-side. Do NOT use a
 # `--search "head:plan-docs/${PRIMARY}"` query — GitHub's `head:` qualifier matches the ref
 # *exactly* and would never match the suffixed branch, silently re-branching on every re-run.
+# `// empty` collapses the no-match case to empty output so the decision below is made in prose,
+# not a standalone leading `if` block. The pipeline leads with `gh` so `Bash(gh *)` covers it —
+# a `if [ -n … ]` wrapper would lead with `if` (not allow-listed) and stall an unattended run.
 EXISTING=$(gh pr list --repo "$ORIGIN" --state all \
   --json number,url,state,headRefName \
-  --jq '[.[] | select(.headRefName | startswith("plan-docs/'"${PRIMARY}"'-"))][0]')
-
-if [ -n "$EXISTING" ] && [ "$EXISTING" != "null" ]; then
-  # No-op: report the existing PR link and status; do NOT re-branch.
-  echo "$EXISTING"    # → report "skipped: existing PR" with its number/URL and state
-fi
+  --jq '[.[] | select(.headRefName | startswith("plan-docs/'"${PRIMARY}"'-"))][0] // empty')
 ```
 
-If an existing PR is found (open or merged), report it and stop — the plan docs are already landed
-or in flight. Only proceed to branch/commit/PR when no such PR exists.
+Evaluate `$EXISTING` in prose, not a leading-`if` recipe: **non-empty** means a prior run already
+landed or is landing this primary join key → **no-op**. Report that existing PR's number/URL and
+state (`skipped: existing PR #<n>`) and stop — do **not** re-branch. **Empty** means no such PR
+exists → proceed to branch/commit/PR.
 
 ## Auto-merge is armed at creation
 
