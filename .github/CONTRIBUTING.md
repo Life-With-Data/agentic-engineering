@@ -20,8 +20,8 @@ bun install
 
 1. **Branch** off `main`.
 2. **Make your change.** Adding an agent, command, or skill? See
-   [Component changes](#component-changes) below — counts and versions must stay
-   in sync across several files, and this is enforced.
+   [Component changes](#component-changes) below — counts and descriptions must
+   stay in sync across several files, and this is enforced.
 3. **Run the checks locally** (see [Required checks](#required-checks)).
 4. **Open a PR against `origin`** and describe what changed and why.
 
@@ -43,40 +43,27 @@ generated output to make a check pass; fix the source and regenerate.
 
 When you **add or remove** an agent, command, or skill, several description
 strings and counts must match the filesystem. `tests/plugin-consistency.test.ts`
-enforces all of this — but to save a round-trip:
+enforces all of this:
 
-- **Update the counts** everywhere they appear:
-  - `plugins/agentic-engineering/.claude-plugin/plugin.json`
-  - `.claude-plugin/marketplace.json`
-  - `plugins/agentic-engineering/README.md`
-- **Bump the version** in both manifests (keep them equal):
-  - `plugins/agentic-engineering/.claude-plugin/plugin.json` → `version`
-  - `.claude-plugin/marketplace.json` → plugin `version`
-- **Add a changelog entry** to
-  `plugins/agentic-engineering/CHANGELOG.md` (Keep a Changelog format). The
-  changelog page on the docs site is generated from this file —
-  **never hand-edit `docs/pages/changelog.html`**.
+- **Update the component counts and descriptions** named by a failing
+  `bun test` run.
+- **Do not hand-bump versions or write release changelog entries.** Release
+  Please owns both; see
+  [plugin versioning](../docs/solutions/plugin-versioning-requirements.md).
 - **Regenerate the docs**: `bun run docs:build`.
-
-> Concurrent PRs sometimes claim the same next version. If you hit a merge
-> conflict, re-fetch `main` and re-slot your change to the next free patch
-> version in all three files.
 
 Changes that **don't** touch anything under `plugins/` (for example, these
 community-health files, or repo tooling) do **not** require a version bump or
 changelog entry.
 
-The repo's full conventions live in [`CLAUDE.md`](../CLAUDE.md) — the checklist
-there is the human-readable companion to the automated tests.
+The repository's high-level conventions live in [`AGENTS.md`](../AGENTS.md),
+which points to the detailed operational guidance and automated checks.
 
-## Commit messages
+## Pull request titles
 
-Follow the existing style:
-
-- `Add [component]` / `Remove [component]` — new or removed functionality
-- `Update [file] to [what changed]` — updates
-- `Fix [issue]` — bug fixes
-- `Simplify [component] to [improvement]` — refactors
+Use a Conventional Commit prefix such as `feat:`, `fix:`, `docs:`, `refactor:`,
+`chore:`, `perf:`, `test:`, or `ci:`. Release Please uses the squash-merged PR
+title to determine releases and changelog sections.
 
 ## Reporting bugs and getting help
 
