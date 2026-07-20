@@ -284,4 +284,9 @@ describe("workflow skill architecture", () => {
       expect(agents).toMatch(new RegExp(`^- ${capability}:`, "m"));
     }
   });
+
+  test("Claude Code imports the tool-agnostic root instructions first", () => {
+    const claude = readFileSync(path.join(ROOT, "CLAUDE.md"), "utf8");
+    expect(claude.split(/\r?\n/, 1)[0]).toBe("@AGENTS.md");
+  });
 });

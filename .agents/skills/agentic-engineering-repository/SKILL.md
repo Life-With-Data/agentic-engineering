@@ -22,8 +22,8 @@ This checkout contains two products:
 - `plugins/agentic-engineering/` is the distributed engineering plugin.
 - `src/` is the Bun/TypeScript converter and installer for other agent platforms.
 
-Read root `AGENTS.md` first and `CLAUDE.md` for repository structure, release
-policy, component counts, conversion policy, and documentation generation.
+Read root `AGENTS.md` first for repository guidance and links to the relevant
+policies and references.
 Use the codebase knowledge graph for code discovery and direct text search for
 Markdown, JSON, shell, and literal values.
 

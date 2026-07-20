@@ -137,4 +137,4 @@ loudly on drift rather than silently accepting it.
 
 - `docs/solutions/plugin-versioning-requirements.md` — contributor-facing versioning rules, updated alongside this adoption.
 - `docs/solutions/security-issues/hardening-scaffolded-github-actions-workflows.md` — the SHA-pinning / minimal-permissions pattern applied to the two new workflows here.
-- `CLAUDE.md` — "Updating the plugin", "Commit conventions", "Release process" sections.
+- `AGENTS.md` — repository-level release guidance and links.

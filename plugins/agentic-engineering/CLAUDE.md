@@ -4,8 +4,7 @@
 
 Version and `CHANGELOG.md` are computed by release-please from Conventional
 Commit-typed PR titles — do **not** hand-bump `.claude-plugin/plugin.json`
-or hand-write CHANGELOG.md entries. See root `CLAUDE.md`'s "Updating the
-plugin" and "Release process" sections, and
+or hand-write CHANGELOG.md entries. See root `AGENTS.md` and
 `docs/solutions/plugin-versioning-requirements.md`.
 
 ### Pre-Commit Checklist

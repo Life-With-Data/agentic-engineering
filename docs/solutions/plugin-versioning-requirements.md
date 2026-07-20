@@ -26,8 +26,7 @@ release-please composes its standing release PR. Contributors must:
 1. **Use a Conventional Commit type prefix in the PR title** (`feat:`, `fix:`,
    `docs:`, `refactor:`, `chore:`, `perf:`) — enforced in CI by
    `.github/workflows/pr-title.yml`. This is what drives MINOR (`feat`) vs.
-   PATCH (`fix`, `perf`) vs. no-release (`docs`, `chore`, `test`, `ci`) — see
-   `CLAUDE.md`'s Commit conventions section.
+   PATCH (`fix`, `perf`) vs. no-release (`docs`, `chore`, `test`, `ci`).
 2. **NOT hand-edit** `plugin.json`'s version, any of its mirrors, or
    `CHANGELOG.md` — those are release-please's outputs. A manual edit causes
    version drift: `.github/.release-please-manifest.json` (the last-released
