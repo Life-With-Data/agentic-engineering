@@ -148,6 +148,6 @@ are now active.
   (`plugins/agentic-engineering/scripts/` in the source repo); a repository
   test keeps them byte-identical, and `skills update` refreshes GitHub-sourced
   installs.
-- The full hook set (Node version check, TodoWrite nudge, plan-tracker guard,
-  SDD cache) ships only with the native Claude Code plugin install — those
+- The full hook set (TodoWrite nudge, plan-tracker guard, SDD cache) ships only
+  with the native Claude Code plugin install — those
   hooks depend on plugin-level modules that do not travel with this reference.
