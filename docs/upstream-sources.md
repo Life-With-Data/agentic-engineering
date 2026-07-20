@@ -168,6 +168,15 @@ component confers no trust on v2.
   - skill/subagent-driven-development — shortlisted for adoption, second wave once the in-flight addyosmani wave (PRs #100-#107) lands: fresh-implementer-per-task execution protocol (four status codes, file-based context handoff, per-task BASE discipline, compaction-proof progress ledger, reviewer anti-pre-judging trip-wires, one-fixer economics) plus three portable clean bash scripts; retarget plan/review/TDD/finish references to workflows:plan, local review agents, test-driven-development, land-pr — @aagnone3 2026-07-10
   - all-unlisted @ d884ae04edebef577e82ff7c4e143debd0bbec99 — bulk-deferred at type level, see docs/upstream-reports/2026-07-10-superpowers-initial-triage.md — @aagnone3 2026-07-10
 
+## garrytan/gstack
+
+- repo: https://github.com/garrytan/gstack
+- license: MIT (verified 2026-07-19)
+- visibility: public
+- scan: auto
+- adopted:
+- deferred:
+
 ## Graphify-Labs/graphify
 
 Consumed as an **external CLI**, not by adopting components — the same shape as
