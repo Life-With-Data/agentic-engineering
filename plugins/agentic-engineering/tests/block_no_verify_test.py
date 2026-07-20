@@ -137,6 +137,45 @@ class BlockNoVerifyTest(unittest.TestCase):
         )
         self.assertEqual(_run(cmd).returncode, BLOCK)
 
+    # --- selective pre-commit bypass (SKIP= / PRE_COMMIT_ALLOW_NO_CONFIG=) ---
+    # `--no-verify` skips ALL hooks; `SKIP=` skips only the named ones, slipping
+    # a partial bypass past a guard that only looks for `--no-verify`.
+
+    def test_blocks_skip_env_before_commit(self) -> None:
+        self.assertEqual(_run('SKIP=lint git commit -m "wip"').returncode, BLOCK)
+
+    def test_blocks_skip_multiple_hooks(self) -> None:
+        self.assertEqual(
+            _run("SKIP=biome-check,type-check git commit -m wip").returncode, BLOCK
+        )
+
+    def test_blocks_skip_before_precommit_run(self) -> None:
+        self.assertEqual(_run("SKIP=tests pre-commit run --all-files").returncode, BLOCK)
+
+    def test_blocks_skip_alongside_other_env_assignments(self) -> None:
+        self.assertEqual(
+            _run("SKIP=lint FOO=bar git commit -m wip").returncode, BLOCK
+        )
+
+    def test_blocks_pre_commit_allow_no_config(self) -> None:
+        self.assertEqual(
+            _run("PRE_COMMIT_ALLOW_NO_CONFIG=1 git commit -m wip").returncode, BLOCK
+        )
+
+    def test_allows_skip_mentioned_in_quoted_message(self) -> None:
+        # A commit message describing the SKIP= mechanism must not self-trigger.
+        self.assertEqual(
+            _run('git commit -m "never use SKIP=lint git commit"').returncode, ALLOW
+        )
+
+    def test_allows_skip_env_not_prefixing_a_commit(self) -> None:
+        # SKIP= assignment that does not prefix a git commit / pre-commit verb.
+        self.assertEqual(_run("SKIP=lint echo hello").returncode, ALLOW)
+
+    def test_allows_unrelated_skip_variable_across_segment(self) -> None:
+        # `SKIP=` set in an earlier segment, not an env prefix to the commit.
+        self.assertEqual(_run("export SKIP=lint; git commit -m ok").returncode, ALLOW)
+
 
 if __name__ == "__main__":
     unittest.main()

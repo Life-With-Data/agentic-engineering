@@ -43,18 +43,27 @@ added lines in its `tool_input.command` patch directly.
 ## `block-no-verify.py` — PreToolUse (Bash) / beforeShellExecution
 
 **Blocks** `git commit`/`git push` that carry `--no-verify` (or the `-n` short
-form on commit).
+form on commit), **and** the pre-commit framework's selective bypass env vars
+`SKIP=<hooks>` / `PRE_COMMIT_ALLOW_NO_CONFIG=` when they prefix a
+`git commit` / `pre-commit` invocation.
 
 **Why:** Pre-commit / pre-push hooks catch formatting, lint, and test failures
 before they reach CI. Bypassing them trades a few seconds now for a red CI run,
 extra fix-up commits, and wasted CI minutes later. The plugin's value compounds
 through quality gates that run every time — `--no-verify` breaks that chain.
+`SKIP=` is the *partial* sibling: it silences only the hooks it names (e.g.
+`SKIP=type-check git commit …`), slipping past a guard that only watches for
+`--no-verify` while still shipping the exact problem the skipped hook exists to
+catch. If a hook is genuinely broken, disable *that hook* visibly in
+`.pre-commit-config.yaml` rather than routing around it per-commit.
 
-**Precision:** It fires only when `git commit`/`git push` is the actual command
-verb bypassing verification. Commands that merely *mention* the flag — a quoted
-commit message, a shell comment, `grep -- --no-verify`, `echo` — are **not**
-blocked. It is also segment-aware: the flag must sit in the same command segment
-as the git verb, so `git commit -m ok && echo --no-verify` is allowed.
+**Precision:** It fires only when `git commit`/`git push`/`pre-commit` is the
+actual command verb bypassing verification. Commands that merely *mention* the
+flag or env var — a quoted commit message, a shell comment,
+`grep -- --no-verify`, `echo` — are **not** blocked. It is also segment-aware:
+the flag (or the `SKIP=` env prefix) must sit in the same command segment as the
+verb, so `git commit -m ok && echo --no-verify` and `export SKIP=lint; git
+commit` are allowed.
 
 **If checks are failing:** fix the root cause, or fix the hook — don't bypass.
 

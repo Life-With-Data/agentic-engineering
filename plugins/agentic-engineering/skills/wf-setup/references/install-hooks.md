@@ -19,7 +19,7 @@ path also prints `{"permission": "allow"}` on stdout, which Cursor's
 
 | Script | Blocks |
 |--------|--------|
-| [block-no-verify.py](../scripts/block-no-verify.py) | `git commit`/`git push` carrying `--no-verify` (or `-n` on commit) |
+| [block-no-verify.py](../scripts/block-no-verify.py) | `git commit`/`git push` carrying `--no-verify` (or `-n` on commit), and selective pre-commit bypasses (`SKIP=<hooks>` / `PRE_COMMIT_ALLOW_NO_CONFIG=`) prefixing a commit |
 | [prevent-main-commit.py](../scripts/prevent-main-commit.py) | committing on `main`/`master`, or pushing a refspec targeting them |
 | [block-slack-webhook.py](../scripts/block-slack-webhook.py) | introducing a live Slack incoming-webhook URL into commands or files |
 | [block-db-push.py](../scripts/block-db-push.py) | `prisma db push` (schema drift without a migration) |

@@ -46,8 +46,16 @@ every target flows from the registry frontmatter, the source blocks, and `$ARGUM
   report (or the run summary) and continue.
 - A component type with no local equivalent is reported as a candidate typed
   "no local equivalent" — never silently skipped.
-- Sources with `visibility: private`: no candidate details on public surfaces. Report
-  only a count in the public issue; put details in the run summary shown to the invoker.
+- Sources with `visibility: private`: publish **generalized candidate descriptions** on
+  public surfaces — the shortlisted candidates described as *capabilities* (what adoption
+  would make public anyway), which is safe. Do NOT publish exact upstream paths or
+  internal identifiers for un-triaged candidates, and NEVER enumerate the source's full
+  component inventory publicly — that stays a count plus a private run-summary to the
+  invoker. Rationale: what's worth protecting is sensitive detail and the full-inventory
+  firehose, not the mere fact that an idea originated in a private repo — the public
+  registry already names adopted private-repo paths, so a capability-level description of
+  a shortlisted candidate discloses nothing a triage PR wouldn't. A bare count is not the
+  goal: it makes the issue untriageable while protecting nothing extra.
 - Unscanned ≠ reviewed: a source that failed to scan is reported as failed, never as clean.
 
 ## Checklist
@@ -247,9 +255,13 @@ missing scope is the expected steady state, not an error.
 The heartbeat line updates on every scan, including zero-candidate runs — a stale
 heartbeat is how a silently dead schedule gets noticed.
 
-For `visibility: private` sources, the public issue body contains only the heartbeat
-line and candidate/drift **counts** — no IDs, paths, or descriptions. Full details go in
-the run summary to the invoker only.
+For `visibility: private` sources, the public issue body carries the heartbeat line,
+drift/candidate **counts**, and **generalized descriptions of the shortlisted candidates**
+(capability-level — what a triage PR would make public anyway, safe to publish). It omits
+exact upstream paths and internal identifiers for un-triaged candidates, and never
+enumerates the source's full inventory — that inventory count plus full details go to the
+invoker's run summary only. (Adopted-drift rows for a private source likewise name only
+what its public adopting PR already disclosed.)
 
 ## Step 6: Run Summary
 
@@ -296,4 +308,5 @@ after which recurring scans are cheap by construction.
   `board add skipped: missing project scope` and still succeeds; the scan never fails on
   board placement.
 - Every failure named and classified; unscanned sources never counted as reviewed.
-- Private-source details absent from all public output.
+- Private-source *sensitive* details and full-inventory enumeration absent from all
+  public output; capability-level descriptions of shortlisted candidates are permitted.

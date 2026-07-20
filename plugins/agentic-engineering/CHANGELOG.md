@@ -5,6 +5,26 @@ All notable changes to the agentic-engineering plugin will be documented in this
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.4.0](https://github.com/Life-With-Data/agentic-engineering/compare/agentic-engineering-v4.3.0...agentic-engineering-v4.4.0) (2026-07-20)
+
+
+### Features
+
+* add the land-plan-docs skill ([#173](https://github.com/Life-With-Data/agentic-engineering/issues/173)) ([9adbe47](https://github.com/Life-With-Data/agentic-engineering/commit/9adbe474c2beee1cd3d07f3db6d0ab6a610d5708))
+* let agents invoke the land-pr, land-docs, and land-plan-docs skills ([#175](https://github.com/Life-With-Data/agentic-engineering/issues/175)) ([0a17cab](https://github.com/Life-With-Data/agentic-engineering/commit/0a17cabf83792f06df5a0e6528087eaad6ca512b))
+* script the groom entry/decompose/verify stages into lifecycle_board ([#202](https://github.com/Life-With-Data/agentic-engineering/issues/202)) ([d76ff89](https://github.com/Life-With-Data/agentic-engineering/commit/d76ff8924c49f6196bd9bfbdd3f3ae972797a00b))
+* wire land-plan-docs into /workflows-groom ([#205](https://github.com/Life-With-Data/agentic-engineering/issues/205)) ([1d4d707](https://github.com/Life-With-Data/agentic-engineering/commit/1d4d707bc45ca8612d6e0f8d2bace64e3805aaec))
+
+
+### Bug Fixes
+
+* block selective pre-commit bypass (SKIP= / PRE_COMMIT_ALLOW_NO_CONFIG=) ([#223](https://github.com/Life-With-Data/agentic-engineering/issues/223)) ([69a92c4](https://github.com/Life-With-Data/agentic-engineering/commit/69a92c4cf91e978d9167afb663526a8e387d63ad))
+* emit Cursor allow decision so failClosed hooks stop blocking Shell ([#171](https://github.com/Life-With-Data/agentic-engineering/issues/171)) ([6b75f4d](https://github.com/Life-With-Data/agentic-engineering/commit/6b75f4d2089ea00ca238822918f4d9fb556c7ecb))
+* **land-docs,land-plan-docs:** gh repo view takes the repo positionally, not --repo ([#210](https://github.com/Life-With-Data/agentic-engineering/issues/210)) ([0ac8588](https://github.com/Life-With-Data/agentic-engineering/commit/0ac858863676eb5c87e9a87acc40c2d9c8671ea2))
+* **land-plan-docs:** remove leading-if from idempotency recipe (gotcha [#3](https://github.com/Life-With-Data/agentic-engineering/issues/3)) ([#208](https://github.com/Life-With-Data/agentic-engineering/issues/208)) ([d28a6c3](https://github.com/Life-With-Data/agentic-engineering/commit/d28a6c3e2ba5f380103b32a5dae4257244382a21))
+* make land-* post-merge cleanup worktree-aware ([#206](https://github.com/Life-With-Data/agentic-engineering/issues/206)) ([81fd876](https://github.com/Life-With-Data/agentic-engineering/commit/81fd87632898b6cdffd54ad46dfe5bf31458779a))
+* make private-source scan reports triageable (generalized descriptions, not bare counts) ([#232](https://github.com/Life-With-Data/agentic-engineering/issues/232)) ([47b766a](https://github.com/Life-With-Data/agentic-engineering/commit/47b766a1f61e4cabbea19e983aad13d406654a60))
+
 ## [4.3.0](https://github.com/Life-With-Data/agentic-engineering/compare/agentic-engineering-v4.2.0...agentic-engineering-v4.3.0) (2026-07-16)
 
 
