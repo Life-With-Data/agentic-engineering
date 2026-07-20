@@ -19,7 +19,6 @@ script changes). Wiring differs per platform:
 | `prevent-main-commit.py` | Ships | Ships | Ships | Safety net |
 | `block-slack-webhook.py` | Ships (Bash + Write/Edit/MultiEdit) | Ships (shell + `preToolUse` Write) | Ships (Bash + `apply_patch`) | Safety net; Cursor has no MultiEdit matcher |
 | `block-db-push.py` | Ships | Ships | Ships | Safety net |
-| `check-node-version.py` | Ships | Claude-only | Claude-only | Left Claude-primary until verified elsewhere |
 | `block-beads-jsonl-stage.py` | Ships | Claude-only | Claude-only | Claude-primary |
 | `nudge-todowrite-to-tracker.py` | Ships (`TodoWrite`) | N/A | N/A | No TodoWrite equivalent on Cursor/Codex |
 | `plan-tracker-guard.py` | Ships (`Stop`) | Claude-only | Claude-only | Claude-primary until verified |
@@ -125,8 +124,8 @@ comment, `grep`, `echo` — are **not** blocked (same quote-stripping as the
 other guards). Legitimate `prisma migrate dev` / `migrate deploy` / `generate`
 commands are untouched.
 
-**No-op unless relevant:** like `check-node-version.py`, it never fires unless a
-project actually runs `prisma db push`, so a non-Prisma repo pays nothing.
+**No-op unless relevant:** it never fires unless a project actually runs
+`prisma db push`, so a non-Prisma repo pays nothing.
 
 **Correct alternative:** `prisma migrate dev --name <migration-name>` (or the
 repo's wrapper), which records a migration that keeps the DB and history in sync.
