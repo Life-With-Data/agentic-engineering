@@ -1,12 +1,12 @@
 # Install Safety Hooks
 
 Wire the agentic-engineering safety hooks into the current coding agent's hook
-configuration. The hook scripts are bundled inside this skill's
-[scripts/](../scripts/) directory, so this works even when the skill was
+configuration. The hook scripts are bundled inside this reference's
+[scripts/](../scripts/) directory, so this works even when the reference was
 installed standalone (e.g. `npx skills@latest add Life-With-Data/agentic-engineering`),
 where only skill directories are copied and plugin-level hooks do not ride along.
 
-**Skip this skill entirely if the plugin was installed natively** — the Claude
+**Skip this reference entirely if the plugin was installed natively** — the Claude
 Code, Cursor, and Codex plugin installs already activate these hooks. Check
 first (step 1) and stop if they are already active.
 
@@ -61,7 +61,7 @@ scope (all projects) when the harness supports both.
 Merge into `.claude/settings.json` (project) or `~/.claude/settings.json`
 (user) — create the file if missing, and deep-merge if it already has a
 `hooks` key. Use the resolved absolute script path (for project scope,
-`$CLAUDE_PROJECT_DIR`-relative is also fine when the skill lives inside the
+`$CLAUDE_PROJECT_DIR`-relative is also fine when the reference lives inside the
 project):
 
 ```json
@@ -142,7 +142,7 @@ are now active.
   webhook guard) is then blocked until the config is hand-edited. So when
   uninstalling: delete the hook entries from the settings file **before**
   running `skills remove install-hooks`. The same lockout applies to moving or
-  renaming the skill directory after wiring — re-run this skill to re-point the
+  renaming the reference directory after wiring — re-run this reference to re-point the
   paths.
 - These bundled scripts are copies of the canonical plugin scripts
   (`plugins/agentic-engineering/scripts/` in the source repo); a repository
@@ -150,4 +150,4 @@ are now active.
   installs.
 - The full hook set (Node version check, TodoWrite nudge, plan-tracker guard,
   SDD cache) ships only with the native Claude Code plugin install — those
-  hooks depend on plugin-level modules that do not travel with this skill.
+  hooks depend on plugin-level modules that do not travel with this reference.

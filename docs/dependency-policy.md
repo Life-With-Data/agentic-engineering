@@ -11,7 +11,7 @@ human-readable rationale; the tests are the source of enforcement.
 ## Track A — Adopt (import individual components)
 
 Copy a specific agent/command/skill/hook into this repo, adapted to local
-conventions. This is the existing `/upstream-scan` → triage → adoption pipeline
+conventions. This is the repository-local upstream scan → triage → adoption pipeline
 defined in `docs/upstream-sources.md` (provenance pinning, supply-chain review,
 human-reviewed PRs). Nothing changes.
 
@@ -37,7 +37,7 @@ Mechanics:
   an untagged repo fails with `no-matching-tag`.
 - **Unversioned** (bare name) when the upstream does not tag. The dep then
   tracks the upstream's latest, so its registry entry MUST have `scan: auto` —
-  `/upstream-scan` drift monitoring is the compensating control for the
+  upstream-maintenance drift scan is the compensating control for the
   missing version pin. Versioned deps may be `manual-only` (the constraint
   holds them).
 

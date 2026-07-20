@@ -3,33 +3,34 @@
 Take an **already-open** PR from "review in progress" to **merged**: wait for CI to go green,
 resolve every review thread and review finding, confirm it has been independently reviewed and is
 mergeable, then
-merge it and clean up. This is the completion-and-merge tail that picks up where `/workflows-work`
-Phase 4 (PR creation) and `/workflows-review` (findings) leave off.
+merge it and clean up. This is the completion-and-merge tail that picks up where
+the `wf-development` work route (PR creation) and the `wf-review`
+comprehensive-review route (findings) leave off.
 
-This skill does **not** write the feature or open the PR — point it at a PR that already exists.
+This reference does **not** write the feature or open the PR — point it at a PR that already exists.
 
 ## When to use
 
-- After `/workflows-work` opens a PR and `/workflows-review` has produced findings — to drive the
+- After the `wf-development` work route opens a PR and the `wf-review`
+  comprehensive-review route has produced findings — to drive the
   PR the rest of the way to merged.
 - Any time a PR needs to be shepherded to completion: CI red, unresolved review threads, waiting on
   approval, or simply "merge it once it's green."
 
-For the comment-resolution step this reference delegates to [`resolve-pr-parallel`](../../wf-review/references/resolve-pr-parallel.md)
-skill rather than reimplementing it.
+For comment resolution, invoke the `wf-review` PR-comment-resolution route and
+return here rather than reimplementing it.
 
-**Code PR vs. knowledge PR.** This skill lands the **code** PR through the full independent-review
+**Code PR vs. knowledge PR.** This reference lands the **code** PR through the full independent-review
 gate. The **compound** step that follows a merge produces docs-only markdown, which ships as its own
-separate PR through the [`land-docs`](../../wf-documentation/references/land-docs.md) reference — a lighter lane with no in-agent
-review (GitHub Actions own review there; the agent only follows the checks and merges on green). When
-you finish landing a code PR and the pipeline moves to compound, that docs PR is `land-docs`'s job,
-not this skill's.
+separate PR through the `wf-documentation` delivery route — a lighter lane whose
+review and checks still come from repository guidance. When a code PR is landed
+and the pipeline moves to compounding, hand that docs PR to `wf-documentation`.
 
 ## The merge gate (read first)
 
 Merging is outward-facing and effectively irreversible. Called on its own, land-pr **pauses and asks
 the user before merging**. Merge automatically **only** when invoked in an autonomous context —
-`--auto` in the arguments, or when called from `/workflows-orchestrate` in an autonomous run (its
+`--auto` in the arguments, or when called from the `wf-development` orchestration route in an autonomous run (its
 fully-autonomous default, or after its `--final-review` gate has been approved) — **and** all
 landability conditions below hold. Never auto-merge a PR that touches the default branch directly,
 force-pushes, or has any unresolved blocker.
@@ -37,7 +38,8 @@ force-pushes, or has any unresolved blocker.
 **What counts as "the review" for an autonomous merge.** In a solo or autonomous run there is usually
 no human reviewer, so GitHub's `reviewDecision` stays empty or `REVIEW_REQUIRED` and never reaches
 `APPROVED`. Do **not** wait for a human GitHub approval — that would stall every autonomous merge.
-The review gate is instead the pipeline's **own independent review**: an `/workflows-review` pass
+The review gate is instead the pipeline's **own independent review**: a
+`wf-review` comprehensive-review pass
 (delegated to fresh reviewer sub-agents, not the implementer) ran this cycle and all P1/blocking
 findings are resolved. A human approval only matters when **branch protection physically requires
 it** — which shows up as `mergeStateStatus: BLOCKED`, a genuine blocker the agent cannot self-satisfy
@@ -50,10 +52,10 @@ A PR is **landable** when all of these are true:
 1. **CI green** — every required check has concluded successfully (no `FAILURE`, `PENDING`, or
    `IN_PROGRESS` required checks).
 2. **Threads resolved** — `get-pr-comments` returns `[]` (no unresolved, non-outdated review threads).
-3. **Independently reviewed** — an `/workflows-review` pass ran this cycle and its P1/blocking findings
+3. **Independently reviewed** — a `wf-review` comprehensive-review pass ran this cycle and its P1/blocking findings
    are resolved. This is a **hard, non-skippable gate in every mode.** When landing inside the
    orchestrate pipeline it already happened upstream; when landing a PR standalone, land-pr itself
-   confirms a review ran this cycle and, if it cannot, **runs `/workflows-review` before merging** and
+   confirms a review ran this cycle and, if it cannot, **runs the `wf-review` comprehensive-review route before merging** and
    resolves any P1s — a merge never happens on an unreviewed PR. No reviewer has an open
    `CHANGES_REQUESTED`.
 4. **Mergeable** — `mergeStateStatus` is not `DIRTY` (conflicts), `BLOCKED` (branch protection), or
@@ -63,7 +65,7 @@ A PR is **landable** when all of these are true:
 The `pr-landable-status` script computes 1, 2, and 4 mechanically and lists any `blockers`; condition
 3 (the independent review having run) is verified here before any merge — never assumed from the
 script alone, and never skipped because the run looks autonomous. If it cannot be confirmed, run
-`/workflows-review` and resolve its P1s first.
+the `wf-review` comprehensive-review route and resolve its P1s first.
 
 ## Workflow
 
@@ -83,7 +85,7 @@ there is nothing to land.
 Print the current gating signals in one shot:
 
 ```bash
-bash ${CLAUDE_PLUGIN_ROOT}/skills/wf-delivery/scripts/pr-landable-status "$PR_NUM"
+bash <skill-directory>/scripts/pr-landable-status "$PR_NUM"
 ```
 
 This emits JSON with `ci`, `review_decision`, `merge_state`, `unresolved_threads`, a `blockers` list,
@@ -95,7 +97,7 @@ the mechanical conditions only — also confirm the independent review ran, per 
 Repeat until all landability conditions hold, or a blocker resists ~2 attempts that make **no
 strictly-measurable progress** — a fix that does not reduce the failing-check count, the unresolved-
 thread count, or the open-P1 count counts as a dry attempt (the uniform no-progress rule in
-`/workflows-orchestrate`). After two dry attempts, stop and escalate to the user with the specific
+the `wf-development` orchestration route). After two dry attempts, stop and escalate to the user with the specific
 failure from `blockers`:
 
 - **CI red or a required check failing** → inspect the failure, fix it, push, and re-check:
@@ -113,11 +115,10 @@ failure from `blockers`:
   gh pr checks "$PR_NUM" --watch
   ```
 
-- **Unresolved review threads** → run the [`resolve-pr-parallel`](../../wf-review/references/resolve-pr-parallel.md)
-  skill for this PR (it resolves every thread in parallel, commits, pushes, and re-verifies empty),
-  then return here.
+- **Unresolved review threads** → run the `wf-review` PR-comment-resolution
+  route for this PR, then return here and re-check landability.
 
-- **Independent review not yet run** → if no `/workflows-review` pass has reviewed this PR this cycle,
+- **Independent review not yet run** → if no `wf-review` comprehensive-review pass has reviewed this PR this cycle,
   run it now (it delegates to fresh reviewer sub-agents) and resolve any P1/blocking findings before
   merging. Inside the orchestrate pipeline this already happened upstream — don't re-run it.
 
@@ -148,7 +149,7 @@ P1s clear, mergeable), then decide how to merge:
   (P1s resolved), and all threads resolved. Merge with squash and delete the branch? [y/N]"* Merge
   only on explicit yes.
 
-- **Autonomous (`--auto`, or called from `/workflows-orchestrate` in an autonomous run)** — merge
+- **Autonomous (`--auto`, or called from the `wf-development` orchestration route in an autonomous run)** — merge
   without asking **once and only once** all conditions hold. This is the point of autonomous mode: do not bounce a
   "say the word and I'll merge" back to the user when the PR is already green, reviewed, and
   mergeable — just merge. If a condition is genuinely unmet (CI stuck red after retries,
@@ -239,7 +240,7 @@ worktree-safe reaper (it uses `git cherry` to catch squash/rebase merges, remove
 recipe or widen `allowed-tools`:
 
 ```
-bash ${CLAUDE_PLUGIN_ROOT}/skills/wf-development/scripts/worktree-manager.sh gc
+bash <skill-directory>/scripts/worktree-manager.sh gc
 ```
 
 Two coverage limits make this teardown **inherently deferred** — land-pr must not report it done:
@@ -256,7 +257,7 @@ this step confirms that stamp landed, it does not perform the close itself. `<N>
 issue number the PR closes (from the PR body's `Closes #N`, or the plan doc's `github_issue:`):
 
 ```bash
-python3 "${CLAUDE_PLUGIN_ROOT}/scripts/lifecycle_board.py" --reconcile --issue <N>
+python3 "<skill-directory>/scripts/lifecycle_board.py" --reconcile --issue <N>
 ```
 
 This invokes the **shared reconciler** — the only writer besides the transition owners — which
@@ -291,6 +292,6 @@ any follow-on work discovered while landing.
     fast-forward and worktree/branch teardown are **deferred**, and the report **names the worktree +
     branch left behind** for gc or a manual `git worktree remove` — never claiming a local FF + delete
     that did not happen.
-- In autonomous mode, the merge happened only because CI was green, an independent `/workflows-review`
+- In autonomous mode, the merge happened only because CI was green, an independent `wf-review` comprehensive-review pass
   pass had run with P1s resolved, threads were resolved, and the PR was mergeable — never on an unmet
   condition, and never blocked waiting on a human GitHub approval the run was never going to receive.

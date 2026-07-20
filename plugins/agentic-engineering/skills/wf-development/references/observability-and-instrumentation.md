@@ -14,9 +14,9 @@ Code that can't be observed is code that can't be operated. Observability is the
 
 **NOT for:**
 
-- Diagnosing a failure happening right now — that live investigation is a separate activity; this skill is what makes it fast next time by ensuring the evidence already exists
+- Diagnosing a failure happening right now — that live investigation is a separate activity; this reference is what makes it fast next time by ensuring the evidence already exists
 - Profiling and optimizing measured slowness — hand that to the `performance-oracle` agent
-- Launch-day monitoring sequence and rollback triggers — this skill covers the instrumentation that feeds them, not the launch runbook itself
+- Launch-day monitoring sequence and rollback triggers — this reference covers the instrumentation that feeds them, not the launch runbook itself
 
 ## Process
 

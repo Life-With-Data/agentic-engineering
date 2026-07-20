@@ -87,7 +87,7 @@ Prefer asserting on state (the returned value, the persisted record) over intera
 
 ## Mocking Patterns
 
-The double-preference order from the skill — **real > fake > stub > mock** — applies here. Reach for the patterns below only after a real or fake implementation has been ruled out as too slow, non-deterministic, or side-effectful.
+The double-preference order from the reference — **real > fake > stub > mock** — applies here. Reach for the patterns below only after a real or fake implementation has been ruled out as too slow, non-deterministic, or side-effectful.
 
 ### Mock Functions
 

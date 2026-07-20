@@ -17,13 +17,16 @@ Commands below are illustrative (npm/JS defaults). Substitute the project's real
 
 ## Scope: Methodology vs. Reproduce-and-File Workflow
 
-This skill is the broader triage **methodology** — how to reason from an unexpected failure to a root-cause fix. It does not replace the plugin's concrete reproduce-and-file tools; it wraps them:
+This reference is the broader triage **methodology** — how to reason from an unexpected failure to a root-cause fix. It does not replace the plugin's concrete reproduce-and-file tools; it wraps them:
 
-- **`/reproduce-bug`** (command) drives the hands-on reproduction of a filed GitHub issue — log investigation, browser/console capture, and a findings comment. Reach for it to execute Step 1 against a specific issue.
+- The **`wf-grooming` bug-reproduction route** drives hands-on reproduction of
+  a filed work item using the repository's mapped reproduction mechanics. Use
+  it to execute Step 1 against a specific report.
 - **`bug-reproduction-validator`** (agent) decides whether a report is a genuine bug, cannot-reproduce, or expected behavior. Reach for it when a report's validity is in question before spending time on Steps 2–6.
-- **`/report-bug`** (command) files a structured issue against the plugin itself.
+- The **`wf-grooming` bug-report route** creates or improves the structured
+  tracker item.
 
-Use this skill to think; use those to act on a specific report so triggers stay distinct.
+Use this reference to think; use those to act on a specific report so triggers stay distinct.
 
 ## The Stop-the-Line Rule
 
@@ -92,7 +95,9 @@ npm test -- --verbose
 npm test -- --testPathPattern="specific-file" --runInBand
 ```
 
-To drive reproduction against a filed issue end-to-end, use the `/reproduce-bug` command; to confirm the report is a real bug first, use the `bug-reproduction-validator` agent.
+To drive reproduction against a filed issue end-to-end, return to the
+`wf-grooming` bug-reproduction route; to confirm the report is a real bug first,
+use the `bug-reproduction-validator` agent.
 
 ### Step 2: Localize
 
@@ -182,7 +187,9 @@ npm run build
 npm run dev  # Verify in browser
 ```
 
-For a full pre-PR quality pass across build, types, lint, tests, security, and diff, hand off to the `verification-loop` skill rather than re-deriving the gates here.
+For a full pre-PR quality pass across build, types, lint, tests, security, and
+diff, hand off to the `wf-testing` verification route instead of re-deriving
+the gates here.
 
 ## Error-Specific Patterns
 

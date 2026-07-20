@@ -89,7 +89,10 @@ npx skills@latest add Life-With-Data/agentic-engineering
 Discovers every skill in this marketplace and installs into whichever agents it
 detects (Claude Code, Cursor, Codex, opencode, Copilot, Cline, Amp, …; narrow
 with `--skill <names>` / `--agent <ids>`). The skills CLI installs **skills
-only** — plugin hooks, agents, and MCP servers do not ride along. After
+only** — plugin hooks, agents, and MCP servers do not ride along. Each workflow
+skill bundles every script it invokes, including the repository-contract
+validator, so selecting an individual skill does not leave a plugin-root
+dependency behind. After
 installing, invoke **`wf-setup`** and select its install-hooks route to wire the four
 portable safety hooks (block `--no-verify`, prevent main commits, block Slack
 webhook leaks, block `prisma db push`) into your agent, or use a native

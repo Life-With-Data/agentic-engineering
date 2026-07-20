@@ -4,7 +4,7 @@ Design stable, well-documented interfaces that are hard to misuse. Good interfac
 
 ## Positioning
 
-Use this skill for **design-time contract authoring** — shaping an interface before it exists. It complements two review-time agents that inspect an interface after the code is written: `architecture-strategist` (pattern compliance and structural integrity of a change) and `integration-boundary-reviewer` (untested calls across external library and service boundaries). Reach for this skill when authoring a new contract; reach for those agents when reviewing one. Nothing else in this plugin covers the authoring side.
+Use this reference for **design-time contract authoring** — shaping an interface before it exists. It complements two review-time agents that inspect an interface after the code is written: `architecture-strategist` (pattern compliance and structural integrity of a change) and `integration-boundary-reviewer` (untested calls across external library and service boundaries). Reach for this reference when authoring a new contract; reach for those agents when reviewing one. Nothing else in this plugin covers the authoring side.
 
 ## When to Use
 

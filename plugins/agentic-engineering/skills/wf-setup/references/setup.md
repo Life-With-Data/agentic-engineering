@@ -38,7 +38,7 @@ genuinely absent—not as a pass-through wrapper.
 Run:
 
 ```bash
-python3 "${CLAUDE_PLUGIN_ROOT}/scripts/repository-context.py"
+python3 "<skill-directory>/scripts/repository-context.py"
 ```
 
 Setup is incomplete until validation succeeds for all ten capabilities,

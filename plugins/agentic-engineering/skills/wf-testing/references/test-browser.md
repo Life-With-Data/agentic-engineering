@@ -3,7 +3,9 @@
 Use browser verification when the changed contract is user-visible or depends
 on real browser behavior. The repository's `development-environment` and
 `test-execution` targets must supply the server, URL, accounts, fixtures,
-browser tool, and commands.
+browser mechanism, and commands. Treat "browser mechanism" as a semantic
+runtime requirement, not a fixed skill name: resolve it from those mapped
+assets and the host's actually available tool/skill metadata.
 
 ## Select scenarios
 
@@ -26,7 +28,9 @@ For each scenario:
 
 Do not install a browser tool, assume localhost or a port, start infrastructure,
 or guess credentials unless the mapped repository guidance explicitly directs
-that action.
+that action. If the required browser behavior is unavailable, report a
+missing-capability blocker and return to `wf-setup` to repair the repository
+mapping; do not fall back to weaker evidence without saying so.
 
 ## Report
 

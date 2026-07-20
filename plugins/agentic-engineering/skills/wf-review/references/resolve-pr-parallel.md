@@ -16,7 +16,7 @@ Claude Code automatically detects git context:
 Fetch unresolved review threads using the GraphQL script:
 
 ```bash
-bash ${CLAUDE_PLUGIN_ROOT}/skills/wf-review/scripts/get-pr-comments PR_NUMBER
+bash <skill-directory>/scripts/get-pr-comments PR_NUMBER
 ```
 
 This returns only **unresolved, non-outdated** threads with file paths, line numbers, and comment bodies.
@@ -53,7 +53,7 @@ Always run all in parallel subagents/Tasks for each Todo item.
 - Resolve each thread programmatically:
 
 ```bash
-bash ${CLAUDE_PLUGIN_ROOT}/skills/wf-review/scripts/resolve-pr-thread THREAD_ID
+bash <skill-directory>/scripts/resolve-pr-thread THREAD_ID
 ```
 
 - Push to remote
@@ -63,7 +63,7 @@ bash ${CLAUDE_PLUGIN_ROOT}/skills/wf-review/scripts/resolve-pr-thread THREAD_ID
 Re-fetch comments to confirm all threads are resolved:
 
 ```bash
-bash ${CLAUDE_PLUGIN_ROOT}/skills/wf-review/scripts/get-pr-comments PR_NUMBER
+bash <skill-directory>/scripts/get-pr-comments PR_NUMBER
 ```
 
 Should return an empty array `[]`. If threads remain, repeat from step 1.
@@ -82,6 +82,6 @@ Should return an empty array `[]`. If threads remain, repeat from step 1.
 
 ## Related
 
-This skill is the **comment-resolution loop**. To take a PR all the way to merged — waiting on CI,
-resolving threads (via this skill), confirming approval, then merging and cleaning up — use the
+This reference is the **comment-resolution loop**. To take a PR all the way to merged — waiting on CI,
+resolving threads (via this reference), confirming approval, then merging and cleaning up — use the
 [`land-pr`](../../wf-delivery/references/land-pr.md) reference, which calls this one as its thread-resolution step.

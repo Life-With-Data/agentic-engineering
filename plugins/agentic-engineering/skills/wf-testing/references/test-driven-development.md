@@ -14,17 +14,18 @@ Write a failing test before writing the code that makes it pass. For bug fixes, 
 
 **When NOT to use:** Pure configuration changes, documentation updates, or static content changes that have no behavioral impact.
 
-### Where this sits among the testing skills
+### Where this sits among the testing references
 
-This skill covers test *authoring* — the act of writing the test that drives or guards a change. It has two siblings that operate at different moments, so the triggers do not collide:
+This reference covers test *authoring* — the act of writing the test that drives or guards a change. It has two siblings that operate at different moments, so the triggers do not collide:
 
-| Skill | Moment | Question it answers |
+| Reference | Moment | Question it answers |
 |-------|--------|--------------------|
-| **`test-driven-development`** (this skill) | While writing the change | "What test do I write first, and how do I write it well?" |
+| **`test-driven-development`** (this reference) | While writing the change | "What test do I write first, and how do I write it well?" |
 | **`test-strategy-reviewer`** | Reviewing existing tests | "Where are the coverage gaps, over-mocked seams, and untested boundaries?" |
 | **`verification-loop`** | Before declaring done | "Does the whole suite (plus build, types, lint, security) pass as a gate?" |
 
-Reach for this skill when authoring; reach for `test-strategy-reviewer` to audit tests someone already wrote; reach for `verification-loop` to run everything as a final gate.
+The `wf-testing` router selects this reference while authoring, its test-strategy
+route while auditing existing tests, and its verification route for the final gate.
 
 **Related:** For browser-based changes, pair TDD with the router's
 [browser verification](test-browser.md) using the repository-approved mechanism.
@@ -352,7 +353,10 @@ Main agent: Verifies the test fails, then implements the fix,
 then verifies the test passes.
 ```
 
-This separation ensures the test is written without knowledge of the fix, making it more robust. The same fresh-context separation principle underlies adversarial in-flight review (see the `doubt-driven-development` skill, if installed) — an independent reader catches what the author's momentum hides.
+This separation ensures the test is written without knowledge of the fix,
+making it more robust. The same fresh-context principle underlies the
+`wf-review` doubt-driven route: an independent reader catches what the author's
+momentum hides.
 
 ## See Also
 
@@ -392,4 +396,6 @@ After completing any implementation:
 - [ ] No tests were skipped or disabled
 - [ ] Coverage hasn't decreased (if tracked)
 
-**Note:** Run each test command after a change that could affect the result. After a clean run, don't repeat the same command unless the code has changed since — re-running on unchanged code adds no confidence. For the full pre-PR gate (build, types, lint, tests, security, diff review), hand off to the `verification-loop` skill.
+**Note:** Run each test command after a change that could affect the result.
+After a clean run, do not repeat the same command unless the code changed. For
+the full pre-PR gate, return to the `wf-testing` verification route.

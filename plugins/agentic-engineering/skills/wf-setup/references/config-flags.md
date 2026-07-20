@@ -5,7 +5,7 @@ Discoverability front door for the plugin's opt-in, per-repo configuration flags
 ## Step 1: Run the inventory verb
 
 ```bash
-python3 "${CLAUDE_PLUGIN_ROOT}/scripts/config_registry.py" --inventory
+python3 "<skill-directory>/scripts/config_registry.py" --inventory
 ```
 
 Returns JSON: `{"flags": [...], "ok": true}`. Each entry has `key`, `kind` (`boolean`/`enum`/`list`/`identity`), `default`, `effective`, `set`, `valid`, `source` (`local`/`committed`/`default`), `toggleable`, `file`, `owner`, `description`, `plugin`.
@@ -39,7 +39,7 @@ Otherwise, use the AskUserQuestion tool:
 Then run:
 
 ```bash
-python3 "${CLAUDE_PLUGIN_ROOT}/scripts/config_registry.py" --set <key> <value>
+python3 "<skill-directory>/scripts/config_registry.py" --set <key> <value>
 ```
 
 On success (`ok: true`), confirm the new value and mention the previous one (`previous`) if it was set. On failure (`ok: false`), render `error` and `fix` verbatim — do not paraphrase, especially for `local_config_tracked` (the fix is an exact `git rm --cached` command the user must run themselves) and `invalid_value` (the fix lists the exact allowed values).

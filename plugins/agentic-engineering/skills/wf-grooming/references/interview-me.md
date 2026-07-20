@@ -6,13 +6,17 @@ What people ask for and what they actually want are different things. They ask f
 
 The cheapest moment to find this gap is before any plan, spec, or code exists. Once building has started, switching costs are real, and the user will rationalize the wrong thing into a "good enough" thing. The misfit gets locked in.
 
-This skill closes the gap before it costs anything. The skills downstream of it assume the intent is already roughly known: the `brainstorming` skill explores 2-3 concrete approaches against a known intent, `/workflows-plan` turns a chosen approach into an implementation plan, and a doubt-driven review stress-tests that plan after it's drafted. Interview-me is the part before all of those — ask one question at a time, each with a best guess attached, until the user's next answer is predictable before they give it.
+This reference closes the gap before it costs anything. Downstream routes assume
+the intent is already roughly known: the [brainstorming reference](brainstorming.md)
+explores 2-3 approaches, the `wf-grooming` planning route turns the chosen one
+into a plan, and `wf-review` can stress-test that plan. Interviewing happens
+before all of those.
 
 Position relative to `brainstorming`: interview-me nails down **what** the user truly wants (intent extraction); brainstorming explores **how** to build it (approach exploration). When an ask is underspecified, run interview-me first, then hand the confirmed intent to brainstorming. Their triggers are deliberately adjacent, so the ordering is what keeps them from colliding.
 
 ## When to Use
 
-Apply this skill when:
+Apply this reference when:
 
 - The ask is missing at least one of: **who** the user is, **why** they want it, what **success** looks like, what the binding **constraint** is
 - The request is conventional rather than specific ("build me X", "make it faster") and the convention can't be unpacked without guessing
@@ -30,7 +34,7 @@ Apply this skill when:
 
 ## Loading Constraints
 
-This skill needs a live, responsive user. **Do not invoke in non-interactive contexts** like CI pipelines, scheduled runs, `/loop`, or any autonomous loop. In one of those with an underspecified ask, flag that as a blocker for the user instead of guessing.
+This reference needs a live, responsive user. **Do not invoke in non-interactive contexts** like CI pipelines, scheduled runs, `/loop`, or any autonomous loop. In one of those with an underspecified ask, flag that as a blocker for the user instead of guessing.
 
 ## The Process
 
@@ -130,7 +134,10 @@ This is a checkable test, not a vibe. It also has a floor: several rounds in and
 
 ## Output
 
-The output of this skill is a **confirmed statement of intent**: the restate from Step 4, with an explicit yes from Step 5. That's the deliverable. Approaches, plans, and task lists are downstream; they consume the intent this skill produces (hand off to the `brainstorming` skill to explore approaches, then `/workflows-plan` to break the chosen one down).
+The output of this reference is a **confirmed statement of intent**: the restate
+from Step 4, with an explicit yes from Step 5. Hand it to the
+[brainstorming reference](brainstorming.md), then to the `wf-grooming` planning
+route when appropriate.
 
 If the user wants the intent to persist for a multi-session project or handoff,
 offer to save it using the location and format named by the repository's mapped
@@ -176,11 +183,14 @@ Agent: <continues>
 
 Two questions in, the agent has discovered the actual ask isn't "a dashboard." It's "a list." Different artifact, different scope, different work. The dashboard would have been wrong.
 
-## Interaction with Other Skills
+## Interaction with Other Routes
 
-- **`brainstorming`** (this plugin): downstream. Once intent is confirmed here, hand it to `brainstorming` to explore 2-3 concrete approaches against the now-explicit intent. Interview-me answers **what** the user wants; brainstorming answers **how** to build it. When an ask is underspecified, run interview-me first, then brainstorming — their triggers are adjacent, so the ordering is what keeps them from competing.
-- **`/workflows-plan`** (this plugin): further downstream. When the confirmed intent is concrete enough to build ("I want X for Y users with Z success criteria"), `/workflows-plan` turns it into an implementation plan and its own task breakdown. The intent statement this skill produces is the input that lets `/workflows-plan` skip re-deriving what to build.
-- **Doubt-driven review**: opposite end of the timeline. Interview-me is pre-decision intent extraction; a doubt-driven review is post-decision artifact review. Both catch divergence, but at different moments. (A companion `doubt-driven-development` skill may be available separately; there's no hard dependency on it.)
+- **Brainstorming reference**: downstream within `wf-grooming`. Once intent is
+  confirmed, use it to explore 2-3 concrete approaches.
+- **the `wf-grooming` planning route** (this plugin): further downstream. When the confirmed intent is concrete enough to build ("I want X for Y users with Z success criteria"), the `wf-grooming` planning route turns it into an implementation plan and its own task breakdown. The intent statement this reference produces is the input that lets the `wf-grooming` planning route skip re-deriving what to build.
+- **`wf-review` doubt-driven route**: opposite end of the timeline. Interviewing
+  extracts intent before a decision; doubt-driven review challenges the artifact
+  after a decision.
 
 ## Common Rationalizations
 
@@ -219,4 +229,4 @@ After applying interview-me:
 - [ ] A concrete restate (Outcome / User / Why now / Success / Constraint / Out of scope) was written back to the user
 - [ ] The user confirmed the restate with an explicit yes (not "whatever you think," not "sounds good," not silence)
 - [ ] At the stop point, the next three questions' reactions were predictable
-- [ ] Any handoff downstream (the `brainstorming` skill, `/workflows-plan`) was framed in terms of the confirmed intent, not the original underspecified ask
+- [ ] Any handoff downstream (brainstorming or planning within `wf-grooming`) was framed in terms of the confirmed intent, not the original underspecified ask

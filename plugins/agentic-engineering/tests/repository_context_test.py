@@ -201,12 +201,33 @@ class RepositoryContextTest(unittest.TestCase):
         values["bug-reproduction"] = (
             "[reproduction procedure](docs/bug-reproduction.md#known-failures)"
         )
+        target = self.repo / "docs" / "bug-reproduction.md"
+        target.write_text(
+            target.read_text(encoding="utf-8") + "\n## Known failures\n",
+            encoding="utf-8",
+        )
         self._write_contract(values)
         result = repository_context.validate_contract(self.repo)
         self.assertTrue(result["ok"], result["errors"])
         self.assertEqual(
             result["capabilities"]["bug-reproduction"]["targets"][0]["fragment"],
             "known-failures",
+        )
+
+    def test_missing_fragment_invalidates_capability(self) -> None:
+        values = {
+            capability: f"[{capability}]({self._write_guidance(capability)})"
+            for capability in repository_context.CAPABILITIES
+        }
+        values["bug-reproduction"] = (
+            "[reproduction procedure](docs/bug-reproduction.md#missing-section)"
+        )
+        self._write_contract(values)
+        result = repository_context.validate_contract(self.repo)
+        self.assertFalse(result["ok"])
+        self.assertIn(
+            "target_fragment_missing",
+            [error["code"] for error in result["errors"]],
         )
 
     def test_malformed_target_list_is_rejected(self) -> None:

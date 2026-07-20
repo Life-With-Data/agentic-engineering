@@ -57,6 +57,47 @@ const CAPABILITIES = [
   "documentation",
 ];
 
+const SCRIPT_BUNDLES: Record<string, Record<string, string>> = {
+  "wf-grooming": {
+    "repository-context.py": "scripts/repository-context.py",
+    "lifecycle_board.py": "scripts/lifecycle_board.py",
+  },
+  "wf-development": {
+    "repository-context.py": "scripts/repository-context.py",
+    "lifecycle_board.py": "scripts/lifecycle_board.py",
+    "workflow-repo-preflight.py": "scripts/workflow-repo-preflight.py",
+    "worktree-manager.sh": "skills/wf-development/scripts/worktree-manager.sh",
+  },
+  "wf-testing": {
+    "repository-context.py": "scripts/repository-context.py",
+  },
+  "wf-review": {
+    "repository-context.py": "scripts/repository-context.py",
+    "get-pr-comments": "skills/wf-review/scripts/get-pr-comments",
+    "resolve-pr-thread": "skills/wf-review/scripts/resolve-pr-thread",
+  },
+  "wf-delivery": {
+    "repository-context.py": "scripts/repository-context.py",
+    "lifecycle_board.py": "scripts/lifecycle_board.py",
+    "pr-landable-status": "skills/wf-delivery/scripts/pr-landable-status",
+    "worktree-manager.sh": "skills/wf-development/scripts/worktree-manager.sh",
+  },
+  "wf-documentation": {
+    "repository-context.py": "scripts/repository-context.py",
+  },
+  "wf-setup": {
+    "repository-context.py": "scripts/repository-context.py",
+    "lifecycle_board.py": "scripts/lifecycle_board.py",
+    "bootstrap_lifecycle_board.py": "scripts/bootstrap_lifecycle_board.py",
+    "config_registry.py": "scripts/config_registry.py",
+    "block-db-push.py": "scripts/block-db-push.py",
+    "block-no-verify.py": "scripts/block-no-verify.py",
+    "block-slack-webhook.py": "scripts/block-slack-webhook.py",
+    "hook_payload.py": "scripts/hook_payload.py",
+    "prevent-main-commit.py": "scripts/prevent-main-commit.py",
+  },
+};
+
 function recursiveFiles(dir: string): string[] {
   const files: string[] = [];
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
@@ -123,6 +164,72 @@ describe("workflow skill architecture", () => {
           expect(entry.isFile()).toBe(true);
         }
       }
+    }
+  });
+
+  test("every executable dependency is bundled with its consuming skill", () => {
+    for (const [owner, expected] of Object.entries(SCRIPT_BUNDLES)) {
+      const scriptDirectory = path.join(SKILLS, owner, "scripts");
+      expect(readdirSync(scriptDirectory).sort()).toEqual(Object.keys(expected).sort());
+
+      for (const [file, canonical] of Object.entries(expected)) {
+        expect(readFileSync(path.join(scriptDirectory, file), "utf8")).toBe(
+          readFileSync(path.join(PLUGIN, canonical), "utf8"),
+        );
+      }
+    }
+  });
+
+  test("skill instructions resolve scripts locally, never through a plugin root", () => {
+    const source = recursiveFiles(SKILLS)
+      .filter((file) => file.endsWith(".md"))
+      .map((file) => readFileSync(file, "utf8"))
+      .join("\n");
+    expect(source).not.toContain("CLAUDE_PLUGIN_ROOT");
+    expect(source).not.toContain("PLUGIN_ROOT");
+    expect(source).not.toContain("<plugin-path>");
+  });
+
+  test("active workflow instructions do not invoke retired flat skills", () => {
+    const sources = [
+      ...recursiveFiles(SKILLS).filter((file) => file.endsWith(".md")),
+      ...recursiveFiles(path.join(PLUGIN, "agents")).filter((file) => file.endsWith(".md")),
+      path.join(PLUGIN, "README.md"),
+    ];
+    const retiredSlashNames = [
+      "workflows-brainstorm", "workflows-compound", "workflows-groom",
+      "workflows-merge", "workflows-orchestrate", "workflows-plan",
+      "workflows-review", "workflows-work", "reproduce-bug", "report-bug",
+      "triage", "lifecycle-doctor", "config-flags",
+    ];
+    const stale: string[] = [];
+
+    for (const file of sources) {
+      const source = readFileSync(file, "utf8");
+      for (const name of retiredSlashNames) {
+        const pattern = "(^|[\\s'\"(]|`)/" + name + "\\b";
+        if (new RegExp(pattern, "m").test(source)) {
+          stale.push(`${path.relative(ROOT, file)} invokes /${name}`);
+        }
+      }
+    }
+
+    expect(stale).toEqual([]);
+  });
+
+  test("agents request capabilities without assuming retired skill names or layouts", () => {
+    const source = recursiveFiles(path.join(PLUGIN, "agents"))
+      .filter((file) => file.endsWith(".md"))
+      .map((file) => readFileSync(file, "utf8"))
+      .join("\n");
+    for (const stale of [
+      "agent-browser",
+      "~/.claude/skills",
+      ".claude/skills/",
+      "docs/plans/",
+      "todos/*.md",
+    ]) {
+      expect(source).not.toContain(stale);
     }
   });
 

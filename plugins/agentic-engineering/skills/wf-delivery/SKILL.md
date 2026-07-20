@@ -15,8 +15,12 @@ Does not contain: CI provider configuration, release commands, production creden
 
 ## Start here
 
+Resolve `<skill-directory>` to the directory containing this `SKILL.md`. All
+scripts used by this workflow are bundled there; do not resolve them through a
+plugin root.
+
 ```bash
-python3 "${CLAUDE_PLUGIN_ROOT}/scripts/repository-context.py" \
+python3 <skill-directory>/scripts/repository-context.py \
   --require test-execution \
   --require delivery
 ```

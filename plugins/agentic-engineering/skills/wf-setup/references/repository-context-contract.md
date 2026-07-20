@@ -41,10 +41,18 @@ Each available capability maps to one or more comma-separated Markdown links on 
 - The same repository asset may appear under multiple capabilities.
 - A target may be an existing skill, `AGENTS.md` or `CLAUDE.md` section, runbook, or other repository-owned guidance.
 - Use descriptive link text to state why the asset is relevant. Do not add a second role taxonomy.
-- A fragment such as `docs/operations.md#diagnostics` narrows a broad document without requiring a wrapper.
+- A fragment such as `docs/operations.md#diagnostics` narrows a broad document
+  without requiring a wrapper. It must resolve to an actual Markdown heading or
+  explicit HTML anchor; the validator rejects stale fragments.
 - `not-applicable` is exclusive; do not combine it with links.
 
 Workflow skills read the primary target first, then load supporting targets only when the task needs them. Mapping order controls progressive disclosure, not authority or override precedence.
+
+Granular mechanisms belong inside these assets rather than in new top-level
+contract keys. For example, `test-execution` may point to a testing guide whose
+"Browser verification" section names the repository-approved browser mechanism.
+Workflow routes describe the runtime behavior they require; the repository
+asset and available host metadata resolve the concrete tool.
 
 ## Capability target contract
 
@@ -94,13 +102,13 @@ Change `contract-version` to `2`, then replace any wrapper-only targets with the
 Validate the complete contract:
 
 ```bash
-python3 "${CLAUDE_PLUGIN_ROOT}/scripts/repository-context.py"
+python3 "<skill-directory>/scripts/repository-context.py"
 ```
 
 Require capabilities for a particular workflow:
 
 ```bash
-python3 "${CLAUDE_PLUGIN_ROOT}/scripts/repository-context.py" \
+python3 "<skill-directory>/scripts/repository-context.py" \
   --require bug-reproduction \
   --require test-execution
 ```

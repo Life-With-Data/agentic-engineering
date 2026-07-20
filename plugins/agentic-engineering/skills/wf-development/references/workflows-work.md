@@ -1,10 +1,13 @@
-# Work Plan Execution Command
+# Work Plan Execution
 
 Execute a work plan efficiently while maintaining quality and finishing features.
 
 ## Introduction
 
-This command takes a work document (plan, specification, or todo file) and executes it systematically. The focus is on **shipping complete features** by understanding requirements quickly, following existing patterns, and maintaining quality throughout.
+This route takes a work document (plan, specification, or tracked task) and
+executes it systematically. The focus is on **shipping complete features** by
+understanding requirements quickly, following existing patterns, and
+maintaining quality throughout.
 
 ## Input Document
 
@@ -12,14 +15,15 @@ This command takes a work document (plan, specification, or todo file) and execu
 
 ## Entry Gate
 
-**Writer contract.** This command performs **exactly two parent-stage transitions** and no others:
+**Writer contract.** This route performs **exactly two parent-stage transitions** and no others:
 
 - `planned → in_progress` — the claim (Phase 1, via `--claim`).
 - `in_progress → in_review` — PR open (Phase 4, via `--set-status <N> in_review`).
 
-It never writes any other parent stage, never closes the parent issue, and never hand-assembles board GraphQL. The built-in "Item closed" automation owns `→ shipped` when the merge closes the issue; the shared reconciler owns every repair. Separately, it drives its **sub-issues'** `status:*` labels via `--sub-status` (in_progress/in_review/blocked/done) — a PR-less, board-free track defined in the `lifecycle` skill; only the owning agent writes it, never a dispatched sub-agent. Sub-issues are the task tracker; TodoWrite is a disposable in-session scratchpad.
+It never writes any other parent stage, never closes the parent issue, and never hand-assembles board GraphQL. The built-in "Item closed" automation owns `→ shipped` when the merge closes the issue; the shared reconciler owns every repair. Separately, it drives its **sub-issues'** `status:*` labels via `--sub-status` (in_progress/in_review/blocked/done) — a PR-less, board-free track defined by the `wf-setup` lifecycle route; only the owning agent writes it, never a dispatched sub-agent. Sub-issues are the task tracker; an in-session task list is disposable scratch state.
 
-**Stage semantics.** Load the `lifecycle` skill for the 9-stage enum, the writer table, and the entry-gate/verdict vocabulary — this command references those definitions rather than restating them.
+**Stage semantics.** Use the `wf-setup` lifecycle route for the 9-stage enum,
+writer table, and entry-gate/verdict vocabulary, then return here.
 
 **Execution discipline.** Decompose work by risk and dependency, define an exit
 check for every subtask, and verify results through a channel independent of the
@@ -35,7 +39,7 @@ Run these in order, once, at entry:
 1. **Preflight (read-only).** Use its JSON output as the source of truth for branch/dirty/PR state and tracker resolution. It never mutates.
 
    ```bash
-   python3 "${CLAUDE_PLUGIN_ROOT}/scripts/workflow-repo-preflight.py"
+   python3 "<skill-directory>/scripts/workflow-repo-preflight.py"
    ```
 
    Relevant fields:
@@ -55,13 +59,13 @@ Run these in order, once, at entry:
 2. **Reconcile once (TTL-cached).** Repair any drift on the board's active items before gating, so the gate reads settled state. This is a no-op within the session TTL and degrades to reported JSON on partial failure — never fail the command on it.
 
    ```bash
-   python3 "${CLAUDE_PLUGIN_ROOT}/scripts/lifecycle_board.py" --reconcile
+   python3 "<skill-directory>/scripts/lifecycle_board.py" --reconcile
    ```
 
 3. **Gate.** Invoke the gate for this command with the resolved issue number:
 
    ```bash
-   python3 "${CLAUDE_PLUGIN_ROOT}/scripts/lifecycle_board.py" --gate work --issue <N>
+   python3 "<skill-directory>/scripts/lifecycle_board.py" --gate work --issue <N>
    ```
 
    The gate returns `{mode, verdict, route, reason, stage, issue, plan_doc, flags, ...}`. Branch on the **closed** `verdict` enum — never re-derive stage from prose or filenames:
@@ -69,9 +73,9 @@ Run these in order, once, at entry:
    | `verdict` | What it means | Action |
    |-----------|---------------|--------|
    | `proceed` | `stage ≥ planned` **and** a join-keyed plan doc exists | Continue to **Phase 1**. |
-   | `route_to_plan` | Not yet groomed to `planned`, **or** Status says planned but no plan doc | Tell the user to run **`/workflows-plan`** first. Hotfixes bypass the board entirely (plain PR flow, no gate, no board exception). **STOP.** |
+   | `route_to_plan` | Not yet groomed to `planned`, **or** Status says planned but no plan doc | Tell the user to run **the `wf-grooming` planning route** first. Hotfixes bypass the board entirely (plain PR flow, no gate, no board exception). **STOP.** |
    | `already_done` | Stage is terminal (`shipped`/`deployed`/`compounded`) or `abandoned` | Report the stage to the user and that the work is already at/past this command's scope. **STOP.** |
-   | `repair_needed` | Stale join key, or a stage claiming `planned`/`brainstormed` with no matching artifact | The board can't be trusted for this item. Report the flag/reason, tell the user to fix the doc's `github_issue:` frontmatter (or re-run `/workflows-plan` if the plan doc is genuinely missing), and **STOP**. |
+   | `repair_needed` | Stale join key, or a stage claiming `planned`/`brainstormed` with no matching artifact | The board can't be trusted for this item. Report the flag/reason, tell the user to fix the doc's `github_issue:` frontmatter (or re-run the `wf-grooming` planning route if the plan doc is genuinely missing), and **STOP**. |
    | `no_board` | No board configured (mode is `github`/`none`) | Fall through to the **Legacy flow (no board)** below and continue **degraded** — no stage machinery, no board writes. |
 
    `claim_conflict` and `blocked` are **not** gate verdicts — they are returned by `--claim` in Phase 1, not here. Only `proceed` (with a board) and `no_board` (degraded) continue past this gate; every other verdict **STOPs**.
@@ -96,7 +100,7 @@ When `verdict == no_board`, the repo has no configured Projects board. Behave as
    The claim is a single verb. Do **not** hand-roll assignment, sole-assignee confirmation, blocked-by checks, or the `in_progress` write — `--claim` does all of it atomically-in-order (assign → re-read → confirm sole assignee → verify `blocked-by` empty → Status = `in_progress`):
 
    ```bash
-   python3 "${CLAUDE_PLUGIN_ROOT}/scripts/lifecycle_board.py" --claim <N>
+   python3 "<skill-directory>/scripts/lifecycle_board.py" --claim <N>
    ```
 
    Branch on the returned `verdict`:
@@ -124,8 +128,7 @@ When `verdict == no_board`, the repo has no configured Projects board. Behave as
 
    **Option B: Use a worktree (recommended for parallel development)**
    ```bash
-   skill: git-worktree
-   # Creates a new branch from the default branch in an isolated worktree.
+   bash <skill-directory>/scripts/worktree-manager.sh create <branch-name>
    ```
    Name the branch `feat/<N>-<slug>` here too.
 
@@ -135,7 +138,7 @@ When `verdict == no_board`, the repo has no configured Projects board. Behave as
 
 4. **Decompose into tasks (sub-issues)**
 
-   `/workflows-plan` already created the sub-issues that decompose this work item — you do **not** create them here. List them:
+   the `wf-grooming` planning route already created the sub-issues that decompose this work item — you do **not** create them here. List them:
 
    ```bash
    # Sub-issues of the claimed parent <N>:
@@ -158,7 +161,7 @@ When `verdict == no_board`, the repo has no configured Projects board. Behave as
 | **Orchestrated** ([section](#orchestrated-execution-board-driven)) | Work backed by tracked sub-issues — one or many | You own the board/sub-issue state and drive one subagent per sub-issue, looping each to a terminal state before returning. |
 | **Swarm** ([section](#swarm-mode-optional)) | 5+ independent workstreams needing maximum parallelism | Long-lived teammates self-claim from a shared queue. |
 
-Even a **single** tracked item benefits from Orchestrated Execution — the orchestrator absorbs the retry/verify/unblock loop and returns a finished or verifiably-blocked result, not a half-step. The Inline loop below is the default for plan/spec files — **except when this command runs under `/workflows-orchestrate` in an autonomous mode (its fully-autonomous default, or `--final-review`)**, where Orchestrated is the default for all inputs: the orchestrator is a reviewer, not an implementer, and delegates every work item to a sub-agent whose diff it verifies before accepting.
+Even a **single** tracked item benefits from Orchestrated Execution — the orchestrator absorbs the retry/verify/unblock loop and returns a finished or verifiably-blocked result, not a half-step. The Inline loop below is the default for plan/spec files — **except when this command runs under the `wf-development` orchestration route in an autonomous mode (its fully-autonomous default, or `--final-review`)**, where Orchestrated is the default for all inputs: the orchestrator is a reviewer, not an implementer, and delegates every work item to a sub-agent whose diff it verifies before accepting.
 
 1. **Task Execution Loop** (board mode — iterate open sub-issues)
 
@@ -168,16 +171,16 @@ Even a **single** tracked item benefits from Orchestrated Execution — the orch
    while (open sub-issues of <N> remain):
      - sub = next open, unblocked sub-issue (from `gh issue view <N> --repo <origin> --json subIssues`)
      - (multi-agent) claim it: gh issue edit <sub> --repo <origin> --add-assignee @me
-     - python3 "${CLAUDE_PLUGIN_ROOT}/scripts/lifecycle_board.py" --sub-status <sub> in_progress
+     - python3 "<skill-directory>/scripts/lifecycle_board.py" --sub-status <sub> in_progress
      - Read any referenced files from the plan
      - Look for similar patterns in the codebase
      - Implement following existing conventions
      - Write tests for new functionality
      - Run System-Wide Test Check (see below)
      - Run tests after changes
-     - python3 "${CLAUDE_PLUGIN_ROOT}/scripts/lifecycle_board.py" --sub-status <sub> in_review   # code done, awaiting acceptance verification
+     - python3 "<skill-directory>/scripts/lifecycle_board.py" --sub-status <sub> in_review   # code done, awaiting acceptance verification
      - Verify acceptance criteria; when they pass:
-     - python3 "${CLAUDE_PLUGIN_ROOT}/scripts/lifecycle_board.py" --sub-status <sub> done   # strips the label AND closes the sub-issue
+     - python3 "<skill-directory>/scripts/lifecycle_board.py" --sub-status <sub> done   # strips the label AND closes the sub-issue
      - Check off the corresponding checkbox in the plan doc ([ ] → [x])  # readability only, non-authoritative
      - Evaluate for incremental commit (see below)
    ```
@@ -430,7 +433,7 @@ The philosophy here: **opening the PR is the `in_review` transition, not a compl
    The PR is open; move the work item to `in_review`. This is the command's second and final board write — **the issue is NOT closed here**:
 
    ```bash
-   python3 "${CLAUDE_PLUGIN_ROOT}/scripts/lifecycle_board.py" --set-status <N> in_review
+   python3 "<skill-directory>/scripts/lifecycle_board.py" --set-status <N> in_review
    ```
 
    From here the lifecycle proceeds without any manual close protocol:
@@ -444,7 +447,10 @@ The philosophy here: **opening the PR is the `in_review` transition, not a compl
    - Link to the PR.
    - Note that the work item is now `in_review`; it becomes `shipped` automatically when the PR merges (and regresses to `in_progress` automatically if the PR is closed unmerged) — no manual tracking needed.
    - Note any follow-up work needed.
-   - Suggest next steps: typically **`/workflows-review`** to review the PR, then the **`land-pr`** skill to drive CI green, resolve review threads, and **merge** once approved. This command ends at PR creation; `land-pr` owns the completion-and-merge tail (it invokes the shared reconciler to verify/repair `shipped` post-merge — idempotent with the automation, so nothing double-writes).
+   - Suggest next steps: use the `wf-review` comprehensive-review route, then
+     the `wf-delivery` landing route to drive CI green, resolve review threads,
+     and merge once approved. This route ends at PR creation; `wf-delivery`
+     owns the completion-and-merge tail.
 
 ---
 
@@ -472,7 +478,7 @@ All state lives on the board and its sub-issues. **Only the orchestrator** touch
 
 | Action | GitHub |
 |--------|--------|
-| List ready | `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/lifecycle_board.py" --ready-work` (planned ∧ unassigned ∧ unblocked, Priority-sorted), or the open unblocked sub-issues of the claimed parent `<N>` via `gh issue view <N> --repo <origin> --json subIssues` |
+| List ready | `python3 "<skill-directory>/scripts/lifecycle_board.py" --ready-work` (planned ∧ unassigned ∧ unblocked, Priority-sorted), or the open unblocked sub-issues of the claimed parent `<N>` via `gh issue view <N> --repo <origin> --json subIssues` |
 | Read one | `gh issue view <sub> --repo <origin>` |
 | Claim | assign yourself, then confirm: `gh issue edit <sub> --repo <origin> --add-assignee @me` — for the **parent**, use `--claim <N>` (it owns the full claim protocol) |
 | Mark in progress | `lifecycle_board.py --sub-status <sub> in_progress` (at dispatch) |
@@ -506,7 +512,8 @@ report "done" while an open sub-issue is unstarted or a follow-on is open.
 3. **Dispatch.** Assign the sub-issue to yourself (`gh issue edit <sub> --repo <origin> --add-assignee @me`), mark it in progress (`lifecycle_board.py --sub-status <sub> in_progress`), then spawn one subagent per sub-issue with the brief below
    (Task tool / `general-purpose`, or a specialist agent). Send parallel dispatches in one message.
    The subagent implements only — **the orchestrator owns every `--sub-status` write**; the subagent never touches GitHub.
-   For file-conflicting parallel work, isolate each agent in its own git worktree (`skill: git-worktree`) and reconcile on return.
+   For file-conflicting parallel work, isolate each agent with the bundled
+   worktree manager and reconcile on return.
    **Model tiering:** run implementation subagents on an Opus-tier model (`model: "opus"`), in the
    background for parallel waves — the orchestrator keeps the session's strongest model for the
    verify/review step, and purely mechanical chores (docs regeneration, count bumps) can drop to a
@@ -558,10 +565,11 @@ REPORT BACK (your final message = structured result, not prose to a human):
 
 ### Rules baked in
 - Respect the dependency graph — never dispatch a sub-issue with an open `blocked-by`.
-- Parallelize only file-disjoint sub-issues; otherwise serialize or isolate with the `git-worktree` skill.
+- Parallelize only file-disjoint sub-issues; otherwise serialize or isolate
+  with this skill's [worktree reference](git-worktree.md) and bundled manager.
 - One sub-issue = one subagent, tightly scoped; subagents never run board/tracker state changes.
 - Discovered work becomes a follow-on sub-issue that gates its parent — never a silent extra.
-- Bound retries (~2), then block and escalate — don't loop forever. A retry that makes no strictly-measurable progress (gates still fail the same way, no criterion newly satisfied) is a dry attempt; two dry attempts is the stall bound — the same uniform no-progress rule `/workflows-orchestrate` applies run-wide.
+- Bound retries (~2), then block and escalate — don't loop forever. A retry that makes no strictly-measurable progress (gates still fail the same way, no criterion newly satisfied) is a dry attempt; two dry attempts is the stall bound — the same uniform no-progress rule the `wf-development` orchestration route applies run-wide.
 - Quality gates are mandatory before any sub-issue is closed; the parent's `shipped` comes from the merge.
 
 ---
@@ -632,7 +640,9 @@ When swarm mode is enabled, the workflow changes:
    Teammate({ operation: "cleanup" })
    ```
 
-See the `orchestrating-swarms` skill for detailed swarm patterns and best practices.
+Use only the host's documented agent-coordination capability. If the host has
+no team or subagent mechanism, use the inline or orchestrated single-agent
+model; do not require a separately named orchestration skill.
 
 ---
 

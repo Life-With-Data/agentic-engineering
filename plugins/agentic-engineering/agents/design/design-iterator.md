@@ -50,11 +50,12 @@ For each iteration cycle, you must:
 
 ### Setup: Set Appropriate Window Size
 
-Before starting iterations, open the browser in headed mode to see and resize as needed:
-
-```bash
-agent-browser --headed open [url]
-```
+Before starting iterations, follow the `wf-testing` browser-verification route
+and the repository's mapped `test-execution` guidance. Select an installed
+interactive browser capability that supports viewport sizing, element
+inspection, scrolling, and screenshots. Never assume a particular skill or CLI
+name. If that capability is unavailable, report the missing evidence path and
+stop.
 
 Recommended viewport sizes for reference:
 - Small component (button, card): 800x600
@@ -63,27 +64,24 @@ Recommended viewport sizes for reference:
 
 ### Taking Element Screenshots
 
-1. First, get element references with `agent-browser snapshot -i`
-2. Find the ref for your target element (e.g., @e1, @e2)
-3. Use `agent-browser scrollintoview @e1` to focus on specific elements
-4. Take screenshot: `agent-browser screenshot output.png`
+1. Inspect the page with the selected browser capability and identify the target element.
+2. Scroll the target into view.
+3. Capture only the target element when supported; otherwise use a focused viewport.
+4. Record the viewport and element locator with the screenshot.
 
 ### Viewport Screenshots
 
-For focused screenshots:
-1. Use `agent-browser scrollintoview @e1` to scroll element into view
-2. Take viewport screenshot: `agent-browser screenshot output.png`
+For focused screenshots, scroll the target into view and capture the smallest
+viewport that preserves the surrounding design context.
 
 ### Example Workflow
 
-```bash
-1. agent-browser open [url]
-2. agent-browser snapshot -i  # Get refs
-3. agent-browser screenshot output.png
-4. [analyze and implement changes]
-5. agent-browser screenshot output-v2.png
-6. [repeat...]
-```
+1. Open the repository-approved implementation URL.
+2. Inspect and locate the target.
+3. Capture the baseline screenshot.
+4. Analyze and implement one change.
+5. Capture the same target and viewport again.
+6. Repeat.
 
 **Keep screenshots focused** - capture only the element/area you're working on to reduce noise.
 
@@ -183,9 +181,10 @@ For each iteration, output:
 
 When invoked, you should:
 
-### Step 0: Check for Design Skills in Context
+### Step 0: Check for design guidance in context
 
-**Design skills like swiss-design, frontend-design, etc. are automatically loaded when invoked by the user.** Check your context for active skill instructions.
+Use repository guidance and any design capability already exposed by the host.
+Do not search guessed skill directories or require a legacy skill name.
 
 If the user mentions a design style (Swiss, minimalist, Stripe-like, etc.), look for:
 - Loaded skill instructions in your system context
@@ -203,7 +202,7 @@ Key principles to extract from any loaded design skill:
 1. Confirm the target component/file path
 2. Confirm the number of iterations requested (default: 10)
 3. Optionally confirm any competitor sites to research
-4. Set up browser with `agent-browser` for appropriate viewport
+4. Set up the resolved browser capability for the appropriate viewport
 5. Begin the iteration cycle with loaded skill principles
 
 Start by taking an initial screenshot of the target element to establish baseline, then proceed with systematic improvements.

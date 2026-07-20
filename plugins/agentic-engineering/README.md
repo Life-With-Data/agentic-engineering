@@ -199,7 +199,13 @@ The `github-project` lifecycle is opinionated about your repo's shape. Read thes
 
 ## Verify your setup
 
-Run **`/lifecycle-doctor`** after install or bootstrap and **before your first work item**. It renders a PASS/WARN/FAIL/SKIP checklist across the local toolchain, repo shape, board schema, and delivery topology — with a named fix per finding — and ends with an explicit **"Ready for first work item: yes/no."** Re-run it after changing board config, tokens, or CD wiring. Add **`--live`** for the end-to-end probe (create → board-add → close → assert `shipped` → cleanup), which is the only path that creates anything and cleans up after itself.
+Run the **`wf-setup` diagnostics route** after install or bootstrap and **before
+your first work item**. It renders a PASS/WARN/FAIL/SKIP checklist across the
+local toolchain, repo shape, board schema, and delivery topology, with a named
+fix per finding, and ends with **"Ready for first work item: yes/no."** Re-run it
+after changing board config, tokens, or CD wiring. Pass **`--live`** to that
+route for the end-to-end probe (create → board-add → close → assert `shipped` →
+cleanup), which is the only path that creates anything and cleans up afterward.
 
 ## Installation
 

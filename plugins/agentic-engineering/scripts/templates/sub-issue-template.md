@@ -4,7 +4,7 @@ CANONICAL SUB-ISSUE TEMPLATE (agentic-engineering eng workflow)
 A sub-issue is the claim/task unit: one focused, independently verifiable piece
 of the parent. It is open/closed only — it carries no lifecycle stage. Ordering
 between sub-issues is expressed with native dependencies (`--add-blocked-by`),
-not prose. This body is written by `/workflows-plan` Step 7 via `--body-file`
+not prose. This body is written by the `wf-grooming` planning route Step 7 via `--body-file`
 when it decomposes the parent into sub-issues.
 
 Keep sub-issues small enough that one person can carry them to a green PR in a

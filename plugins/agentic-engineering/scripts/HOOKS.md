@@ -158,7 +158,7 @@ the session lacks a tracker ID (`bead_id` / `linear_issue` / `github_issue`) in
 its YAML frontmatter — unless the plan opts out with `issue_tracker: none`.
 
 **Why:** Plans that aren't linked to a tracked issue get orphaned. This keeps
-`/workflows-plan` output connected to whatever issue tracker the repo uses.
+the `wf-grooming` planning route output connected to whatever issue tracker the repo uses.
 
 ## `sdd-cache-pre.py` / `sdd-cache-post.py` — PreToolUse / PostToolUse (WebFetch), opt-in — Claude-only
 

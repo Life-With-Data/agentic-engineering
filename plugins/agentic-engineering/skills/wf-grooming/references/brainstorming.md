@@ -1,6 +1,6 @@
 # Brainstorming
 
-This skill provides detailed process knowledge for effective brainstorming sessions that clarify **WHAT** to build before diving into **HOW** to build it.
+This reference provides detailed process knowledge for effective brainstorming sessions that clarify **WHAT** to build before diving into **HOW** to build it.
 
 ## When to Use This Skill
 
@@ -126,7 +126,7 @@ topic: <kebab-case-topic>
 - [Any unresolved questions for the planning phase]
 
 ## Next Steps
-→ `/workflows-plan` for implementation details
+→ the `wf-grooming` planning route for implementation details
 ```
 
 **Output location:** Use the brainstorm or design-document location named by the
@@ -137,7 +137,7 @@ in the GitHub work item instead of inventing a directory.
 
 Present clear options for what to do next:
 
-1. **Proceed to planning** → Run `/workflows-plan`
+1. **Proceed to planning** → Run the `wf-grooming` planning route
 2. **Refine further** → Continue exploring the design
 3. **Done for now** → User will return later
 
@@ -184,4 +184,4 @@ Planning answers **HOW** to build it:
 - Technical details and code patterns
 - Testing strategy and verification
 
-When brainstorm output exists, `/workflows-plan` should detect it and use it as input, skipping its own idea refinement phase.
+When brainstorm output exists, the `wf-grooming` planning route should detect it and use it as input, skipping its own idea refinement phase.

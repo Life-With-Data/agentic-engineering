@@ -4,17 +4,17 @@ Analyze test files to identify coverage gaps, mock depth issues, and untested in
 
 ## When to Use
 
-- During `/workflows-plan` to plan testing strategy for a new feature
-- During `/workflows-work` to verify test quality before marking a task done
-- During `/workflows-review` to assess test coverage of a PR
+- During the `wf-grooming` planning route to plan testing strategy for a new feature
+- During the `wf-development` work route to verify test quality before marking a task done
+- During the `wf-review` comprehensive-review route to assess test coverage of a PR
 - Standalone to audit test quality for any test file
 
 ## Input
 
 Provide one or more of:
 - A test file path to analyze
-- A source file path (the skill will find corresponding tests)
-- A feature description (the skill will identify relevant test files)
+- A source file path (the reference will find corresponding tests)
+- A feature description (the reference will identify relevant test files)
 
 ## Analysis Process
 

@@ -5,7 +5,7 @@ Setup-verification front door for the unified GitHub Projects v2 lifecycle. Run 
 ## Step 1: Run the doctor verb
 
 ```bash
-python3 "${CLAUDE_PLUGIN_ROOT}/scripts/lifecycle_board.py" --doctor
+python3 "<skill-directory>/scripts/lifecycle_board.py" --doctor
 ```
 
 This returns JSON: `{"checks": [...], "ready": bool}`. Each entry in `checks` has `check`, `status` (`PASS`/`WARN`/`FAIL`/`SKIP`), `detail`, and `fix` (empty when not applicable). These are the **same check functions the runtime hard-error paths call** — doctor and commands can never disagree about repo readiness.
@@ -41,7 +41,7 @@ sourced directly from the JSON's `ready` field (`ready: true` → yes, `ready: f
 If `$ARGUMENTS` contains `--live`, after the read-only report above, also run the bootstrap probe:
 
 ```bash
-python3 "${CLAUDE_PLUGIN_ROOT}/scripts/bootstrap_lifecycle_board.py" --probe-only
+python3 "<skill-directory>/scripts/bootstrap_lifecycle_board.py" --probe-only
 ```
 
 This creates one scratch issue, adds it to the board, closes it, asserts the Status flips to `shipped`, then deletes the scratch issue — it needs `project` scope (see `project_scope` above). Append its evidence (issue number created/deleted, observed Status transition, pass/fail) to the report under a **Live probe** section.
@@ -49,14 +49,14 @@ This creates one scratch issue, adds it to the board, closes it, asserts the Sta
 ## Step 5: Configuration section (read-only)
 
 ```bash
-python3 "${CLAUDE_PLUGIN_ROOT}/scripts/config_registry.py" --inventory
+python3 "<skill-directory>/scripts/config_registry.py" --inventory
 ```
 
 Render a **Configuration** section beneath the board-health report, one row per flag: **SET** (`set: true`) or **UNSET** (`set: false`, showing the default in use). This is a different judgment from the PASS/WARN/FAIL/SKIP checks above — it reports what a repo has *chosen*, not whether the repo is healthy — so use the SET/UNSET vocabulary here, not the health glyphs. The one exception: a row whose `valid` is `false` (a stale or malformed override, e.g. `issue_tracker: linear`) renders as **⚠️ WARN — invalid, falling back to default** — this is the sole place WARN appears in this section, and it never changes the overall `ready` verdict from Step 3 (configuration state is not board health).
 
 If `config_registry.py` is missing or `--inventory` fails, render "Configuration inventory unavailable" and continue — this section is best-effort and must never block the rest of the report.
 
-To change a flag, run `/config-flags` — this section is read-only.
+To change a flag, run the `wf-setup` configuration route — this section is read-only.
 
 ## Step 6: Guidance — when to re-run
 
@@ -71,4 +71,4 @@ The **forward binding** (how new issues reach the board) is now a recorded decis
 
 - This command is read-only in its default (non-`--live`) form; it makes no board writes and creates nothing. The Configuration section (Step 5) is also read-only, always — it never writes, even under `--live`.
 - The doctor's checks and the runtime commands' entry-gate hard errors share one implementation (`lifecycle_board.py`), so a clean doctor run is a reliable predictor of command behavior — there is no separate "doctor logic" to drift out of sync.
-- The Configuration section shares its data source (`config_registry.py --inventory`) with `/config-flags` — the two surfaces can never disagree about what's currently set, only about whether they report or let you act on it.
+- The Configuration section shares its data source (`config_registry.py --inventory`) with the `wf-setup` configuration route — the two surfaces can never disagree about what's currently set, only about whether they report or let you act on it.

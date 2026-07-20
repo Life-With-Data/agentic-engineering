@@ -4,7 +4,9 @@
 
 A confident answer is not a correct one. Long sessions accumulate context that quietly turns assumptions into "facts" without anyone noticing. Doubt-driven development is the discipline of materializing a fresh-context reviewer — biased to **disprove**, not approve — before any non-trivial output stands.
 
-This is not `/workflows-review`. `/workflows-review` is a verdict on a finished artifact. This is an in-flight posture: non-trivial decisions get cross-examined while course-correction is still cheap.
+This is not the `wf-review` comprehensive-review route. That route is a verdict
+on a finished artifact. This is an in-flight posture: non-trivial decisions get
+cross-examined while course-correction is still cheap.
 
 ## When to Use
 
@@ -16,7 +18,7 @@ A decision is **non-trivial** when at least one of these is true:
 - Its correctness depends on context the future reader cannot see
 - Its blast radius is irreversible (production deploy, data migration, public API change)
 
-Apply the skill when:
+Apply the reference when:
 
 - About to make an architectural decision under uncertainty
 - About to commit non-trivial code
@@ -32,18 +34,21 @@ Apply the skill when:
 - Pure tooling operations (running tests, listing files)
 - The user has explicitly asked for speed over verification
 
-Doubt applied to every keystroke ships nothing. The skill applies only to non-trivial decisions as defined above.
+Doubt applied to every keystroke ships nothing. This reference applies only to
+non-trivial decisions as defined above.
 
 ## Loading Constraints
 
-This skill is designed for the **main-session orchestrator** — the leader that spawns fresh-context reviewer subagents or teammates, as described in the `orchestrating-swarms` skill. Step 3 (DOUBT, detailed below) depends on that ability to spawn.
+This reference is designed for a **main-session orchestrator** with a
+host-supported way to start a fresh-context reviewer. Step 3 depends on that
+capability, not on any particular orchestration skill or tool name.
 
-- **Do NOT add this skill to a review agent's or subagent's `skills:` frontmatter.** Claude Code spawning is one level deep: the main-session leader spawns reviewer teammates, and those teammates cannot spawn their own (read-only agent types such as `Explore` and `Plan` have no `Task` tool at all). A subagent that tried to follow Step 3 would attempt a nested spawn the environment forbids.
-- **When this skill is reached from inside a subagent context** (where nested spawning is unavailable): the preferred path is to surface to the user that doubt-driven cannot run nested and let the main session handle it. As a last resort only, a degraded self-questioning fallback exists — rewrite ARTIFACT + CONTRACT as a fresh self-prompt with a hard separator from the prior reasoning, and walk Steps 1–5. This is **not fresh-context review** (the prior context travels with the reviewer), so flag the result as degraded and prefer escalation whenever the user is reachable.
+- **Do NOT add this reference to a review agent's or subagent's `skills:` frontmatter.** Claude Code spawning is one level deep: the main-session leader spawns reviewer teammates, and those teammates cannot spawn their own (read-only agent types such as `Explore` and `Plan` have no `Task` tool at all). A subagent that tried to follow Step 3 would attempt a nested spawn the environment forbids.
+- **When this reference is reached from inside a subagent context** (where nested spawning is unavailable): the preferred path is to surface to the user that doubt-driven cannot run nested and let the main session handle it. As a last resort only, a degraded self-questioning fallback exists — rewrite ARTIFACT + CONTRACT as a fresh self-prompt with a hard separator from the prior reasoning, and walk Steps 1–5. This is **not fresh-context review** (the prior context travels with the reviewer), so flag the result as degraded and prefer escalation whenever the user is reachable.
 
 ## The Process
 
-Copy this checklist when applying the skill:
+Copy this checklist when applying the reference:
 
 ```
 Doubt cycle:
@@ -100,13 +105,18 @@ CONTRACT: <paste contract>
 
 **Pass ARTIFACT + CONTRACT only. Do NOT pass the CLAIM.** Handing the reviewer the conclusion biases it toward agreement. The reviewer must independently determine whether the artifact satisfies the contract.
 
-In Claude Code, the `agentic-engineering` review agents start with isolated context by design and are usable as the fresh-context reviewer — match one to the domain: `security-sentinel` for auth and untrusted input, `architecture-strategist` for boundary and design decisions, `code-simplicity-reviewer` for over-engineering, `integration-boundary-reviewer` for external-library and API seams, `pattern-recognition-specialist` for convention drift, and the language-specific `kieran-python-reviewer` / `kieran-rails-reviewer` / `kieran-typescript-reviewer`. Spawn them as fresh-context subagents or teammates per the `orchestrating-swarms` skill.
+When the host exposes the bundled review agents with isolated context, match one
+to the domain: `security-sentinel` for auth and untrusted input,
+`architecture-strategist` for boundaries and design, `code-simplicity-reviewer`
+for over-engineering, `integration-boundary-reviewer` for external seams,
+`pattern-recognition-specialist` for convention drift, or a language-specific
+reviewer. Otherwise use the host's generic fresh-context reviewer.
 
 **The adversarial prompt above takes precedence over a review agent's default response shape.** Review agents are written to produce balanced verdicts with both strengths and weaknesses; doubt-driven needs issues-only output. Paste the adversarial prompt verbatim into the invocation so it overrides the agent's default. If an agent's response shape cannot be overridden cleanly, fall back to a generic subagent (`general-purpose`) with the adversarial prompt.
 
 #### Cross-model escalation
 
-A single-model reviewer shares blind spots with the original author — a colder, different-architecture model catches them. Doubt-driven is already opt-in for non-trivial decisions, so within that scope offering cross-model is part of the skill's value, not optional friction.
+A single-model reviewer shares blind spots with the original author — a colder, different-architecture model catches them. Doubt-driven is already opt-in for non-trivial decisions, so within that scope offering cross-model is part of the reference's value, not optional friction.
 
 **Interactive sessions: always offer. Never silently skip.**
 
@@ -192,7 +202,7 @@ If 3 cycles is "obviously insufficient" because the artifact is large: the artif
 | "I'm confident, skip the doubt step" | Confidence correlates poorly with correctness on novel problems. Moments of certainty are exactly when blind spots hide. |
 | "Spawning a reviewer is expensive" | Debugging a wrong commit in production is more expensive. The check is bounded; the bug isn't. |
 | "The reviewer will just nitpick" | Only if unscoped. Constrain the prompt to "issues that would make this fail under the contract." |
-| "I'll do doubt at the end with `/workflows-review`" | `/workflows-review` is a final gate. Doubt-driven catches wrong directions early when course-correction is cheap. By PR time it's too late. |
+| "I'll do doubt at the end with the `wf-review` comprehensive-review route" | That route is a final gate. Doubt-driven catches wrong directions early when course-correction is cheap. By PR time it's too late. |
 | "If I doubt every step I'll never ship" | The skill applies to non-trivial decisions, not every keystroke. Re-read "When NOT to Use." |
 | "Two opinions are always better than one" | Not when the second has less context and produces noise. Reconcile, don't defer. |
 | "The reviewer disagreed so I was wrong" | The reviewer lacks the orchestrator's context — disagreement is information, not verdict. Re-read the artifact, classify, then decide. |
@@ -208,20 +218,24 @@ If 3 cycles is "obviously insufficient" because the artifact is large: the artif
 - Skipping doubt under time pressure on a high-stakes decision
 - Re-spawning fresh-context on an unchanged artifact (the findings repeat; that is stalling)
 - **Doubt theater (checkable signal)**: across 2 or more cycles where the reviewer surfaced substantive findings, zero findings were classified as actionable. That is validating, not doubting. Stop and escalate.
-- Doubting only after committing — that's `/workflows-review`, not doubt-driven development
+- Doubting only after committing — that's the `wf-review` comprehensive-review route, not doubt-driven development
 - Hardcoding an external CLI invocation without confirming with the user that the tool exists, is configured, and accepts that exact syntax
 - **Silently skipping cross-model in an interactive doubt cycle.** Even when not recommending it, the offer must be visible. Skipping is fine; silent skipping is not.
 - Falling back silently when an external CLI errors or is missing — surface the failure and let the user redirect
 - Stripping the contract from the reviewer's input
 - Passing the CLAIM to the reviewer (biases toward agreement)
 
-## Interaction with Other Skills
+## Interaction with Other Workflow Routes
 
-- **`/workflows-review`**: complementary. `/workflows-review` is a post-hoc PR verdict; doubt-driven is in-flight per-decision. Use both. The `verification-loop` skill plays the same post-hoc role for the verify-before-done gate.
+- **`wf-review` comprehensive-review route**: complementary. It is a post-hoc
+  PR verdict; doubt-driven is in-flight per decision. Use both.
 - **context7 docs-lookup (MCP)**: fetching official framework/library docs verifies *facts about frameworks* against the source. Doubt-driven verifies *the reasoning about the artifact*. A docs lookup checks the API exists; doubt-driven checks it was used correctly under the contract.
-- **`test-driven-development`**: TDD's RED step is doubt made concrete — a failing test is a disproof attempt. When TDD applies, that failing test *is* the doubt step for behavioral claims. The `test-strategy-reviewer` skill complements this at review time by finding coverage gaps and shallow mocks.
-- **`debugging-and-error-recovery`**: when the reviewer surfaces a real failure mode, drop into the debugging skill to localize and fix it.
-- **Swarm orchestration** (`orchestrating-swarms`): this skill orchestrates from the main session. Spawning is one level deep — a reviewer teammate cannot itself spawn a nested reviewer, so keep the doubt loop in the leader (see Loading Constraints above).
+- **`wf-testing` TDD and verification routes**: a failing test is a concrete
+  disproof attempt, while the verification route supplies the post-hoc gate.
+- **`wf-development` debugging route**: use it when the reviewer surfaces a
+  real failure mode that must be localized and fixed.
+- **Agent coordination**: keep the doubt loop in the leader and use only the
+  host's documented fresh-context mechanism.
 
 ## Verification
 

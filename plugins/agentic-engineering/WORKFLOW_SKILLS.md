@@ -43,6 +43,38 @@ top-level skill:
 3. `wf-testing` owns regression protection and the original reproduction rerun.
 4. `wf-review` evaluates the fix and its risks.
 
+## Granular capability references
+
+Condensing skills does not remove precision. Express a granular need as four
+separate fields instead of reviving a flat skill name:
+
+1. **Workflow owner** — one discoverable `wf-*` skill.
+2. **Route** — a plain-language branch selected inside that skill, not another
+   discoverable skill.
+3. **Repository capability** — one or more fixed contract keys whose mapped
+   assets define local mechanics.
+4. **Runtime requirement** — a semantic description of the tool behavior
+   needed for this task. Resolve the concrete tool from repository guidance and
+   the host's actually available capability metadata.
+
+For example, do not tell an agent to load an `agent-browser` skill. Use:
+
+```text
+Workflow owner: wf-testing
+Route: browser verification
+Repository capabilities: development-environment, test-execution
+Runtime requirement: interactive browser navigation, element inspection,
+screenshots, and console/network evidence
+```
+
+For a UI bug, the workflow owner is `wf-grooming`, the route is bug
+reproduction, and `bug-reproduction` joins `development-environment` as the
+repository capability. The mapped assets decide whether the concrete mechanism
+is a CLI, MCP tool, device harness, manual procedure, or another installed
+skill. If neither repository guidance nor host metadata supplies the required
+mechanism, report a missing-capability blocker and route to `wf-setup`; never
+guess a historical name or silently substitute weaker evidence.
+
 ## Fixed repository capability set
 
 Every adopting repository declares `contract-version: 2` and all ten keys under
@@ -65,8 +97,10 @@ link is primary; later links are supporting context loaded progressively. One
 asset may serve several capabilities. Assets need no prefix, plugin metadata,
 or one-to-one wrapper.
 
-The validator is `scripts/repository-context.py`. The complete format and the
-inventory-first interview live in `wf-setup`.
+Every router bundles its own `scripts/repository-context.py` so a selected
+skills-only install remains executable without plugin-level files. Other
+portable executables are likewise bundled into each consuming skill. The
+complete contract format and inventory-first interview live in `wf-setup`.
 
 ## Progressive disclosure layout
 
@@ -76,7 +110,7 @@ Each public skill has one discoverable entry point:
 skills/wf-<domain>/
 ├── SKILL.md
 ├── references/*.md
-├── scripts/*       # only when the workflow owns portable mechanics
+├── scripts/*       # every executable dependency used by this workflow
 └── assets/*        # only when the workflow owns an output artifact
 ```
 

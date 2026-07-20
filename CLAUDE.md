@@ -56,7 +56,9 @@ Skill files are `skills/<name>/SKILL.md` with YAML frontmatter (`name` matching 
 
 Work from other repos enters this marketplace via exactly one of two tracks per upstream plugin — see `docs/dependency-policy.md` (enforced by `tests/dependency-policy.test.ts`):
 
-- **Adopt** — import individual components through the `/upstream-scan` triage pipeline (`docs/upstream-sources.md`), adapted and provenance-pinned.
+- **Adopt** — use the repository-local upstream-maintenance procedure
+  (`docs/upstream-sources.md`), adapting and provenance-pinning individual
+  components.
 - **Depend** — declare a whole plugin in a local plugin's `plugin.json` `dependencies` array. Cross-marketplace deps require the marketplace in `allowCrossMarketplaceDependenciesOn` AND a `dependency:` line in the registry; unversioned deps force `scan: auto`.
 
 The core `agentic-engineering` plugin stays dependency-free; formal dependencies live only in thin domain plugins.
@@ -116,7 +118,12 @@ Releases are driven by [release-please](https://github.com/googleapis/release-pl
 
 ## Key Learnings
 
-> **Compounded knowledge lives in [`docs/solutions/`](docs/solutions/)** — one doc per solved problem, written by `/workflows-compound`, with frontmatter for retrieval. **Put new learnings there, not here**, and search there first: the depth behind the bullets below already lives in it. This section stays a short index of habits that shape everyday work in this repo.
+> **Compounded knowledge lives in [`docs/solutions/`](docs/solutions/)** — one
+> doc per solved problem, written through the `wf-documentation` compounding
+> route, with frontmatter for retrieval. **Put new learnings there, not here**,
+> and search there first: the depth behind the bullets below already lives in
+> it. This section stays a short index of habits that shape everyday work in
+> this repo.
 
 - **2026-07-14 — release-please's `bootstrap-sha` is manifest-wide, not per-package, and `extra-files` paths are package-relative unless prefixed with `/`.** A first-draft `release-please-config.json` nested `bootstrap-sha` inside each package (silently ignored) and gave `extra-files` paths as if they were repo-root-relative (silently double-prefixed with the package directory, pointing at nonexistent files). Caught only because the generated release PR was actually inspected before merging — it proposed a wrong MAJOR bump off ancient history and never touched `plugin.json` at all. See `docs/solutions/adopt-release-please.md` for the fix. Read the tool's actual source (`manifest.ts`, `strategies/base.ts`) when a config field's effect is load-bearing, not just its JSON schema — the schema says a field is *valid*, not *where* it's read from.
 - **2026-07-14 — A fork-disconnect force-push can strand a bot-generated release PR on unreachable history.** Disconnecting from the upstream fork and force-pushing `main` back to the correct state left an already-open release-please PR pointed at the old, now-unreachable commit lineage — 826 files of pure noise, unmergeable, and unregenerable because the workflow that created it no longer existed on the new `main`. Verify with `git merge-base --is-ancestor <PR-branch-tip> <main-tip>` before assuming a stale automation PR can simply be re-triggered; if the answer is no, close it and rebuild the automation fresh rather than trying to reconcile it.

@@ -15,10 +15,13 @@ Does not contain: invented repository commands, guessed credentials, product imp
 
 ## Start here
 
-Run the strict validator from the repository checkout:
+Resolve `<skill-directory>` to the directory containing this `SKILL.md`. All
+scripts used by this workflow are bundled there; do not resolve them through a
+plugin root. Run the strict validator from any path inside the repository
+checkout:
 
 ```bash
-python3 "${CLAUDE_PLUGIN_ROOT}/scripts/repository-context.py"
+python3 <skill-directory>/scripts/repository-context.py
 ```
 
 - If it passes, read primary targets first and supporting targets only when needed before changing configuration.

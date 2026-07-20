@@ -17,8 +17,12 @@ Does not contain: repository architecture details, tracker credentials, local co
 
 Validate the repository contract before reading repository guidance:
 
+Resolve `<skill-directory>` to the directory containing this `SKILL.md`. All
+scripts used by this workflow are bundled there; do not resolve them through a
+plugin root.
+
 ```bash
-python3 "${CLAUDE_PLUGIN_ROOT}/scripts/repository-context.py" \
+python3 <skill-directory>/scripts/repository-context.py \
   --require repository-overview \
   --require documentation
 ```
@@ -28,7 +32,7 @@ Stop on a non-zero result. Report the validator's error codes and do not substit
 For a bug report, also require the repository's reproduction mechanics before grooming:
 
 ```bash
-python3 "${CLAUDE_PLUGIN_ROOT}/scripts/repository-context.py" \
+python3 <skill-directory>/scripts/repository-context.py \
   --require development-environment \
   --require bug-reproduction
 ```
