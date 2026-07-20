@@ -1,0 +1,13 @@
+{
+  "skill_name": "wf-grooming",
+  "trigger": {
+    "positive": [
+      { "prompt": "Clarify this request, explore approaches, and groom it into an actionable plan", "top_k": 2 },
+      { "prompt": "Reproduce this bug report and turn it into ready-for-development work", "top_k": 2 }
+    ],
+    "negative": [
+      { "prompt": "Change the code and establish the root cause for this reproduced bug", "owner": "wf-development" },
+      { "prompt": "Configure the plugin, lifecycle board, and portable hooks", "owner": "wf-setup" }
+    ]
+  }
+}

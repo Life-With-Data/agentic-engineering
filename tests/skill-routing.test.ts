@@ -37,14 +37,16 @@ const COLLISION_WARN = 0.5
 const COLLISION_ERROR = 0.75
 const DEFAULT_TOP_K = 3
 
-// Flagship skills that must always carry a seed routing case, so the seed set
-// can't silently shrink below the five it shipped with.
+// The complete public workflow set must carry routing cases, so the fixed set
+// cannot drift or lose frontmatter selection coverage.
 const REQUIRED_CASE_SKILLS = [
-  "brainstorming",
-  "verification-loop",
-  "land-pr",
-  "compound-docs",
-  "operating-principles",
+  "wf-grooming",
+  "wf-development",
+  "wf-testing",
+  "wf-review",
+  "wf-delivery",
+  "wf-documentation",
+  "wf-setup",
 ] as const
 
 // Intentionally-overlapping description pairs, exempted from the collision

@@ -2,7 +2,7 @@
   "name": "agentic-engineering",
   "displayName": "Agentic Engineering",
   "version": "4.3.0",
-  "description": "AI-powered development tools. 31 agents, 64 skills, 1 MCP server for code review, research, design, and workflow automation.",
+  "description": "AI-powered development tools. 31 agents, 7 workflow skills, 1 MCP server for code review, research, design, and workflow automation.",
   "author": {
     "name": "Anthony Agnone",
     "url": "https://github.com/aagnone3"

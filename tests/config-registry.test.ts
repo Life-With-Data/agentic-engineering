@@ -157,7 +157,7 @@ describe("config flags are registered and discoverable", () => {
       const violations: string[] = []
       for (const flag of flags) {
         // owner is a plugin-relative path, e.g. "scripts/nudge-todowrite-to-tracker.py"
-        // or "skills/setup/SKILL.md" (a writer, not a reader — still must name the key).
+        // or "skills/wf-setup/references/setup.md" (a writer, not a reader — still must name the key).
         const ownerPath = path.join(plugin.dir, flag.owner)
         if (!existsSync(ownerPath)) {
           violations.push(`${flag.key}: owner "${flag.owner}" does not exist`)

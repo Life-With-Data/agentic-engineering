@@ -1,0 +1,13 @@
+{
+  "skill_name": "wf-documentation",
+  "trigger": {
+    "positive": [
+      { "prompt": "Capture this solved problem as durable documentation for future lookup", "top_k": 2 },
+      { "prompt": "Review, repair, and publish the repository documentation", "top_k": 2 }
+    ],
+    "negative": [
+      { "prompt": "Implement this planned refactor", "owner": "wf-development" },
+      { "prompt": "Reproduce this bug report before planning a fix", "owner": "wf-grooming" }
+    ]
+  }
+}

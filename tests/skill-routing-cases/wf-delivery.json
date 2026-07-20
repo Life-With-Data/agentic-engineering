@@ -1,0 +1,13 @@
+{
+  "skill_name": "wf-delivery",
+  "trigger": {
+    "positive": [
+      { "prompt": "Repair CI, resolve the pull request threads, and merge when ready", "top_k": 2 },
+      { "prompt": "Prepare this release and hand off the production deployment", "top_k": 2 }
+    ],
+    "negative": [
+      { "prompt": "Explore the requirements and produce an actionable plan", "owner": "wf-grooming" },
+      { "prompt": "Diagnose the root cause of this reproduced bug", "owner": "wf-development" }
+    ]
+  }
+}

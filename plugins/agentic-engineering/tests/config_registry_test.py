@@ -92,12 +92,6 @@ class ValidationTest(unittest.TestCase):
         for value in ("linear", "beads", ""):
             self.assertFalse(config_registry._validate(flag, value))
 
-    def test_list_kind_is_always_valid(self) -> None:
-        flag = config_registry._BY_KEY["review_agents"]
-        self.assertTrue(config_registry._validate(flag, "[kieran-rails-reviewer]"))
-        self.assertTrue(config_registry._validate(flag, ""))
-
-
 class InvalidStaleValueTest(unittest.TestCase):
     def setUp(self) -> None:
         self._tmp = tempfile.TemporaryDirectory()

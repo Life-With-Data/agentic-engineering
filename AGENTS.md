@@ -51,3 +51,18 @@ Avoid adding a provider if the target spec is unstable or undocumented.
 ## Repository Docs Convention
 
 - **Plans** live in `docs/plans/` and track implementation progress.
+
+## Agentic Engineering Repository Contract
+
+contract-version: 2
+
+- repository-overview: [repository operations](.agents/skills/agentic-engineering-repository/SKILL.md#repository-overview), [full repository guide](CLAUDE.md)
+- development-environment: [repository operations](.agents/skills/agentic-engineering-repository/SKILL.md#development-environment), [full repository guide](CLAUDE.md)
+- test-execution: [repository operations](.agents/skills/agentic-engineering-repository/SKILL.md#test-execution)
+- bug-reproduction: [repository operations](.agents/skills/agentic-engineering-repository/SKILL.md#bug-reproduction)
+- observability: not-applicable — This repository ships a plugin and CLI with no continuously running application service.
+- data-operations: not-applicable — This repository has no persistent application database or production data store.
+- infrastructure-operations: [repository operations](.agents/skills/agentic-engineering-repository/SKILL.md#infrastructure-operations)
+- delivery: [repository operations](.agents/skills/agentic-engineering-repository/SKILL.md#delivery)
+- security-and-access: [repository operations](.agents/skills/agentic-engineering-repository/SKILL.md#security-and-access)
+- documentation: [repository operations](.agents/skills/agentic-engineering-repository/SKILL.md#documentation), [full repository guide](CLAUDE.md)

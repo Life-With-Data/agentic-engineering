@@ -1,0 +1,13 @@
+{
+  "skill_name": "wf-testing",
+  "trigger": {
+    "positive": [
+      { "prompt": "Choose a test strategy and prove this change works before we call it done", "top_k": 2 },
+      { "prompt": "Run regression, browser, and integration verification for this change", "top_k": 2 }
+    ],
+    "negative": [
+      { "prompt": "Triage and groom this vague request into a plan", "owner": "wf-grooming" },
+      { "prompt": "Repair CI and prepare the release for deployment", "owner": "wf-delivery" }
+    ]
+  }
+}

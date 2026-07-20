@@ -1,0 +1,13 @@
+{
+  "skill_name": "wf-development",
+  "trigger": {
+    "positive": [
+      { "prompt": "Implement this planned engineering change and coordinate the development work", "top_k": 2 },
+      { "prompt": "Refactor this API according to the approved implementation plan", "top_k": 2 }
+    ],
+    "negative": [
+      { "prompt": "Reproduce this bug report before it is ready for development", "owner": "wf-grooming" },
+      { "prompt": "Review this pull request for architecture and security findings", "owner": "wf-review" }
+    ]
+  }
+}

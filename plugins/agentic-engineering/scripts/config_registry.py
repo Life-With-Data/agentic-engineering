@@ -63,28 +63,6 @@ CONFIG_FLAGS = [
         choices=("github-project", "github", "none"),
     ),
     ConfigFlag(
-        key="review_agents",
-        kind="list",
-        default="[]",
-        description=(
-            "Review agents /workflows-review and /workflows-work run, beyond "
-            "the stack-detected defaults. Written by the setup skill."
-        ),
-        owner="skills/setup/SKILL.md",
-        file="local",
-    ),
-    ConfigFlag(
-        key="plan_review_agents",
-        kind="list",
-        default="[]",
-        description=(
-            "Review agents run against plan documents specifically. "
-            "Written by the setup skill."
-        ),
-        owner="skills/setup/SKILL.md",
-        file="local",
-    ),
-    ConfigFlag(
         key="nudge_todowrite",
         kind="boolean",
         default="false",
@@ -94,21 +72,6 @@ CONFIG_FLAGS = [
             "leaving it in TodoWrite's ephemeral in-session list."
         ),
         owner="scripts/nudge-todowrite-to-tracker.py",
-        file="local",
-    ),
-    ConfigFlag(
-        key="graphify_refresh",
-        kind="boolean",
-        default="false",
-        description=(
-            "Refresh the graphify knowledge graph at the end of "
-            "/workflows-compound, so a solution doc is linked to the code it "
-            "describes instead of landing as a disconnected file. Requires the "
-            "graphify CLI and an existing graphify-out/graph.json — compound "
-            "never builds a graph from scratch. Needs no API key: semantic "
-            "extraction runs as subagents in the host session."
-        ),
-        owner="skills/workflows-compound/SKILL.md",
         file="local",
     ),
     ConfigFlag(
@@ -233,7 +196,7 @@ def write_local_config_keys(root: str, keys: "dict[str, str]") -> str:
 
 def _ensure_gitignore(root: str) -> None:
     """Ensure LOCAL_CONFIG is git-ignored before it is ever written, mirroring
-    the setup skill's Step 4.5 recipe (skills/setup/SKILL.md). A symlinked
+    the wf-setup route's Step 4.5 recipe. A symlinked
     .gitignore is refused rather than followed — git itself would not read
     one, and a write must never follow a link to a file outside the repo."""
     root_path = pathlib.Path(root)
