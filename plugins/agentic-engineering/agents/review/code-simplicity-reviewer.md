@@ -48,7 +48,9 @@ When reviewing code, you will:
    - Eliminate extensibility points without clear use cases
    - Question generic solutions for specific problems
    - Remove "just in case" code
-   - Never flag `docs/plans/*.md` or `docs/solutions/*.md` for removal — these are agentic-engineering pipeline artifacts created by `/workflows-plan` and used as living documents by `/workflows-work`
+   - Never flag a planning or solution artifact for removal solely because it
+     is non-code; use the repository's mapped `documentation` guidance and
+     work-item links to determine whether it is intentional
 
 6. **Optimize for Readability**:
    - Prefer self-documenting code over comments

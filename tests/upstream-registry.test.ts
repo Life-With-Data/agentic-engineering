@@ -12,7 +12,10 @@ import { parseFrontmatter } from "../src/utils/frontmatter"
 
 const ROOT = path.resolve(import.meta.dir, "..")
 const REGISTRY = path.join(ROOT, "docs/upstream-sources.md")
-const COMMAND = path.join(ROOT, "plugins/agentic-engineering/skills/upstream-scan/SKILL.md")
+const COMMAND = path.join(
+  ROOT,
+  ".agents/skills/agentic-engineering-repository/references/upstream-maintenance.md",
+)
 
 // ---- registry schema --------------------------------------------------------
 

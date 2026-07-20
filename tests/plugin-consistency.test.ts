@@ -76,13 +76,13 @@ const indexHtml = readFileSync(path.join(ROOT, "docs/index.html"), "utf8");
 describe("declared counts match filesystem", () => {
   test("plugin.json description", () => {
     expect(pluginJson.description).toContain(`${counts.agents} agents`);
-    expect(pluginJson.description).toContain(`${counts.skills} skills`);
+    expect(pluginJson.description).toContain(`${counts.skills} workflow skills`);
   });
 
   test("marketplace.json description", () => {
     const desc = marketplace.plugins[0].description;
     expect(desc).toContain(`${counts.agents} specialized agents`);
-    expect(desc).toContain(`${counts.skills} skills`);
+    expect(desc).toContain(`${counts.skills} workflow skills`);
   });
 
   test("plugin README components table", () => {
@@ -93,7 +93,7 @@ describe("declared counts match filesystem", () => {
 
   test("root README components table", () => {
     expect(rootReadme).toContain(`| Specialized agents | ${counts.agents} |`);
-    expect(rootReadme).toContain(`| Skills | ${counts.skills} |`);
+    expect(rootReadme).toContain(`| Workflow skills | ${counts.skills} |`);
     expect(rootReadme).toContain(`| MCP servers | ${mcpCount} |`);
   });
 
@@ -246,7 +246,7 @@ describe("multi-platform packaging parity", () => {
     expect(cursorPluginJson.hooks).toBe("./hooks/hooks-cursor.json");
     expect(cursorPluginJson.mcpServers).toBe(".mcp.json");
     expect(cursorPluginJson.description).toContain(`${counts.agents} agents`);
-    expect(cursorPluginJson.description).toContain(`${counts.skills} skills`);
+    expect(cursorPluginJson.description).toContain(`${counts.skills} workflow skills`);
   });
 
   test("Codex manifest wires skills, MCP, hooks", () => {
@@ -346,8 +346,8 @@ describe("multi-platform packaging parity", () => {
     expect(rootReadme).not.toContain(
       "codex plugin install agentic-engineering",
     );
-    expect(rootReadme).toContain("**`$setup`**");
-    expect(rootReadme).toContain("select `setup` through `/skills`");
+    expect(rootReadme).toContain("**`$wf-setup`**");
+    expect(rootReadme).toContain("select `wf-setup` through `/skills`");
   });
 
   test("HOOKS.md documents the four shipped safety hooks", () => {

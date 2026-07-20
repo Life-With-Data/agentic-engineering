@@ -100,7 +100,7 @@ claude agent security-sentinel "Audit the payment flow"</code></pre>
               <h3>acceptance-criteria-reviewer</h3>
               <span class="agent-badge">Review</span>
             </div>
-            <p class="agent-detail-description">Verifies a change satisfies the documented Acceptance Criteria and Validation steps of its tracker issue — every criterion checked against the actual diff, every validation step confirmed runnable. Use in /workflows-review as the gating conformance check, or as a pre-check before opening a PR.</p>
+            <p class="agent-detail-description">Verifies a change satisfies the documented Acceptance Criteria and Validation steps of its tracker issue — every criterion checked against the actual diff, every validation step confirmed runnable. Use in the `wf-review` comprehensive-review route as the gating conformance check, or as a pre-check before opening a PR.</p>
             <div class="card-code-block">
               <pre><code>claude agent acceptance-criteria-reviewer "..."</code></pre>
             </div>
@@ -304,7 +304,7 @@ claude agent security-sentinel "Audit the payment flow"</code></pre>
               <h3>learnings-researcher</h3>
               <span class="agent-badge">Research</span>
             </div>
-            <p class="agent-detail-description">Searches docs/solutions/ for relevant past solutions by frontmatter metadata. Use before implementing features or fixing problems to surface institutional knowledge and prevent repeated mistakes.</p>
+            <p class="agent-detail-description">Searches repository-owned documentation for relevant past solutions and decisions. Use before planning, implementing, or debugging to surface institutional knowledge without assuming a documentation layout or schema.</p>
             <div class="card-code-block">
               <pre><code>claude agent learnings-researcher "..."</code></pre>
             </div>

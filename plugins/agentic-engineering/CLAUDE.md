@@ -29,19 +29,24 @@ agents/
 └── docs/       # Documentation agents
 
 skills/
-└── <name>/SKILL.md  # All skills, one directory per skill (includes the former workflow
-                      # and utility commands, e.g. workflows-plan, workflows-review)
+└── wf-<domain>/
+    ├── SKILL.md      # Public workflow-policy router
+    └── references/   # On-demand procedures; never independently discoverable skills
 ```
 
 ## Skill Naming Convention
 
-**Workflow skills** use a `workflows-` prefix, hyphenated (not colon-separated — skill directory names allow only lowercase letters, numbers, and hyphens):
-- `workflows-plan` - Create implementation plans
-- `workflows-review` - Run comprehensive code reviews
-- `workflows-work` - Execute work items systematically
-- `workflows-compound` - Document solved problems
+The plugin has exactly seven public workflow-policy skills, all using the `wf-` prefix:
 
-**Why the prefix?** Claude Code has built-in `/plan` and `/review` slash invocations. A skill named `workflows-plan` produces `/workflows-plan` with no collision.
+- `wf-grooming`
+- `wf-development`
+- `wf-testing`
+- `wf-review`
+- `wf-delivery`
+- `wf-documentation`
+- `wf-setup`
+
+Do not add another public skill for a narrower procedure. Add it as a progressive-disclosure reference under the owning router. Repository-specific operational knowledge is not part of this plugin: consumer repositories provide it through the fixed root `AGENTS.md` capability contract and existing repository-owned skills or documentation. See [WORKFLOW_SKILLS.md](WORKFLOW_SKILLS.md).
 
 ## Skill Compliance Checklist
 
@@ -67,12 +72,12 @@ When adding or modifying skills, verify compliance with skill-creator spec:
 ### Quick Validation Command
 
 ```bash
-# Check for unlinked references in a skill
-grep -E '`(references|assets|scripts)/[^`]+`' skills/*/SKILL.md
+# Check for unlinked references in a public skill
+grep -E '`(references|assets|scripts)/[^`]+`' skills/wf-*/SKILL.md
 # Should return nothing if all refs are properly linked
 
 # Check description format - should describe what + when
-grep -E '^description:' skills/*/SKILL.md
+grep -E '^description:' skills/wf-*/SKILL.md
 ```
 
 ## Documentation

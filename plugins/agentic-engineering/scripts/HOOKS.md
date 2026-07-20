@@ -8,7 +8,7 @@ plugin (Codex additionally requires reviewing and trusting plugin hooks).
 Python implementations live in this directory and are shared across harnesses.
 Skills-only installs via the [skills CLI](https://github.com/vercel-labs/skills)
 (`npx skills add ...`) never read plugin-level hooks; for that channel the
-[`install-hooks` skill](../skills/install-hooks/SKILL.md) bundles byte-identical
+[`wf-setup` install-hooks reference](../skills/wf-setup/references/install-hooks.md) bundles byte-identical
 copies of the four portable safety guards (enforced by
 `tests/install-hooks-skill-sync.test.ts` — update the copies when a canonical
 script changes). Wiring differs per platform:
@@ -167,7 +167,7 @@ the session lacks a tracker ID (`bead_id` / `linear_issue` / `github_issue`) in
 its YAML frontmatter — unless the plan opts out with `issue_tracker: none`.
 
 **Why:** Plans that aren't linked to a tracked issue get orphaned. This keeps
-`/workflows-plan` output connected to whatever issue tracker the repo uses.
+the `wf-grooming` planning route output connected to whatever issue tracker the repo uses.
 
 ## `sdd-cache-pre.py` / `sdd-cache-post.py` — PreToolUse / PostToolUse (WebFetch), opt-in — Claude-only
 
@@ -220,7 +220,7 @@ can't ride a PR and flip caching on for every clone). Unset it to disable.
 **Never blocks** (`exit 0` always). Bootstraps and advises on Claude Code
 worktrees. Claude Code creates session worktrees under
 `<repo>/.claude/worktrees/<name>` with a bare `git worktree add` — no dependency
-install and no gitignored-file copy. The [`git-worktree`](../skills/git-worktree/SKILL.md)
+install and no gitignored-file copy. The [`wf-development` git-worktree reference](../skills/wf-development/references/git-worktree.md)
 skill only helps when a human runs its manager script by hand; it does nothing for
 the worktrees the harness spins up itself (parallel / web sessions and
 `isolation:"worktree"` subagents). This hook closes that gap so a fresh

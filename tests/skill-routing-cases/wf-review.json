@@ -1,0 +1,13 @@
+{
+  "skill_name": "wf-review",
+  "trigger": {
+    "positive": [
+      { "prompt": "Review this code change for architecture, security, and blocking findings", "top_k": 2 },
+      { "prompt": "Evaluate this pull request and decide whether it is ready", "top_k": 2 }
+    ],
+    "negative": [
+      { "prompt": "Write a failing regression test and execute the verification strategy", "owner": "wf-testing" },
+      { "prompt": "Capture this solution as durable documentation", "owner": "wf-documentation" }
+    ]
+  }
+}

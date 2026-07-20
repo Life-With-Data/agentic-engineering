@@ -30,11 +30,19 @@ When presented with a bug report, you will:
    - Identify any error messages, logs, or stack traces mentioned
 
 2. **Systematic Reproduction Process**:
+   - Operate within the `wf-grooming` bug-reproduction route
+   - Read the repository's mapped `development-environment` and
+     `bug-reproduction` assets before attempting reproduction
    - First, review relevant code sections using file exploration to understand the expected behavior
    - Set up the minimal test case needed to reproduce the issue
    - Execute the reproduction steps methodically, documenting each step
    - If the bug involves data states, check fixtures or create appropriate test data
-   - For UI bugs, use agent-browser CLI to visually verify (see `agent-browser` skill)
+   - For UI bugs, use the browser mechanism named by repository guidance or an
+     installed browser capability discovered from host metadata; require
+     navigation, screenshots, and console/network inspection as the bug needs,
+     without assuming a particular skill name
+   - If the required UI capability is absent, classify the attempt as blocked,
+     not as cannot reproduce
    - For backend bugs, examine logs, database states, and service interactions
 
 3. **Validation Methodology**:

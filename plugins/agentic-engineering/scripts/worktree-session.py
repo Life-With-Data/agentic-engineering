@@ -3,7 +3,7 @@
 
 Claude Code creates session worktrees under `<repo>/.claude/worktrees/<name>`
 with a bare `git worktree add` — no dependency install, no gitignored-file copy.
-The `git-worktree` skill only helps when a human invokes its manager script by
+The `wf-development` worktree route only helps when a human invokes its manager script by
 hand; it does nothing for the worktrees the harness spins up itself (parallel /
 web sessions and `isolation:"worktree"` subagents). This hook fills that gap so a
 fresh harness-created worktree is usable immediately, and warns when the current

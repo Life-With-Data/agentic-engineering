@@ -6,7 +6,7 @@ report_label: upstream-scan
 # Upstream Sources
 
 Registry of external repositories that inspire adoptions into this marketplace.
-Scanned by the `/upstream-scan` command (manually or on a schedule); scan results
+Scanned by the repository-local upstream-maintenance procedure (manually or on a schedule); scan results
 land as GitHub issues on `report_repo` labeled `report_label`. This file holds
 **configuration and provenance only** — no scan state. The scanner reads it and
 never writes it.
@@ -184,7 +184,7 @@ Consumed as an **external CLI**, not by adopting components — the same shape a
 PyPI package is `graphifyy`, the CLI is `graphify`), and graphify registers its own assistant skill
 via `graphify install`. Shipping a local copy of that skill would collide with the upstream-installed
 one, so `adopted:` is empty **by design**, not by omission, and `scan: manual-only` stops the scanner
-re-proposing components we have deliberately chosen not to vendor. Wired into `/workflows-compound`
+re-proposing components we have deliberately chosen not to vendor. Wired into the `wf-documentation` compounding route
 behind the `graphify_refresh` flag, which refreshes an existing graph and never builds one.
 
 - repo: https://github.com/Graphify-Labs/graphify

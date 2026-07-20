@@ -1,331 +1,149 @@
-# Workflow Flows
+# Workflow flows
 
-Visual reference for the plugin's engineering pipeline. Each "flow" below is a slash command; together they form the agentic-engineering loop. Diagrams render natively on GitHub.
+Visual reference for the seven public `wf-*` skills and their repository-context handoffs. The detailed procedures shown in parentheses are internal references selected by a router; they are not independently invocable skills.
 
-## Legend
-
-The same shape language is used in every diagram:
-
-| Shape | Meaning |
-|-------|---------|
-| `([ rounded ])` | Start / end of a flow |
-| `[ rectangle ]` | Automatic step (no user input needed) |
-| `{ diamond }` | Automatic decision (the agent decides) |
-| `{{ hexagon }}` | **Human checkpoint** — your input / steering |
-| `[[ subroutine ]]` | Mandatory gate or a delegated sub-command |
-
-`*` on a node = runs **only when applicable** (e.g. UI changes only).
-
----
-
-## The big picture
-
-How the individual flows compose into one pipeline, with the artifact each stage leaves behind (these artifacts are what makes the pipeline resumable):
+## The two orthogonal layers
 
 ```mermaid
 flowchart LR
-    idea([feature idea]) --> B["brainstorm"]
-    B -->|"docs/brainstorms/*.md<br/><b>brainstormed</b>"| P["plan"]
-    P -->|"docs/plans/*-plan.md<br/>+ github_issue<br/><b>planned</b>"| D{"deepen?"}
-    D -->|yes| DP["deepen-plan"]
-    D -->|no| W
-    DP --> W["work"]
-    W -->|"PR opened<br/><b>in_progress → in_review</b>"| R["review / land"]
-    R --> TB["test-browser*"]
-    TB --> FV["feature-video*"]
-    FV --> C["compound"]
-    R -->|"merge<br/><b>shipped</b>"| C
-    C -->|"docs/solutions/*.md<br/><b>compounded</b>"| done([compounded])
+    request([Engineering request]) --> WF["wf-* workflow policy"]
+    WF -->|"required capability names"| C["Root AGENTS.md contract"]
+    C -->|"ordered repo-relative pointers"| R["repository operational assets"]
+    R -->|"commands, access, and evidence"| WF
+    WF --> result([Gated workflow result])
 ```
 
-The **bold** labels are the lifecycle stages stamped on the board's Status field as each artifact lands (see the state machine below). `/workflows-orchestrate` runs this whole chain for you — **fully autonomously by default** (merges once landable, surfaces only genuine blockers); add `--final-review` to pause once before the merge, or `--steer` for the classic checkpoint cadence. The chain also splits into a **bifurcated flow** at the `planned` boundary: `/workflows-groom` (or `orchestrate --groom`) drives intake → groomed and stops; `orchestrate --implement` drives groomed → shipped and refuses to groom on the fly.
+- `wf-*` decides **what must happen, in what order, and what counts as complete**.
+- Root `AGENTS.md` maps each fixed capability name to one or more repository-owned assets in primary-first reading order.
+- Repository-owned guidance decides **how this repository performs the operation**. Its skill names are unconstrained.
 
----
+Missing or malformed repository context stops every ordinary workflow. `wf-setup` may continue only to repair that context. See [WORKFLOW_SKILLS.md](WORKFLOW_SKILLS.md) for the complete contract.
 
-## The lifecycle state machine
+## Public workflow map
 
-In `github-project` mode a GitHub Projects v2 board is the source of truth. Every work item is an issue on the board carrying a Status stage; every command reads and moves that stage through one engine (`scripts/lifecycle_board.py`) instead of inferring pipeline position from filenames. This is the canonical picture — the [`lifecycle` skill](skills/lifecycle/SKILL.md) is the prose definition.
+```mermaid
+flowchart LR
+    G["wf-grooming"] --> D["wf-development"]
+    D --> T["wf-testing"]
+    T --> R["wf-review"]
+    R -->|"fix required"| D
+    R -->|"ready"| L["wf-delivery"]
+    L --> K["wf-documentation"]
+    K --> done([Complete])
+    S["wf-setup"] -. "adopts and configures" .-> G
+```
 
-Each transition has exactly **one writer** (a command, a built-in automation, or the shared reconciler). Forward stages are strictly ordered except two legal skips (`stub → planned`, `shipped → compounded`). `deployed` and `compounded` are order-independent terminal refinements of `shipped`; `abandoned` is an off-ramp reachable from **any** stage — closing an item as not-planned abandons it even after it shipped (the reconciler honors an explicit not-planned close as a deliberate human act; the `deployed` high-water rule applies to rollbacks, not to not-planned closes).
+`wf-development` can coordinate the complete chain for a prepared work item. Ownership does not collapse during orchestration: each downstream router still owns its own gates and repository-capability requirements.
+
+## Grooming and implementation split
+
+```mermaid
+flowchart TD
+    request([Idea, request, bug report, or issue]) --> G["wf-grooming"]
+    G --> intent["confirm intent and scope<br/>(interview / brainstorm route)"]
+    intent --> plan["produce acceptance criteria,<br/>validation, plan, and decomposition"]
+    plan --> ready([Ready for development])
+    ready --> D["wf-development --implement"]
+    D --> T["wf-testing"]
+    T --> R["wf-review"]
+    R --> L["wf-delivery"]
+    L --> K["wf-documentation"]
+```
+
+The hard boundary is deliberate: `wf-grooming` never claims work or edits product code. `wf-development --implement` refuses to invent missing grooming context and routes back to `wf-grooming`.
+
+## Bug flow
+
+```mermaid
+flowchart TD
+    report([Unexpected behavior]) --> G["wf-grooming"]
+    G --> contract{"bug-reproduction capability valid?"}
+    contract -->|no| stop([Stop with contract errors])
+    contract -->|yes| evidence["record expected, actual,<br/>environment, and evidence"]
+    evidence --> reproduce["reproduce using repo guidance"]
+    reproduce --> groom{"report complete and work item ready?"}
+    groom -->|no| G
+    groom -->|yes| D["wf-development"]
+    D --> root["localize, establish root cause,<br/>and implement the fix"]
+    root --> T["wf-testing: regression + original reproduction"]
+    T --> R["wf-review"]
+```
+
+A failed reproduction blocks grooming; it is evidence to report, not permission to plan a speculative fix. Production or integration failures additionally require the `observability` capability.
+
+## Delivery flow
+
+```mermaid
+flowchart TD
+    implemented([Implemented change]) --> T["wf-testing"]
+    T --> R["wf-review"]
+    R --> ready{"ready?"}
+    ready -->|no| D["wf-development"]
+    D --> T
+    ready -->|yes| L["wf-delivery"]
+    L --> ci["repair CI and resolve threads"]
+    ci --> merge{"merge gates pass?"}
+    merge -->|no| ci
+    merge -->|yes| shipped([Shipped])
+    shipped --> deploy["deployment handoff*"]
+    shipped --> K["wf-documentation"]
+```
+
+`*` Deployment requires `infrastructure-operations` and `security-and-access` in addition to the base `delivery` capability.
+
+## Lifecycle state machine
+
+In `github-project` mode, workflow routes write a closed set of lifecycle transitions through `scripts/lifecycle_board.py`.
 
 ```mermaid
 stateDiagram-v2
     [*] --> stub
-    stub --> brainstormed: brainstorm
-    stub --> planned: plan (crisp)
-    brainstormed --> planned: plan
-    planned --> in_progress: work --claim
-    in_progress --> in_review: work (PR opens, Closes #N)
-    in_review --> shipped: merge → "Item closed" automation
+    stub --> brainstormed: wf-grooming brainstorm route
+    stub --> planned: wf-grooming plan route
+    brainstormed --> planned: wf-grooming plan route
+    planned --> in_progress: wf-development claim
+    in_progress --> in_review: wf-development opens PR
+    in_review --> shipped: merge automation
+    shipped --> deployed: repository delivery automation
+    shipped --> compounded: wf-documentation compound route
 
-    shipped --> deployed: consumer deploy workflow
-    shipped --> compounded: compound
-    note right of deployed
-        deployed & compounded are order-independent
-        refinements of shipped. deployed is a
-        high-water mark — rollbacks never regress it.
-    end note
-
-    stub --> abandoned: abandoned
+    stub --> abandoned
     brainstormed --> abandoned
     planned --> abandoned
     in_progress --> abandoned
     in_review --> abandoned
-    shipped --> abandoned: not-planned close
+    shipped --> abandoned
     deployed --> abandoned
     compounded --> abandoned
-
-    deployed --> [*]
-    compounded --> [*]
-    abandoned --> [*]
-
-    note left of shipped
-        Reconciler repairs (labeled by rule):
-        merged_close_missed: (closed+merged, <shipped) → shipped
-        not_planned_close: (closed as not-planned) → abandoned
-        pr_closed_unmerged: in_review → in_progress
-        pr_reopened: in_progress → in_review
-        abandoned_cascade: closes a parent's open sub-issues
-        Flag (report-only, never repaired):
-        merged_to_non_default_branch → git-flow stall
-    end note
 ```
 
-**Writers per transition:**
+`deployed` and `compounded` are order-independent refinements of `shipped`. `abandoned` is the explicit off-ramp. The lifecycle reference under `wf-setup` defines entry gates, writer contracts, claims, and the closed repair set.
 
-| Transition | Writer |
-|---|---|
-| → `stub` | `/triage`, `/upstream-scan`, humans (create + board-add + `--set-status stub`) |
-| → `brainstormed` | `/workflows-brainstorm` (on doc completion) |
-| → `planned` | `/workflows-plan` Step 7 (issue + sub-issues + deps + `--set-status planned`) |
-| → `in_progress` | `/workflows-work` Phase 1 (`--claim`) |
-| → `in_review` | `/workflows-work` Phase 4 (PR opens; issue NOT closed) |
-| → `shipped` | Built-in "Item closed" automation (merge automation stamps it) |
-| → `deployed` | Consumer repo's deploy workflow (comment-always / Status-best-effort) |
-| → `compounded` | `/workflows-compound` (join key present only) |
-| → `abandoned` | Humans; reconciler on close-as-not-planned |
-| *repairs / cascade* | The shared reconciler (the five labeled repairs; the `abandoned_cascade` on sub-issues) |
-
-The three report-only flags (`merged_to_non_default_branch`, `stale_join_key`, `truncated_ready_work`) emit issue comments + JSON but are never auto-repaired — the repair set stays closed at five.
-
----
-
-## /workflows-orchestrate — the orchestrator layer
-
-The orchestrator drives every stage automatically. **By default it is fully autonomous:** it delegates implementation to sub-agents, reviews their diffs itself, self-answers the intermediate gates (logging every decision), merges once the PR is landable, and stops only for genuine blockers — no hexagon pauses at all. `--final-review` adds exactly one hexagon, the **Final-Review gate**, before the merge; `--steer` restores the classic cadence where every hexagon below pauses for you.
+## Setup flow
 
 ```mermaid
 flowchart TD
-    start(["/workflows-orchestrate"]) --> detect["reconcile + read board stage<br/>(legacy artifact fallback)"]
-    detect --> B["brainstorm"]
-    B --> g1{{"approach selection †"}}
-    g1 --> P["plan"]
-    P --> gate{{"PLAN-APPROVAL GATE †<br/>(delegate: plan self-review)"}}
-    gate -->|deepen| DP["deepen-plan"]
-    DP --> gate
-    gate -->|proceed| W["work → sub-agents implement,<br/>orchestrator reviews diffs → opens PR"]
-    W --> R["review (multi-agent)"]
-    R --> p1["auto-fix P1 findings"]
-    p1 --> g2{{"findings triage †<br/>(delegate: fix P2, defer P3)"}}
-    g2 --> resolve["resolve approved findings"]
-    resolve --> TB["test-browser*"]
-    TB --> FV["feature-video*"]
-    FV --> L["land-pr: drive CI green"]
-    L --> g3{{"FINAL-REVIEW GATE ‡<br/>packet + decision log"}}
-    g3 --> M["merge"]
-    M --> C["compound"]
-    C --> done([compounded])
-
-    classDef gate fill:#ffe8cc,stroke:#e8590c,stroke-width:2px;
-    class g1,gate,g2,g3 gate
+    start(["wf-setup"]) --> validate["run repository contract validator"]
+    validate --> valid{"contract valid?"}
+    valid -->|no| inventory["inventory existing instructions,<br/>docs, skills, CI, and runbooks"]
+    inventory --> draft["draft reusable, ordered mappings"]
+    draft --> interview["interview only for gaps,<br/>ambiguity, access, and safety"]
+    interview --> validate
+    valid -->|yes| configure["configure plugin, lifecycle, and hooks"]
+    configure --> doctor["run readiness diagnostics"]
+    doctor --> done([Setup complete])
 ```
 
-† pauses for you in `--steer`/`--careful`; when autonomous (default / `--final-review`) the orchestrator self-answers and logs the decision.
-‡ present **only under `--final-review`**; the default (fully autonomous) merges once landable with no gate (the packet becomes the final summary).
+`wf-setup` is the only router allowed to continue temporarily after contract validation fails, and only to construct, migrate, or repair the contract. It maps suitable existing assets directly, never creates wrappers merely for naming or metadata, never guesses operational guidance, and cannot finish until strict validation succeeds.
 
-**Autonomy dial:** `--careful` > `--steer` > `--final-review` > *default (fully autonomous)*. Each step removes gates; the default is the fully autonomous end of the dial — no Final-Review gate, no approval prompts, merges once landable. Blockers and material scope changes escalate in **every** mode, the default included — that pair is the universal floor.
+## Progressive disclosure
 
-**Segment flags** bifurcate the run orthogonally to the autonomy dial: `--groom` runs only the intake half and stops once the item is `planned` (see the groom flow below — its spec is normative); `--implement` runs only the build half, requiring `planned` and routing un-groomed items back to groom rather than planning them mid-run.
+Each router follows the same sequence:
 
----
+1. Validate the complete repository contract.
+2. Require the capabilities needed by the selected route.
+3. Read each capability's primary target, then supporting targets only as needed.
+4. Load only the internal procedure needed for the current stage.
+5. Return to the router for its handoff and completion gate.
 
-## /workflows-groom — intake → groomed, then stop
-
-The grooming segment as a standalone flow: an idea, bug report, or stub issue goes in; a **groomed, ready-to-claim work item** comes out (Status `planned`, join-keyed plan doc, sub-issues with dependencies — the exact bar `/workflows-work`'s gate enforces at claim time). The stop is the feature: groom never claims, never branches, never writes code. Autonomous by default with a decision log; `--steer` makes it an interactive grooming session. `/workflows-orchestrate --implement` picks up where groom stops.
-
-```mermaid
-flowchart TD
-    start(["/workflows-groom<br/>(idea / bug report / #issue)"]) --> read["reconcile + read board stage"]
-    read --> prov{"provenance<br/>trusted?"}
-    prov -->|untrusted| ask{{"confirm before grooming<br/>outsider-authored issue"}}
-    ask --> ladder
-    prov -->|trusted| ladder{"current stage?"}
-    ladder -->|"≥ planned"| already["report already groomed /<br/>past grooming"] --> stop([STOP — groomed packet])
-    ladder -->|"vague idea / stub"| B[["brainstorm"]]
-    ladder -->|"crisp, or bug w/ repro"| bug{"bug report?"}
-    B --> P
-    bug -->|"yes, cheap + safe"| repro["validate reproduction*<br/>(bug-reproduction-validator)"]
-    bug -->|no| P[["plan (issue + sub-issues<br/>+ deps + Status=planned)"]]
-    repro --> P
-    P --> verify["verify postcondition:<br/>stage ≥ planned ∧ plan doc"]
-    verify --> stop
-
-    classDef gate fill:#ffe8cc,stroke:#e8590c,stroke-width:2px;
-    class ask gate
-```
-
----
-
-## /workflows-brainstorm — decide WHAT to build
-
-```mermaid
-flowchart TD
-    start([feature idea]) --> clarity{"requirements<br/>already clear?"}
-    clarity -->|yes| suggest{{"suggest going straight to plan"}}
-    clarity -->|no| research["lightweight repo research<br/>(repo-research-analyst)"]
-    research --> dialogue["collaborative dialogue<br/>(AskUserQuestion, one at a time)"]
-    dialogue --> approaches["propose 2-3 approaches<br/>with pros / cons"]
-    approaches --> pick{{"you pick the approach"}}
-    pick --> capture["write brainstorm doc"]
-    capture --> open{"open questions?"}
-    open -->|yes| resolve{{"resolve each with you"}}
-    resolve --> capture
-    open -->|no| handoff{{"handoff: proceed to plan?"}}
-    handoff --> plan(["/workflows-plan"])
-
-    classDef gate fill:#ffe8cc,stroke:#e8590c,stroke-width:2px;
-    class suggest,pick,resolve,handoff gate
-```
-
----
-
-## /workflows-plan — decide HOW to build it
-
-Tracker-issue creation (Step 7) is a hard gate enforced by the `plan-tracker-guard` Stop hook: the plan cannot exit without a `github_issue` join key (or an explicit `issue_tracker: none`). In `github-project` mode Step 7 also creates the sub-issues + dependencies, adds the item to the board, and stamps Status=`planned`.
-
-```mermaid
-flowchart TD
-    start([feature / brainstorm]) --> bs{"recent brainstorm<br/>matches?"}
-    bs -->|yes| usebs["use brainstorm as foundation"]
-    bs -->|no| refine["idea refinement<br/>(AskUserQuestion)"]
-    usebs --> research["local research (parallel):<br/>repo-research + learnings"]
-    refine --> research
-    research --> decide{"external research<br/>worth it?"}
-    decide -->|"high-risk / uncertain"| ext["best-practices +<br/>framework-docs researchers"]
-    decide -->|"strong local context"| consolidate["consolidate findings"]
-    ext --> consolidate
-    consolidate --> specflow["spec-flow-analyzer"]
-    specflow --> detail{"detail level<br/>MINIMAL / MORE / A LOT"}
-    detail --> writefile["write plan file"]
-    writefile --> tracker[["Step 7: issue + sub-issues + board add,<br/>Status=planned (MANDATORY GATE)"]]
-    tracker --> guard{"github_issue recorded?"}
-    guard -->|no| tracker
-    guard -->|yes| opts{{"post-generation options"}}
-
-    classDef gate fill:#ffe8cc,stroke:#e8590c,stroke-width:2px;
-    class opts gate
-```
-
----
-
-## /deepen-plan — enrich the plan with parallel research
-
-Fans out one sub-agent per matched skill, per relevant learning, per plan section, and per discovered review agent — then merges everything back into the plan in place.
-
-```mermaid
-flowchart TD
-    start([plan file]) --> parse["parse plan into sections"]
-    parse --> fan["fan out in parallel"]
-    fan --> skills["matched-skill sub-agents"]
-    fan --> learnings["learnings sub-agents<br/>(docs/solutions)"]
-    fan --> sections["per-section research<br/>(Explore + Context7 + WebSearch)"]
-    fan --> reviewers["ALL review agents"]
-    skills --> synth["synthesize + dedupe + prioritize"]
-    learnings --> synth
-    sections --> synth
-    reviewers --> synth
-    synth --> enhance["enhance each section in place"]
-    enhance --> opts{{"post-enhancement options"}}
-
-    classDef gate fill:#ffe8cc,stroke:#e8590c,stroke-width:2px;
-    class opts gate
-```
-
----
-
-## /workflows-work — execute the plan and ship a PR
-
-Mode-aware (`github-project` / `github` / `none`) and supports three execution styles: **inline** (default), **orchestrated** (one sub-agent per sub-issue), and **swarm** (parallel teammates). In `github-project` mode Phase 1 claims the item via `--claim` (Status=`in_progress`); Phase 4 opens the PR with `Closes #N` and sets Status=`in_review` — the issue is **not** closed at PR creation. The merge automation stamps `shipped`.
-
-```mermaid
-flowchart TD
-    start([plan / spec]) --> readplan["read plan completely"]
-    readplan --> clar{"anything ambiguous?"}
-    clar -->|yes| ask{{"clarify with you"}}
-    ask --> preflight
-    clar -->|no| preflight["repo preflight script:<br/>resolve mode"]
-    preflight --> claim["lifecycle_board.py --claim<br/>(Status=in_progress)"]
-    claim --> branch["branch / worktree setup"]
-    branch --> tasks["create task list<br/>(sub-issues or TodoWrite)"]
-    tasks --> loop{"tasks remain?"}
-    loop -->|yes| impl["implement → test →<br/>system-wide check → commit"]
-    impl --> loop
-    loop -->|no| quality["quality checks:<br/>tests + lint + integration boundaries"]
-    quality --> ship["commit + capture screenshots*"]
-    ship --> pr[["open PR (Closes #N),<br/>Status=in_review — issue NOT closed"]]
-    pr --> done([PR open])
-
-    classDef gate fill:#ffe8cc,stroke:#e8590c,stroke-width:2px;
-    class ask gate
-```
-
----
-
-## /workflows-review — multi-agent code review
-
-Runs configured review agents in parallel (plus conditional migration agents), synthesizes findings into P1/P2/P3, and records them as `todos/*.md` file-todos. P1 findings block merge.
-
-```mermaid
-flowchart TD
-    start([PR / branch]) --> setup["checkout target<br/>(worktree if needed)"]
-    setup --> agents["run review agents in parallel"]
-    agents --> core["security, performance, architecture,<br/>kieran-*, agent-native, ..."]
-    agents --> cond["conditional: migration agents*<br/>(if schema / data changes)"]
-    core --> simp["code-simplicity-reviewer"]
-    cond --> simp
-    simp --> synth["synthesize + dedupe<br/>+ assign P1 / P2 / P3"]
-    synth --> track["create findings<br/>(todos/*.md)"]
-    track --> report["summary report"]
-    report --> e2e{"offer E2E testing"}
-    e2e --> done([findings tracked])
-```
-
----
-
-## /workflows-compound — capture the solution
-
-Phase-1 sub-agents return **text only**; only the orchestrator (Phase 2) writes a single file. Knowledge compounds: the next occurrence of this problem is a lookup, not a re-investigation.
-
-```mermaid
-flowchart TD
-    start([solved problem]) --> phase1["Phase 1: parallel research<br/>(sub-agents return TEXT, write nothing)"]
-    phase1 --> ctx["context analyzer"]
-    phase1 --> sol["solution extractor"]
-    phase1 --> rel["related-docs finder"]
-    phase1 --> prev["prevention strategist"]
-    phase1 --> cat["category classifier"]
-    ctx --> assemble["Phase 2: orchestrator assembles<br/>+ writes ONE file"]
-    sol --> assemble
-    rel --> assemble
-    prev --> assemble
-    cat --> assemble
-    assemble --> file["docs/solutions/&lt;category&gt;/&lt;file&gt;.md"]
-    file --> enh["Phase 3: optional specialist review*"]
-    enh --> done([knowledge captured])
-```
-
----
-
-## Fully autonomous runs
-
-The **default** (`/workflows-orchestrate` with no flag) is already fully autonomous, no human in the loop: it drives the whole chain above, self-answers every intermediate judgment call, merges once the PR is landable (CI green, independent review ran with P1s resolved, threads resolved, mergeable), and surfaces only genuine blockers — material scope changes or something branch protection requires that the agent can't supply. Built for unattended runs (cron routines, overnight loops). Add **`--final-review`** when you want that same hands-off run but the final merge to be your call — it pauses once at the Final-Review gate before merging, and nowhere else.
+This keeps workflow policy stable across repositories while allowing every repository to supply its own commands, infrastructure, access procedures, and evidence sources.

@@ -5,7 +5,7 @@
 
 A Claude Code plugin built on one idea: **each unit of engineering work should make the next one easier — not harder.**
 
-Most codebases drift the other way. Every feature adds complexity, every shortcut adds debt, and the work gets slower over time. This plugin inverts that by turning a deliberate loop — explore, plan, build, review, and *capture what you learned* — into first-class tooling: **31 agents and 64 skills** that compound on each other.
+Most codebases drift the other way. Every feature adds complexity, every shortcut adds debt, and the work gets slower over time. This plugin inverts that by turning a deliberate loop — explore, plan, build, review, and *capture what you learned* — into first-class tooling: **31 agents and 7 workflow skills** that compound on each other.
 
 It installs natively in Claude Code, Cursor, and Codex, and converts to other AI coding tools (OpenCode, Droid, Gemini, Copilot, and more) via the Bun CLI.
 
@@ -16,26 +16,25 @@ It installs natively in Claude Code, Cursor, and Codex, and converts to other AI
 The pipeline is the heart of the plugin. Each stage leaves an artifact the next stage picks up, so the whole thing is resumable — and every cycle makes the next one cheaper.
 
 ```
-brainstorm → plan → [deepen] → work → review → compound → repeat
+grooming → development → testing → review → delivery → documentation → repeat
 ```
 
 | Skill | What it does |
 |-------|--------------|
-| `/workflows-brainstorm` | Explore *what* to build before committing to *how* |
-| `/workflows-plan` | Turn an idea into a detailed, tracker-linked implementation plan |
-| `/workflows-work` | Execute the plan — branches/worktrees, tests, and a PR |
-| `/workflows-review` | Multi-agent review before merge; findings become tracked todos |
-| `/workflows-compound` | Capture the solution so the next occurrence is a lookup, not a re-investigation |
+| `/wf-grooming` | Discover intent, reproduce bugs, groom, and plan work |
+| `/wf-development` | Implement the plan and coordinate the end-to-end development loop |
+| `/wf-testing` | Select and run the required test and verification strategy |
+| `/wf-review` | Review code, architecture, security, and pull-request feedback |
+| `/wf-delivery` | Repair CI, prepare and merge PRs, and hand off releases or deployments |
+| `/wf-documentation` | Create, review, compound, and ship durable documentation |
+| `/wf-setup` | Adopt and configure the plugin, repository contract, lifecycle, and hooks |
 
-Run the loop without babysitting it:
-
-- **`/workflows-orchestrate`** — fully autonomous by default: drives the entire pipeline, delegates implementation to sub-agents and reviews their work, merges once the PR is landable, and surfaces *only* genuine blockers (a material scope change, or something branch protection requires). Built for unattended runs — cron routines, overnight loops.
-- **`/workflows-orchestrate --final-review`** — the same hands-off run, but it pauses once before the merge and presents a review packet for your go. Add `--steer` instead for the classic checkpoint cadence (approach, plan approval, findings triage, merge).
+Run the loop without babysitting it through **`/wf-development`**. Its orchestration route is fully autonomous by default: it drives the pipeline, delegates implementation, reviews the results, merges once the PR is landable, and surfaces only genuine blockers. Use `--final-review` to pause once before merge or `--steer` for the classic checkpoint cadence.
 
 Or run it bifurcated, splitting grooming from implementation at the `planned` boundary:
 
-- **`/workflows-groom`** — turn an idea, bug report, or stub issue into a **groomed, ready-to-claim work item** (brainstorm → plan → sub-issues) and *stop there*. Groom the backlog overnight, review the plans in the morning.
-- **`/workflows-orchestrate --implement`** — start from groomed work and drive it to shipped (work → review → land → compound). It refuses to groom on the fly: an un-groomed item routes back to `/workflows-groom` instead of being planned mid-run.
+- **`/wf-grooming`** — turn an idea, bug report, or stub issue into a **groomed, ready-to-claim work item** and stop there. Bug reports must be reproduced before they are considered groomed.
+- **`/wf-development --implement`** — start from groomed work and drive it to shipped. An ungroomed item routes back to `wf-grooming` instead of being planned mid-run.
 
 📊 **[See FLOWS.md](plugins/agentic-engineering/FLOWS.md)** for mermaid diagrams of every flow and where the orchestrator pauses for you.
 
@@ -90,8 +89,11 @@ npx skills@latest add Life-With-Data/agentic-engineering
 Discovers every skill in this marketplace and installs into whichever agents it
 detects (Claude Code, Cursor, Codex, opencode, Copilot, Cline, Amp, …; narrow
 with `--skill <names>` / `--agent <ids>`). The skills CLI installs **skills
-only** — plugin hooks, agents, and MCP servers do not ride along. After
-installing, invoke the bundled **`install-hooks`** skill to wire the four
+only** — plugin hooks, agents, and MCP servers do not ride along. Each workflow
+skill bundles every script it invokes, including the repository-contract
+validator, so selecting an individual skill does not leave a plugin-root
+dependency behind. After
+installing, invoke **`wf-setup`** and select its install-hooks route to wire the four
 portable safety hooks (block `--no-verify`, prevent main commits, block Slack
 webhook leaks, block `prisma db push`) into your agent, or use a native
 install above for the full surface.
@@ -119,15 +121,13 @@ Non-native convert targets are **experimental** and may change as the formats ev
 
 ## Configure
 
-After installing, start the plugin's configuration flow with **`/setup`** in
-Claude Code or Cursor. In Codex, invoke the installed skill as **`$setup`** (or
-select `setup` through `/skills`). It auto-detects your stack and walks through
-review agents, the lifecycle board, the operating-principles always-on layer,
-and installing the **documentation-health CI workflow** (a zero-dependency
-docs-health gate plus an optional agent audit that reviews docs on every PR —
-usable with a Claude Pro/Max subscription token). Re-run it anytime; Claude and
-Cursor also expose `/config-flags` and `/lifecycle-doctor`, and in Codex those
-same skills are available through `/skills`.
+After installing, start the plugin's configuration flow with **`/wf-setup`** in
+Claude Code or Cursor. In Codex, invoke the installed skill as **`$wf-setup`** (or
+select `wf-setup` through `/skills`). It inventories the repository's existing
+operational guidance, interviews only for gaps, writes the fixed capability map
+in root `AGENTS.md`, and validates it before offering optional lifecycle,
+configuration, and hook setup. Re-run it anytime; configuration and lifecycle
+diagnostics are routes of `wf-setup` on every platform.
 
 <details>
 <summary>Local dev & per-provider details</summary>
@@ -163,10 +163,10 @@ Syncs personal skills from `~/.claude/skills/` (as symlinks, so edits reflect im
 | Component | Count |
 |-----------|-------|
 | Specialized agents | 31 |
-| Skills | 64 |
+| Workflow skills | 7 |
 | MCP servers | 1 |
 
-→ **[Full component reference](plugins/agentic-engineering/README.md)** — every agent and skill.
+→ **[Full component reference](plugins/agentic-engineering/README.md)** — every agent and workflow skill.
 
 ## Why it works
 

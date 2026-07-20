@@ -1,0 +1,12 @@
+{
+  "skill_name": "wf-setup",
+  "trigger": {
+    "positive": [
+      { "prompt": "Set up agentic engineering in this repository and create the capability contract", "top_k": 2 },
+      { "prompt": "Configure the lifecycle board, plugin flags, readiness checks, and portable hooks", "top_k": 2 }
+    ],
+    "negative": [
+      { "prompt": "Implement this planned API refactor", "owner": "wf-development" }
+    ]
+  }
+}
