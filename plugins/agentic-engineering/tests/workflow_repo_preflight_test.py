@@ -1,12 +1,14 @@
 """Unit tests for workflow-repo-preflight.py's issue-tracker resolution chain.
 
 Chain under test (post unified-lifecycle): local override > committed board
-config -> github-project > gh auth -> github > none. The script filename is
+config -> github-project, otherwise "unconfigured" (a state, not a mode — the
+repo has not run the wf-setup lifecycle bootstrap). The script filename is
 hyphenated, so the module loads via importlib from its path.
 """
 from __future__ import annotations
 
 import importlib.util
+import inspect
 import subprocess
 import sys
 import tempfile
@@ -38,15 +40,16 @@ class ResolveIssueTrackerTest(unittest.TestCase):
         defaults = {
             "repo_root": self.repo,
             "board_configured": False,
-            "gh_authenticated": False,
         }
         defaults.update(kwargs)
         return preflight.resolve_issue_tracker(**defaults)
 
-    def test_valid_local_override_wins_over_all_signals(self) -> None:
-        _repo_with_config(self.repo, "issue_tracker: none")
-        info = self._resolve(board_configured=True, gh_authenticated=True)
-        self.assertEqual(info["resolved"], "none")
+    def test_valid_local_override_wins_over_auto_detect(self) -> None:
+        # An explicit override reports local.md provenance even where
+        # auto-detect would reach the same value.
+        _repo_with_config(self.repo, "issue_tracker: github-project")
+        info = self._resolve(board_configured=True)
+        self.assertEqual(info["resolved"], "github-project")
         self.assertEqual(info["source"], "agentic-engineering.local.md")
 
     def test_hyphenated_github_project_override_is_accepted(self) -> None:
@@ -58,30 +61,38 @@ class ResolveIssueTrackerTest(unittest.TestCase):
         self.assertEqual(info["local_override"], "github-project")
 
     def test_invalid_override_falls_through_and_is_surfaced(self) -> None:
-        # A stale pre-3.0.0 pin (linear, beads) must not be silently
-        # indistinguishable from "no config at all".
-        for stale in ("linear", "beads"):
+        # A stale pin from a retired tracker mode (linear, beads, github,
+        # none) must not be silently indistinguishable from "no config at
+        # all". "none" retired when unconfigured became a state, not a mode.
+        for stale in ("linear", "beads", "github", "none"):
             with self.subTest(stale=stale):
                 _repo_with_config(self.repo, f"issue_tracker: {stale}")
-                info = self._resolve(gh_authenticated=True)
-                self.assertEqual(info["resolved"], "github")
+                info = self._resolve(board_configured=True)
+                self.assertEqual(info["resolved"], "github-project")
                 self.assertEqual(info["source"], "auto-detect")
                 self.assertIsNone(info["local_override"])
                 self.assertEqual(info["local_override_invalid"], stale)
 
-    def test_board_config_wins_over_plain_github(self) -> None:
-        info = self._resolve(board_configured=True, gh_authenticated=True)
+    def test_board_config_resolves_github_project(self) -> None:
+        info = self._resolve(board_configured=True)
         self.assertEqual(info["resolved"], "github-project")
         self.assertEqual(info["source"], "auto-detect")
 
-    def test_gh_only_resolves_github(self) -> None:
-        info = self._resolve(gh_authenticated=True)
-        self.assertEqual(info["resolved"], "github")
-
-    def test_no_signals_resolves_none_with_default_source(self) -> None:
+    def test_gh_auth_is_not_a_tracker_signal(self) -> None:
+        # gh authentication alone no longer resolves a tracker: without a
+        # committed board config the repo is unconfigured, and the resolver
+        # takes no gh-auth input at all.
+        params = inspect.signature(preflight.resolve_issue_tracker).parameters
+        self.assertNotIn("gh_authenticated", params)
         info = self._resolve()
-        self.assertEqual(info["resolved"], "none")
-        self.assertEqual(info["source"], "default")
+        self.assertEqual(info["resolved"], "unconfigured")
+
+    def test_no_signals_resolves_unconfigured(self) -> None:
+        # No override and no board -> the unconfigured *state* (not a mode):
+        # gates direct to the wf-setup lifecycle bootstrap.
+        info = self._resolve()
+        self.assertEqual(info["resolved"], "unconfigured")
+        self.assertEqual(info["source"], "auto-detect")
         self.assertIsNone(info["local_override_invalid"])
 
     def test_missing_config_file_reads_as_no_override(self) -> None:
@@ -91,15 +102,17 @@ class ResolveIssueTrackerTest(unittest.TestCase):
 
     def test_tracked_local_config_is_ignored(self) -> None:
         # A .local.md committed to git (would ride a PR) must not pin the
-        # tracker — `issue_tracker: none` in a PR would bypass board gates.
-        # Mirrors lifecycle_board's read_board_config tracked-file gate.
+        # tracker — a PR-carried override would steer tracker dispatch for
+        # every clone. Mirrors lifecycle_board's read_board_config
+        # tracked-file gate. Observable here: the tracked override would
+        # claim local.md provenance; ignored, resolution stays unconfigured.
         subprocess.run(["git", "-C", self.repo, "init", "-q"], check=True,
                        capture_output=True, text=True)
-        _repo_with_config(self.repo, "issue_tracker: none")
+        _repo_with_config(self.repo, "issue_tracker: github-project")
         subprocess.run(["git", "-C", self.repo, "add", "agentic-engineering.local.md"],
                        check=True, capture_output=True, text=True)
-        info = self._resolve(board_configured=True, gh_authenticated=True)
-        self.assertEqual(info["resolved"], "github-project")
+        info = self._resolve(board_configured=False)
+        self.assertEqual(info["resolved"], "unconfigured")
         self.assertEqual(info["source"], "auto-detect")
         self.assertIsNone(info["local_override"])
         self.assertIsNone(info["local_override_invalid"])
@@ -107,16 +120,16 @@ class ResolveIssueTrackerTest(unittest.TestCase):
     def test_untracked_local_config_in_git_repo_is_honored(self) -> None:
         # The gate keys on *tracked*, not on "a git repo exists": an
         # untracked (gitignored) .local.md is the supported layout and must
-        # keep winning over every auto-detect signal.
+        # keep winning over auto-detect.
         subprocess.run(["git", "-C", self.repo, "init", "-q"], check=True,
                        capture_output=True, text=True)
-        _repo_with_config(self.repo, "issue_tracker: none")
-        info = self._resolve(board_configured=True, gh_authenticated=True)
-        self.assertEqual(info["resolved"], "none")
+        _repo_with_config(self.repo, "issue_tracker: github-project")
+        info = self._resolve(board_configured=False)
+        self.assertEqual(info["resolved"], "github-project")
         self.assertEqual(info["source"], "agentic-engineering.local.md")
 
-    def test_valid_trackers_are_the_lifecycle_modes(self) -> None:
-        self.assertEqual(preflight.VALID_TRACKERS, {"github-project", "github", "none"})
+    def test_github_project_is_the_only_supported_tracker(self) -> None:
+        self.assertEqual(preflight.VALID_TRACKERS, {"github-project"})
 
 
 if __name__ == "__main__":

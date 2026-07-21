@@ -1,0 +1,26 @@
+#!/bin/sh
+# Versioned pre-commit hook for this repository. Activate with:
+#
+#   bun run hooks:install
+#
+# Early warning only -- CI and the full Bun suite remain the authoritative
+# gate. Keep this fast and offline: byte-comparison checks only, never the
+# full test suite, the type checker, or anything network- or LLM-backed.
+# Chain future checks by appending them below the skills:check block.
+
+root="$(git rev-parse --show-toplevel 2>/dev/null)" || exit 0
+cd "$root" || exit 0
+
+if ! command -v bun >/dev/null 2>&1; then
+    echo "pre-commit: bun not on PATH; skipping skills:check (CI still enforces it)" >&2
+    exit 0
+fi
+
+if ! bun run skills:check; then
+    echo "" >&2
+    echo "pre-commit: vendored skill scripts are out of sync with their canonical copies." >&2
+    echo "pre-commit: run 'bun run skills:sync', stage the refreshed copies, and commit again." >&2
+    exit 1
+fi
+
+exit 0

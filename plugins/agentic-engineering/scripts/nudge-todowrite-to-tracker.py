@@ -2,15 +2,17 @@
 """
 PreToolUse (TodoWrite) — NON-BLOCKING nudge toward the repo's durable issue
 tracker. Reuses the exact resolution chain workflow-repo-preflight.py already
-establishes (local override > committed board config -> github-project ->
-gh auth -> github -> none), so the reminder always names the tracker the rest
+establishes (local override > committed board config -> github-project,
+otherwise "unconfigured"), so the reminder always names the tracker the rest
 of the plugin's lifecycle tooling agrees on.
 
 Silent (exit 0, no output) unless BOTH:
   - the repo has opted in via `nudge_todowrite: true` in
     `agentic-engineering.local.md` frontmatter (off by default — not every
-    repo has a durable tracker, and the reminder would be noise otherwise)
-  - a tracker actually resolves to something other than "none"
+    repo has a configured tracker, and the reminder would be noise otherwise)
+  - a tracker actually resolves (an unconfigured repo has nothing to nudge
+    toward — TodoWrite stays ephemeral in-session scratch until the wf-setup
+    lifecycle bootstrap configures a board)
 
 Under the unified lifecycle GitHub is the sole authoritative tracker; beads is
 a non-authoritative scratchpad and is therefore not a nudge target here.
@@ -22,7 +24,6 @@ from __future__ import annotations
 import importlib.util
 import json
 import pathlib
-import shutil
 import subprocess
 import sys
 
@@ -45,11 +46,6 @@ MESSAGES = {
         "board. TodoWrite is fine for ephemeral in-session steps — file "
         "anything that should outlive this session with `gh issue create` "
         "(it joins the board automatically)."
-    ),
-    "github": (
-        "this repo tracks durable, cross-session work with GitHub Issues. "
-        "TodoWrite is fine for ephemeral in-session steps — file anything "
-        "that should outlive this session with `gh issue create`."
     ),
 }
 
@@ -92,14 +88,9 @@ def resolve_message(repo_root: str) -> "str | None":
     except lifecycle_board.BoardError:
         board = None
 
-    gh_authenticated = shutil.which("gh") is not None and subprocess.run(
-        ["gh", "auth", "status"], capture_output=True
-    ).returncode == 0
-
     tracker_info = preflight.resolve_issue_tracker(
         repo_root=repo_root,
         board_configured=board is not None,
-        gh_authenticated=gh_authenticated,
     )
     return MESSAGES.get(tracker_info["resolved"])
 

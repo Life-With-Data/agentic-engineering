@@ -96,13 +96,12 @@ Every adopting repository declares all ten capability keys. Missing or malformed
 
 #### Issue tracker
 
-The workflow skills resolve one of three modes (`github-project | github | none`) at startup and dispatch accordingly:
+The only supported tracker mode today is **`github-project`** — a GitHub Projects v2 lifecycle board. More trackers may be supported in the future; right now there is essentially no choice to make. At startup the workflow skills resolve one of two states:
 
 - **`github-project`** — a committed board config (`github_project_owner:` + `github_project_number:` in `agentic-engineering.md` at the repo root) is present. This unlocks the full unified lifecycle: a GitHub Projects v2 board is the source of truth, every workflow skill gates on entry, and stage moves route through `scripts/lifecycle_board.py`. See the **Lifecycle** section below.
-- **`github`** — plain GitHub Issues with no board stage machinery. Used when `gh` is authenticated but no board config is committed.
-- **`none`** — no available GitHub tracker. Workflows return artifacts without tracker writes.
+- **`unconfigured`** — no configured board yet. This is a state, not a mode: lifecycle gates return `no_board` and direct you to the `wf-setup` lifecycle bootstrap. Work may still proceed (code still gets written), but there are no lifecycle claims and no tracker writes, and TodoWrite remains ephemeral in-session scratch only.
 
-Beads is **not** a tracker mode. It remains an opt-in, non-authoritative implementer scratchpad — `bd remember` still works for disposable working state, but no gate ever reads a bead and nothing syncs. To configure the board, use `wf-setup` (which writes the committed config) or run the bootstrap script; to pin plain mode, add `issue_tracker: github` (or `none`) to your project's `agentic-engineering.local.md` (setup gitignores this file — keep it untracked; the runtime ignores a tracked copy).
+Beads is **not** a tracker and is in no way a source of truth for managing tasks. It MAY optionally be used in-session as a scratchpad for super-fine-grained personal task work (`bd remember` for disposable working state), but no gate ever reads a bead, nothing syncs it, and its files must never be committed — the `block-beads-jsonl-stage` hook enforces that beads data never enters the repository. The GitHub Project board is the only authoritative tracker. To configure the board, use `wf-setup` (which writes the committed config) or run the bootstrap script.
 
 #### Lifecycle
 

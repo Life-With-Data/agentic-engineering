@@ -16,8 +16,13 @@
     "cli:install": "bun run src/index.ts install",
     "docs:build": "bun run scripts/generate-docs.ts",
     "docs:check": "bun run scripts/generate-docs.ts --check",
+    "skills:sync": "bun scripts/sync-skill-scripts.ts",
+    "skills:check": "bun scripts/sync-skill-scripts.ts --check",
+    "hooks:install": "sh .githooks/install.sh",
     "test": "bun test",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "worktrees:sync": "bash plugins/agentic-engineering/skills/wf-development/scripts/worktree-manager.sh sync",
+    "worktrees:finish": "bash plugins/agentic-engineering/skills/wf-development/scripts/worktree-manager.sh finish"
   },
   "dependencies": {
     "citty": "^0.1.6",

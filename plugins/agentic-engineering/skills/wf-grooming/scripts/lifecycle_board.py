@@ -101,7 +101,7 @@ CLAIM_VERDICTS = ("proceed", "claim_conflict", "blocked")
 # tracks the parent. Their finer-grained progress rides on mutually-exclusive
 # `status:*` labels a stakeholder can read directly in the issues list, driven
 # by this same engine (never a second writer). Labels are repo-scoped, so the
-# verb needs NO board and works in `github` mode too. The invariant: an issue
+# verb needs NO board. The invariant: an issue
 # carries at most one `status:*` label; the terminal `done` closes the issue
 # (an orchestrator close, not a PR auto-close) and strips the label, because
 # CLOSED already means done. `in_progress`/`in_review`/`blocked` describe an
@@ -484,13 +484,17 @@ def read_binding_config(ctx: RepoContext) -> BindingConfig:
     )
 
 
-def resolve_mode(board: Optional[BoardConfig], gh_authenticated: bool) -> str:
-    """github-project | github | none. Lifecycle features require a board."""
+def resolve_mode(board: Optional[BoardConfig]) -> str:
+    """github-project | unconfigured.
+
+    The only supported tracker mode is github-project. "unconfigured" is a
+    state, not a mode: the repository has no configured Project board yet
+    (run the wf-setup lifecycle bootstrap), so no lifecycle claims or
+    tracker writes occur.
+    """
     if board is not None:
         return "github-project"
-    if gh_authenticated:
-        return "github"
-    return "none"
+    return "unconfigured"
 
 
 # --------------------------------------------------------------------------
@@ -857,7 +861,7 @@ GROOM_ROUTES = (
     "terminal",         # done: report -> STOP
     "abandoned",        # off-ramp: report -> STOP
     "blocked",          # cannot groom yet (see `blocker`) -> STOP and surface
-    "no_board",         # legacy mode: sub-commands' own flows apply
+    "no_board",         # unconfigured repo (no board): direct to the wf-setup lifecycle bootstrap
 )
 
 
@@ -1140,11 +1144,10 @@ def _gh_me(runner: GhRunner) -> str:
 
 def verb_gate(command: str, issue: Optional[int], ctx: RepoContext, runner: GhRunner) -> dict:
     board = read_board_config(ctx)
-    gh_ok = shutil.which("gh") is not None
-    mode = resolve_mode(board, gh_ok)
+    mode = resolve_mode(board)
     if mode != "github-project":
         return {"mode": mode, "verdict": "no_board", "route": "none",
-                "reason": "lifecycle gates require a configured board; degrading to legacy behavior",
+                "reason": "repository has no configured Project board — run the wf-setup lifecycle bootstrap to configure one; until then there are no lifecycle claims and no tracker writes",
                 "stage": None, "issue": issue, "flags": []}
 
     flags: "list[dict]" = []
@@ -1302,12 +1305,11 @@ def verb_groom_entry(issue: Optional[int], ctx: RepoContext, runner: GhRunner) -
     only the one open judgment `route_for_groom` leaves it (crisp-vs-vague on
     the `intake` route)."""
     board = read_board_config(ctx)
-    gh_ok = shutil.which("gh") is not None
-    mode = resolve_mode(board, gh_ok)
+    mode = resolve_mode(board)
     if mode != "github-project":
         return {"mode": mode, "route": "no_board", "issue": issue, "stage": None,
                 "provenance": "trusted", "blocker": None, "next": None,
-                "reason": "no board configured — the sub-commands' own legacy flows apply",
+                "reason": "repository has no configured Project board — run the wf-setup lifecycle bootstrap to configure one; until then there are no lifecycle claims and no tracker writes",
                 "reconcile": {"skipped_ttl": True}, "flags": []}
 
     reconcile = verb_reconcile(ctx, runner)  # issue=None => TTL-gated global sweep

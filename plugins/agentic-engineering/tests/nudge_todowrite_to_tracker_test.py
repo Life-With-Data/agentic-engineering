@@ -1,8 +1,9 @@
 """Unit tests for nudge-todowrite-to-tracker.py.
 
-Covers: silent when not opted in, silent when a tracker doesn't resolve,
-tracker-specific message selection, and the tracked-local-config security
-invariant (a git-tracked `agentic-engineering.local.md` must be ignored).
+Covers: silent when not opted in, silent when the repo has no configured
+tracker, tracker-specific message selection, and the tracked-local-config
+security invariant (a git-tracked `agentic-engineering.local.md` must be
+ignored).
 """
 from __future__ import annotations
 
@@ -13,7 +14,6 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
-from unittest import mock
 
 SCRIPT = Path(__file__).resolve().parent.parent / "scripts" / "nudge-todowrite-to-tracker.py"
 
@@ -55,7 +55,7 @@ class NudgeOptedInTest(unittest.TestCase):
         self.assertFalse(nudge.nudge_opted_in(self.repo))
 
     def test_flag_absent_is_not_opted_in(self) -> None:
-        _write_config(self.repo, "issue_tracker: github")
+        _write_config(self.repo, "issue_tracker: github-project")
         self.assertFalse(nudge.nudge_opted_in(self.repo))
 
     def test_flag_true_is_opted_in(self) -> None:
@@ -87,14 +87,11 @@ class ResolveMessageTest(unittest.TestCase):
         self.addCleanup(os.chdir, cwd)
         os.chdir(self.repo)
 
-    def test_none_tracker_yields_no_message(self) -> None:
-        # No board config -> resolves to "none", provided gh auth doesn't
-        # also signal "github". `shutil.which("gh")` is patched out rather
-        # than relied on to return None, because CI runners have `gh`
-        # installed and authenticated (GH_TOKEN) — the ambient environment's
-        # real gh state must not leak into this assertion.
-        with mock.patch.object(nudge.shutil, "which", return_value=None):
-            self.assertIsNone(nudge.resolve_message(self.repo))
+    def test_unconfigured_repo_yields_no_message(self) -> None:
+        # No board config -> the repo is unconfigured: there is no tracker
+        # to nudge toward and no message to emit, regardless of the ambient
+        # environment's gh state (gh auth is no longer a tracker signal).
+        self.assertIsNone(nudge.resolve_message(self.repo))
 
     def test_github_project_board_config_yields_project_message(self) -> None:
         board_config = Path(self.repo) / "agentic-engineering.md"

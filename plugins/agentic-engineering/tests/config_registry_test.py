@@ -86,10 +86,12 @@ class ValidationTest(unittest.TestCase):
             self.assertFalse(config_registry._validate(flag, value))
 
     def test_enum_accepts_only_declared_choices(self) -> None:
+        # github-project is currently the only supported tracker; retired
+        # modes (none, github) and never-supported trackers are invalid.
         flag = config_registry._BY_KEY["issue_tracker"]
-        for value in ("github-project", "github", "none", "GITHUB"):
+        for value in ("github-project", "GITHUB-PROJECT"):
             self.assertTrue(config_registry._validate(flag, value))
-        for value in ("linear", "beads", ""):
+        for value in ("linear", "beads", "github", "none", ""):
             self.assertFalse(config_registry._validate(flag, value))
 
 class InvalidStaleValueTest(unittest.TestCase):
@@ -162,7 +164,7 @@ class SetTest(unittest.TestCase):
         local_config = Path(self.ctx.root, "agentic-engineering.local.md")
         original = (
             "---\n"
-            "issue_tracker: github\n"
+            "issue_tracker: github-project\n"
             "review_agents: [kieran-rails-reviewer, code-simplicity-reviewer]\n"
             "---\n\n"
             "# Review Context\n\n"
@@ -174,7 +176,7 @@ class SetTest(unittest.TestCase):
 
         after = local_config.read_text(encoding="utf-8")
         self.assertIn("nudge_todowrite: true", after)
-        self.assertIn("issue_tracker: github", after)
+        self.assertIn("issue_tracker: github-project", after)
         self.assertIn("review_agents: [kieran-rails-reviewer, code-simplicity-reviewer]", after)
         self.assertIn("# Review Context\n\nAdd project-specific review instructions here.\n", after)
 
