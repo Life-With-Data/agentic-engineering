@@ -15,8 +15,7 @@ testing, review, delivery, or documentation into development.
 
 ## Resolve the starting state
 
-Use the GitHub issue/project state and explicitly supplied artifacts. Do not
-search a guessed plan directory, todo directory, or documentation path.
+Use the GitHub issue/project state and explicitly supplied artifacts.
 
 - Ungroomed request or unreproduced bug: route to `wf-grooming`.
 - Planned, unclaimed work: continue with `wf-development`.

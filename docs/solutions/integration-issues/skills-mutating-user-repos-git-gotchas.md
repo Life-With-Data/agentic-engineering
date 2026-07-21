@@ -55,7 +55,7 @@ awk '/^## Step 4\.5/{s=1} s && /^```bash$/{b=1; next} b && /^```$/{exit} b{print
 
 Scenarios that mattered: fresh repo *run from a subdirectory* (root-anchoring), legacy tracked copy (warning before/after untrack, staged deletion, `git add -A` re-track blocked, **re-run while still tracked** — the case that exposed `--no-index`), broader `*.local.md` pattern, `.gitignore` without trailing newline, non-git dir, symlinked `.gitignore` (no write-through, no duplicates).
 
-**Lesson.** For executable documentation, extraction-by-anchor makes the doc itself the tested artifact — a transcribed copy can drift and silently test nothing (the [[recorded-fixtures-must-be-load-bearing]] trap in another costume). One-shot harnesses rot, so the follow-up commits it as a bun test with the same verbatim extraction (todos/004; spawned task).
+**Lesson.** For executable documentation, extraction-by-anchor makes the doc itself the tested artifact — a transcribed copy can drift and silently test nothing (the [[recorded-fixtures-must-be-load-bearing]] trap in another costume). One-shot harnesses rot, so the follow-up commits it as a bun test with the same verbatim extraction).
 
 ## 6. `core.hooksPath` REPLACES the hook search path — an installed git hook can be a silent no-op
 

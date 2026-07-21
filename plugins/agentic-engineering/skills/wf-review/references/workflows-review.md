@@ -54,8 +54,7 @@ blocking findings without repository evidence.
 ## Record and resolve
 
 Record findings through the repository's configured tracker or review system.
-Do not assume a `todos/` directory, a particular skill name, or a tool-specific
-template. For each proposed fix:
+For each proposed fix:
 
 1. return to `wf-development` for implementation;
 2. re-run relevant evidence through `wf-testing`;
