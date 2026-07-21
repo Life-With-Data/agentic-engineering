@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""Bootstrap the unified lifecycle GitHub Projects v2 board (Phase 4).
+"""Bootstrap the unified lifecycle GitHub Projects v2 board.
 
 Hosted by the setup skill, but a *script* so it is testable. Creates (or
 idempotently re-configures) the Projects v2 board that
 `lifecycle_board.py` reads and writes, then wires the built-in automations
-that make `shipped` a zero-UI stamp.
+that make `done` a zero-UI stamp.
 
-The whole flow, in order (see the plan's Phase 4 bootstrap bullet):
+The whole flow, in order:
   1. Preconditions — refuse `GH_REPO`/`GH_HOST` overrides; gh >= 2.94.0;
      gh authenticated; derive `--owner` from the ORIGIN remote owner (never
      `@me`, which on an org repo makes a user-owned project the plugin's own
@@ -14,15 +14,12 @@ The whole flow, in order (see the plan's Phase 4 bootstrap bullet):
   2. Resolve-or-create the project. If the committed config already names a
      project, operate on it (idempotent re-run); else `gh project create`.
   3. Read the Status field + current options.
-  4. Fresh-project guard: hard-stop with a printed diff unless the option set
-     is exactly GitHub's defaults {Todo, In Progress, Done} or exactly the
-     canonical 9 — never mutate a customized team board.
-  5. ONE `updateProjectV2Field` mutation sending ALL 9 options with existing
-     option IDs attached (Todo->stub, In Progress->in_progress, Done->shipped
-     keep their ids; new options are id-less; on a canonical re-run every
-     option keeps its id). Sending options without ids silently disables the
-     five pre-enabled Status workflows and orphans item values — verified
-     destructive, hence the idempotency rule.
+  4. Fresh-project guard: accept only GitHub defaults, the canonical seven,
+     the tool's legacy nine-option lifecycle, or its exact resumable migration
+     schema — never adopt a custom board.
+  5. Configure all seven options ID-preservingly. Legacy boards first receive
+     `done`, migrate shipped/deployed/compounded items to it with a rollback
+     snapshot in git-common-dir, and only then remove the legacy options.
   6. Create the Priority single-select field (p1/p2/p3) if absent.
   7. Disable the "Item reopened" workflow (`deleteProjectV2Workflow`) — it
      would stamp `stub` on reopen, erasing lifecycle position. Verify
@@ -40,8 +37,8 @@ The whole flow, in order (see the plan's Phase 4 bootstrap bullet):
      is never run here, so bootstrap never mutates issues onto the board
      unattended.
   9. Scripted probe (--probe, default ON): scratch issue -> board-add ->
-     Status=stub -> close -> poll <=60s for the automation to stamp shipped
-     -> report PASS/FAIL -> delete the scratch issue.
+     Status=stub -> close -> poll <=60s for the automation to stamp done
+     -> report PASS/FAIL -> retain it closed and remove its Project item.
  10. Emit a JSON summary.
 
 Conventions mirror lifecycle_board.py exactly: the {ok, error_code, error,
@@ -90,20 +87,16 @@ _STAGE_COLOR = {
     "planned": "BLUE",
     "in_progress": "YELLOW",
     "in_review": "ORANGE",
-    "shipped": "GREEN",
-    "deployed": "GREEN",
-    "compounded": "PURPLE",
+    "done": "GREEN",
     "abandoned": "RED",
 }
 _STAGE_DESCRIPTION = {
     "stub": "New/un-groomed work item",
     "brainstormed": "Requirements explored",
-    "planned": "Plan doc written; ready to work",
+    "planned": "Trusted readiness attestation; ready to work",
     "in_progress": "Claimed and being implemented",
     "in_review": "PR open, under review",
-    "shipped": "Merged to the default branch",
-    "deployed": "Reached production (high-water mark)",
-    "compounded": "Learnings captured",
+    "done": "Accepted repository work merged and issue closed",
     "abandoned": "Closed as not planned",
 }
 
@@ -113,10 +106,18 @@ _STAGE_DESCRIPTION = {
 _DEFAULT_TO_CANONICAL = {
     "Todo": "stub",
     "In Progress": "in_progress",
-    "Done": "shipped",
+    "Done": "done",
 }
 _DEFAULT_OPTION_NAMES = frozenset(_DEFAULT_TO_CANONICAL)          # {Todo, In Progress, Done}
-_CANONICAL_OPTION_NAMES = frozenset(STAGES)                       # the 9 stages
+_CANONICAL_OPTION_NAMES = frozenset(STAGES)
+LEGACY_STAGES = (
+    "stub", "brainstormed", "planned", "in_progress", "in_review",
+    "shipped", "deployed", "compounded", "abandoned",
+)
+_LEGACY_OPTION_NAMES = frozenset(LEGACY_STAGES)
+LEGACY_TRANSITION_STAGES = tuple("done" if s == "shipped" else s for s in LEGACY_STAGES)
+_LEGACY_TRANSITION_OPTION_NAMES = frozenset(LEGACY_TRANSITION_STAGES)
+MIGRATION_ITEM_LIMIT = 1000
 
 PRIORITY_FIELD_NAME = "Priority"
 PRIORITY_OPTIONS = ("p1", "p2", "p3")
@@ -208,6 +209,12 @@ class Project:
     number: int
     id: str
     created: bool
+    owner: str = ""
+
+
+def _project_owner(project: Project, ctx: "lb.RepoContext") -> str:
+    """The resolved Project owner; fallback preserves direct helper callers."""
+    return project.owner or ctx.origin_owner
 
 
 def resolve_or_create_project(ctx: "lb.RepoContext", runner: GhRunner) -> Project:
@@ -227,7 +234,8 @@ def resolve_or_create_project(ctx: "lb.RepoContext", runner: GhRunner) -> Projec
                          f"reading existing project {existing.owner}/{existing.number}",
                          "Verify the project still exists, or remove its entry from "
                          f"{COMMITTED_CONFIG} to create a fresh one; " + _PROJECT_SCOPE_HINT)
-        return Project(number=existing.number, id=payload.get("id", ""), created=False)
+        return Project(number=existing.number, id=payload.get("id", ""), created=False,
+                       owner=existing.owner)
 
     title = f"{ctx.origin_repo} lifecycle"
     create = runner(["project", "create", "--owner", owner, "--title", title, "--format", "json"])
@@ -239,7 +247,7 @@ def resolve_or_create_project(ctx: "lb.RepoContext", runner: GhRunner) -> Projec
         raise BoardError("project_create_failed", "project create returned no number",
                          "Retry; if persistent, create the project manually and record it "
                          f"in {COMMITTED_CONFIG}")
-    return Project(number=int(number), id=payload.get("id", ""), created=True)
+    return Project(number=int(number), id=payload.get("id", ""), created=True, owner=owner)
 
 
 # --------------------------------------------------------------------------
@@ -253,10 +261,11 @@ class StatusField:
 
 
 def read_status_field(project: Project, ctx: "lb.RepoContext", runner: GhRunner) -> StatusField:
-    result = runner(["project", "field-list", str(project.number), "--owner", ctx.origin_owner,
+    owner = _project_owner(project, ctx)
+    result = runner(["project", "field-list", str(project.number), "--owner", owner,
                      "--format", "json"])
     payload = _check(result, "project_not_found",
-                     f"reading fields of project {ctx.origin_owner}/{project.number}",
+                     f"reading fields of project {owner}/{project.number}",
                      "Verify the project exists and gh has the `project` scope; " + _PROJECT_SCOPE_HINT)
     status, _priority = lb.parse_field_list(payload)
     if not status:
@@ -271,19 +280,29 @@ def read_status_field(project: Project, ctx: "lb.RepoContext", runner: GhRunner)
 # --------------------------------------------------------------------------
 
 def assert_fresh_or_canonical(status: StatusField) -> str:
-    """Return "default" or "canonical". Hard-stop with a printed diff on any
+    """Classify every safe bootstrap/migration schema. Hard-stop on any
     other option set — never mutate a customized team board."""
     names = [o["name"] for o in status.options]
+    ids = [o.get("id", "") for o in status.options]
     nameset = frozenset(names)
-    if nameset == _DEFAULT_OPTION_NAMES:
+    # Set equality alone is unsafe: duplicate names collapse in
+    # build_option_mapping, which would silently omit one option ID from the
+    # replace-all mutation and could orphan items. GitHub-provided option IDs
+    # must likewise be present and unique before any destructive mutation.
+    exact_options = len(names) == len(nameset) and all(ids) and len(ids) == len(set(ids))
+    if exact_options and nameset == _DEFAULT_OPTION_NAMES:
         return "default"
-    if nameset == _CANONICAL_OPTION_NAMES:
+    if exact_options and nameset == _CANONICAL_OPTION_NAMES:
         return "canonical"
+    if exact_options and nameset == _LEGACY_OPTION_NAMES:
+        return "legacy"
+    if exact_options and nameset == _LEGACY_TRANSITION_OPTION_NAMES:
+        return "legacy-transition"
     diff = _option_diff(names)
     raise BoardError(
         "unrecognized_project",
-        "Refusing to reconfigure this board: its Status options are neither GitHub's "
-        "fresh-project defaults nor the canonical lifecycle set, so the replace-all "
+        "Refusing to reconfigure this board: its Status options are not a recognized "
+        "fresh, canonical, legacy, or resumable migration schema, so the replace-all "
         "mutation would silently destroy existing options/automations.\n" + diff,
         "Point the bootstrap at a fresh project (empty/default Status options) or at a "
         "board previously bootstrapped by this tool; never adopt a customized team board",
@@ -297,7 +316,9 @@ def _option_diff(names: "list[str]") -> str:
     return (
         f"  current options : {have}\n"
         f"  expected (fresh): {expected_default}\n"
-        f"  expected (ours) : {expected_canonical}"
+        f"  expected (ours) : {expected_canonical}\n"
+        f"  expected (legacy migration): {list(LEGACY_STAGES)}\n"
+        f"  expected (resumable transition): {list(LEGACY_TRANSITION_STAGES)}"
     )
 
 
@@ -325,15 +346,14 @@ UPDATE_FIELD_MUTATION = (
 
 
 def build_option_mapping(status: StatusField, kind: str) -> "list[dict]":
-    """The full 9-option list in STAGES order, each carrying an existing
+    """The full seven-option list in STAGES order, preserving safe IDs.
     option id where one can be preserved.
 
-    - kind == "default": map Todo->stub, In Progress->in_progress, Done->shipped
-      (those three keep their ids); the other six are new and id-less.
+    - kind == "default": map Todo->stub, In Progress->in_progress, Done->done.
     - kind == "canonical": every option already exists by its canonical name,
       so every one keeps its id (idempotent re-run — never a partial/id-less list).
     """
-    if kind == "canonical":
+    if kind in ("canonical", "legacy-final"):
         by_name = {o["name"]: o["id"] for o in status.options}
     else:  # default
         by_name = {}
@@ -389,6 +409,117 @@ def apply_status_options(status: StatusField, options: "list[dict]", runner: GhR
     return field.get("options", [])
 
 
+def _legacy_board_items(project: Project, ctx: "lb.RepoContext", runner: GhRunner) -> "list[dict]":
+    owner = _project_owner(project, ctx)
+    result = runner(["project", "item-list", str(project.number), "--owner", owner,
+                     "--format", "json", "--limit", str(MIGRATION_ITEM_LIMIT)])
+    payload = _check(result, "migration_read_failed", "reading legacy project items",
+                     "Verify the project scope and retry before changing Status options")
+    items = payload.get("items", [])
+    if len(items) >= MIGRATION_ITEM_LIMIT:
+        raise BoardError("migration_truncated",
+                         f"Legacy board has at least {MIGRATION_ITEM_LIMIT} items; refusing a partial migration",
+                         "Increase the migration implementation's pagination support before retrying")
+    return items
+
+
+def _write_migration_snapshot(project: Project, status: StatusField, items: "list[dict]",
+                              ctx: "lb.RepoContext") -> str:
+    base = lb.git_common_dir(ctx) / "agentic-engineering" / "migrations"
+    stamp = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
+    owner = _project_owner(project, ctx)
+    path = base / f"status-{owner}--{project.number}-{stamp}-{time.time_ns()}.json"
+    evidence = {
+        "repository": ctx.slug,
+        "project": {"owner": owner, "number": project.number, "id": project.id},
+        "status_field": {"id": status.field_id, "options": status.options},
+        "items": [{"id": item.get("id"), "status": item.get("status"),
+                   "content": item.get("content")} for item in items],
+        "rollback": "Restore the recorded option schema and item statuses from this snapshot.",
+    }
+    lb._atomic_private_write(path, json.dumps(evidence, indent=2) + "\n")
+    return str(path)
+
+
+def migrate_legacy_status(project: Project, status: StatusField,
+                          ctx: "lb.RepoContext", runner: GhRunner) -> dict:
+    """Migrate or resume the legacy schema without orphaning values.
+
+    The legacy ``shipped`` option is renamed to ``done`` while retaining its ID,
+    which also preserves the built-in Item closed workflow's target. Only after
+    that ID exists do we move deployed/compounded items to it and remove those
+    obsolete options. The schema after the rename is a recognized recovery
+    state: a rerun skips the rename, migrates only values still on legacy
+    options, and retries the final contraction.
+    """
+    phase = assert_fresh_or_canonical(status)
+    if phase not in ("legacy", "legacy-transition"):
+        raise BoardError("migration_state_invalid",
+                         f"Cannot run legacy migration from schema phase {phase!r}",
+                         "Re-read the board Status field and run normal bootstrap")
+    items = _legacy_board_items(project, ctx, runner)
+    snapshot = _write_migration_snapshot(project, status, items, ctx)
+    if phase == "legacy":
+        by_name = {o["name"]: o["id"] for o in status.options}
+        transitional: "list[dict]" = []
+        for old in LEGACY_STAGES:
+            name = "done" if old == "shipped" else old
+            transitional.append({"id": by_name[old], "name": name,
+                                 "color": _STAGE_COLOR.get(name, _STAGE_COLOR["done"]),
+                                 "description": _STAGE_DESCRIPTION.get(
+                                     name, f"Legacy {old} value pending migration")})
+        resulting = apply_status_options(status, transitional, runner)
+    else:
+        # The prior run completed the ID-preserving rename. Reuse the current
+        # IDs exactly and resume at item migration; never submit the rename a
+        # second time or fabricate id-less options.
+        resulting = status.options
+    done_id = next((o.get("id") for o in resulting if o.get("name") == "done"), None)
+    if not done_id:
+        raise BoardError("migration_failed", "Status rename did not return a done option ID",
+                         f"Inspect the board and rollback evidence at {snapshot}")
+
+    migrated: "list[dict]" = []
+    for item in items:
+        old = item.get("status")
+        if old not in ("deployed", "compounded"):
+            continue
+        item_id = item.get("id")
+        if not item_id:
+            raise BoardError("migration_failed", f"Legacy {old} item has no project item ID",
+                             f"Inspect the board and rollback evidence at {snapshot}")
+        edit = runner(["project", "item-edit", "--id", item_id,
+                       "--project-id", project.id, "--field-id", status.field_id,
+                       "--single-select-option-id", done_id])
+        _check(edit, "migration_failed", f"migrating project item {item_id} from {old} to done",
+               f"Retry the migration; rollback evidence is at {snapshot}")
+        migrated.append({"id": item_id, "from": old, "to": "done"})
+
+    # Re-read immediately before deleting the legacy options. An item can be
+    # added or manually dragged while migration runs; contracting the schema
+    # from a stale first read would orphan that concurrent value.
+    verified_items = _legacy_board_items(project, ctx, runner)
+    remaining = [{"id": item.get("id"), "status": item.get("status")}
+                 for item in verified_items
+                 if item.get("status") in ("deployed", "compounded")]
+    if remaining:
+        raise BoardError(
+            "migration_concurrent_change",
+            f"Refusing to remove legacy options: {len(remaining)} project item(s) still use them",
+            f"Retry migration; it will move the remaining items. Rollback evidence is at {snapshot}",
+        )
+
+    transitional_status = StatusField(field_id=status.field_id, options=[
+        {"id": o.get("id", ""), "name": o.get("name", "")} for o in resulting
+    ])
+    final_options = build_option_mapping(transitional_status, "legacy-final")
+    final_result = apply_status_options(transitional_status, final_options, runner)
+    return {"snapshot_path": snapshot, "resumed_from": phase,
+            "items_migrated": migrated,
+            "verified_item_count": len(verified_items),
+            "resulting_options": final_result, "mapping": final_options}
+
+
 # --------------------------------------------------------------------------
 # 6. Priority field
 # --------------------------------------------------------------------------
@@ -396,7 +527,8 @@ def apply_status_options(status: StatusField, options: "list[dict]", runner: GhR
 def ensure_priority_field(project: Project, ctx: "lb.RepoContext", runner: GhRunner) -> dict:
     """Create the Priority single-select field (p1/p2/p3) if absent. Returns
     {created: bool, field_id: str|None}."""
-    listing = runner(["project", "field-list", str(project.number), "--owner", ctx.origin_owner,
+    owner = _project_owner(project, ctx)
+    listing = runner(["project", "field-list", str(project.number), "--owner", owner,
                       "--format", "json"])
     payload = _check(listing, "project_not_found", "re-reading fields for Priority check",
                      "Verify the project exists and the `project` scope; " + _PROJECT_SCOPE_HINT)
@@ -404,7 +536,7 @@ def ensure_priority_field(project: Project, ctx: "lb.RepoContext", runner: GhRun
     if priority:
         return {"created": False, "field_id": priority.get("id")}
 
-    create = runner(["project", "field-create", str(project.number), "--owner", ctx.origin_owner,
+    create = runner(["project", "field-create", str(project.number), "--owner", owner,
                      "--name", PRIORITY_FIELD_NAME, "--data-type", "SINGLE_SELECT",
                      "--single-select-options", ",".join(PRIORITY_OPTIONS), "--format", "json"])
     created = _check(create, "board_write_failed", "creating the Priority field",
@@ -450,7 +582,7 @@ def query_workflows(project: Project, ctx: "lb.RepoContext", runner: GhRunner) -
     result = runner([
         "api", "graphql",
         "-f", f"query={WORKFLOWS_QUERY}",
-        "-F", f"owner={ctx.origin_owner}", "-F", f"number={project.number}",
+        "-F", f"owner={_project_owner(project, ctx)}", "-F", f"number={project.number}",
     ])
     payload = _check(result, "board_read_failed", "querying project workflows",
                      "Verify the `project` scope; " + _PROJECT_SCOPE_HINT)
@@ -487,8 +619,8 @@ def configure_workflows(project: Project, ctx: "lb.RepoContext", runner: GhRunne
     if not closed_enabled:
         warnings.append(
             f"{CLOSED_WORKFLOW!r} workflow is not enabled — the automation that stamps "
-            "`shipped` on issue close is off; enable it in the project UI (Workflows) "
-            "or `shipped` will require a manual/scripted Status write on every merge"
+            "`done` on issue close is off; enable it in the project UI (Workflows) "
+            "or `done` will require a manual/scripted Status write on every merge"
         )
     return {
         "reopened_present": reopened is not None,
@@ -502,18 +634,20 @@ def configure_workflows(project: Project, ctx: "lb.RepoContext", runner: GhRunne
 # 7.5 Link the board to the origin repo. Projects v2 boards are owned by a
 # user/org and *linked* to repos; the link surfaces the board on the repo's
 # Projects tab and enables auto-add-from-repo. Board resolution never needs it
-# (owner+number is enough), so a link failure is a non-fatal warning, not an
-# abort. Idempotent: query the current links and skip the mutation if present.
+# (owner+number is enough), so a link failure does not roll back bootstrap but
+# does keep adoption_ready false and makes doctor fail. Idempotent: query the
+# current links and skip the mutation if present.
 # --------------------------------------------------------------------------
 
 def link_repo(project: Project, ctx: "lb.RepoContext", runner: GhRunner) -> dict:
     """Link the board to the origin repo unless it already is. Returns
     {linked, already_linked, warning}. Never raises — the board is fully usable
     unlinked, so failures degrade to a warning surfaced in the summary."""
-    linked = lb.project_linked_repos(ctx.origin_owner, project.number, runner)
+    owner = _project_owner(project, ctx)
+    linked = lb.project_linked_repos(owner, project.number, runner)
     if linked is not None and ctx.slug in linked:
         return {"linked": False, "already_linked": True, "warning": None}
-    result = runner(["project", "link", str(project.number), "--owner", ctx.origin_owner,
+    result = runner(["project", "link", str(project.number), "--owner", owner,
                      "--repo", ctx.slug])
     if result.returncode != 0:
         return {
@@ -521,7 +655,7 @@ def link_repo(project: Project, ctx: "lb.RepoContext", runner: GhRunner) -> dict
             "warning": (
                 f"could not link the board to {ctx.slug}: {result.stderr.strip()[:200]} — the board "
                 f"still works unlinked; link it manually with "
-                f"`gh project link {project.number} --owner {ctx.origin_owner} --repo {ctx.slug}`"
+                f"`gh project link {project.number} --owner {owner} --repo {ctx.slug}`"
             ),
         }
     return {"linked": True, "already_linked": False, "warning": None}
@@ -536,7 +670,7 @@ def link_repo(project: Project, ctx: "lb.RepoContext", runner: GhRunner) -> dict
 # board_forward_binding check WARN -> PASS.
 # --------------------------------------------------------------------------
 
-def _resolve_owner_url_segment(ctx: "lb.RepoContext", runner: GhRunner) -> "tuple[str, Optional[str]]":
+def _resolve_owner_url_segment(owner: str, runner: GhRunner) -> "tuple[str, Optional[str]]":
     """Return (`users`|`orgs`, warning). The add-to-project project-url segment
     must match the owner type exactly (the action does not normalize). The
     /users/{login} REST endpoint resolves BOTH account types and returns a `type`
@@ -544,14 +678,18 @@ def _resolve_owner_url_segment(ctx: "lb.RepoContext", runner: GhRunner) -> "tupl
     from a user account, so on failure we default to `users` **and surface a
     warning** — silently guessing `users` for an org would scaffold a project-url
     the action rejects days later in a downstream Actions log."""
-    result = runner(["api", f"users/{ctx.origin_owner}", "--jq", ".type"])
+    # Accept RepoContext for compatibility with direct helper callers while the
+    # bootstrap itself always passes the resolved Project owner.
+    if not isinstance(owner, str):
+        owner = owner.origin_owner
+    result = runner(["api", f"users/{owner}", "--jq", ".type"])
     if result.returncode == 0:
         kind = result.stdout.strip()
         return ("orgs" if kind == "Organization" else "users"), None
     return "users", (
-        f"could not resolve the owner type for {ctx.origin_owner!r} "
+        f"could not resolve the owner type for {owner!r} "
         f"({result.stderr.strip()[:120]}) — the scaffolded project-url assumes a USER board "
-        f"(https://github.com/users/...); if {ctx.origin_owner!r} is an organization, change the "
+        f"(https://github.com/users/...); if {owner!r} is an organization, change the "
         "segment to `orgs`")
 
 
@@ -664,8 +802,9 @@ def scaffold_add_to_project_workflow(project: Project, ctx: "lb.RepoContext",
                 "dependabot": {"created": False, "already_covers_actions": None, "warning": None},
                 "warning": None}
 
-    segment, segment_warning = _resolve_owner_url_segment(ctx, runner)
-    project_url = f"https://github.com/{segment}/{ctx.origin_owner}/projects/{project.number}"
+    owner = _project_owner(project, ctx)
+    segment, segment_warning = _resolve_owner_url_segment(owner, runner)
+    project_url = f"https://github.com/{segment}/{owner}/projects/{project.number}"
     action_sha, action_ref = _resolve_action_ref(runner)
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -707,15 +846,29 @@ def write_committed_config(main_root: str, owner: str, number: int,
 
 def run_probe(project: Project, ctx: "lb.RepoContext", runner: GhRunner,
               *, sleep: "Callable[[float], None]" = time.sleep,
-              now: "Callable[[], float]" = time.monotonic) -> dict:
-    """Create a scratch issue, add it to the board at Status=stub, close it,
-    poll <=60s for the "Item closed" automation to stamp shipped, then delete
-    the scratch issue. Returns PASS/FAIL evidence."""
-    board = lb.BoardConfig(owner=ctx.origin_owner, number=project.number, source="bootstrap")
+              now: "Callable[[], float]" = time.monotonic,
+              verify_forward_binding: bool = True) -> dict:
+    """Exercise board mechanics and, when requested, the auto-add binding.
+
+    For ``auto-add``, a live verification first observes workflow-created board
+    membership before performing any direct lifecycle write. A full bootstrap
+    can set ``verify_forward_binding=False`` because its newly scaffolded
+    workflow is not active until the setup branch merges; ``--probe-only``
+    performs the real post-merge verification.
+    """
+    configured = lb.read_board_config(ctx)
+    owner = configured.owner if configured else _project_owner(project, ctx)
+    board = lb.BoardConfig(owner=owner, number=project.number, source="bootstrap")
+    binding = lb.read_binding_config(ctx).forward_binding or lb.DEFAULT_FORWARD_BINDING
     issue_number: Optional[int] = None
-    try:
+    issue_closed = False
+    project_item_id: Optional[str] = None
+
+    def exercise() -> dict:
+        nonlocal issue_number, issue_closed, project_item_id
         create = runner(["issue", "create", "--repo", ctx.slug, "--title", PROBE_TITLE,
-                         "--body", "Automated bootstrap verification probe. Safe to delete."])
+                         "--body", "Automated bootstrap verification probe. This issue is retained "
+                                   "closed after its Project item is removed."])
         if create.returncode != 0:
             return {"result": "FAIL", "reason": "could not create the scratch issue",
                     "detail": create.stderr.strip()[:200]}
@@ -724,8 +877,40 @@ def run_probe(project: Project, ctx: "lb.RepoContext", runner: GhRunner,
             return {"result": "FAIL", "reason": "could not parse the scratch issue number",
                     "detail": create.stdout.strip()[:200]}
 
-        # board-add + Status=stub via lifecycle_board's sanctioned verb.
-        lb.verb_set_status(issue_number, "stub", ctx, runner)
+        forward_evidence: dict
+        if binding == "auto-add" and verify_forward_binding:
+            deadline = now() + PROBE_POLL_SECONDS
+            observed_item = None
+            while now() < deadline:
+                state = lb.fetch_issue_state(issue_number, board, ctx, runner)
+                observed_item = state.item_id if state else None
+                if observed_item:
+                    project_item_id = observed_item
+                    break
+                sleep(PROBE_POLL_INTERVAL)
+            if not observed_item:
+                return {"result": "FAIL", "issue": issue_number,
+                        "reason": f"auto-add did not add the issue within {PROBE_POLL_SECONDS}s",
+                        "detail": "verify the merged issues/opened workflow and "
+                                  f"{ADD_TO_PROJECT_SECRET} secret",
+                        "forward_binding": {"result": "FAIL", "binding": binding}}
+            forward_evidence = {"result": "PASS", "binding": binding,
+                                "detail": "workflow membership observed before lifecycle write"}
+        elif binding == "auto-add":
+            forward_evidence = {
+                "result": "PENDING", "binding": binding,
+                "detail": "workflow must be merged before it can receive issues/opened; "
+                          "run --probe-only after the setup PR merges",
+            }
+        else:
+            forward_evidence = {"result": "NOT_APPLICABLE", "binding": binding,
+                                "detail": "this binding permits a direct board add"}
+
+        # In auto-add verification this is deliberately after membership was
+        # observed. The sanctioned verb writes Status=stub and directly adds
+        # only for bindings where no workflow verification is required.
+        status_write = lb.verb_set_status(issue_number, "stub", ctx, runner)
+        project_item_id = status_write.get("item_id") or project_item_id
 
         close = runner(["issue", "close", str(issue_number), "--repo", ctx.slug,
                         "--reason", "completed"])
@@ -733,23 +918,101 @@ def run_probe(project: Project, ctx: "lb.RepoContext", runner: GhRunner,
             return {"result": "FAIL", "issue": issue_number,
                     "reason": "could not close the scratch issue",
                     "detail": close.stderr.strip()[:200]}
+        issue_closed = True
 
         deadline = now() + PROBE_POLL_SECONDS
         observed = None
         while now() < deadline:
             state = lb.fetch_issue_state(issue_number, board, ctx, runner)
             observed = state.stage if state else None
-            if observed == "shipped":
+            if observed == "done":
                 return {"result": "PASS", "issue": issue_number,
                         "observed_stage": observed,
-                        "detail": "Item closed automation stamped shipped"}
+                        "detail": "Item closed automation stamped done",
+                        "forward_binding": forward_evidence}
             sleep(PROBE_POLL_INTERVAL)
         return {"result": "FAIL", "issue": issue_number, "observed_stage": observed,
-                "reason": f"automation did not stamp shipped within {PROBE_POLL_SECONDS}s",
-                "detail": "verify the 'Item closed' workflow is enabled in the project UI"}
-    finally:
-        if issue_number is not None:
-            runner(["issue", "delete", str(issue_number), "--repo", ctx.slug, "--yes"])
+                "reason": f"automation did not stamp done within {PROBE_POLL_SECONDS}s",
+                "detail": "verify the 'Item closed' workflow is enabled in the project UI",
+                "forward_binding": forward_evidence}
+
+    try:
+        result = exercise()
+    except BoardError as exc:
+        result = {"result": "FAIL", "issue": issue_number, "reason": str(exc),
+                  "error_code": exc.code, "detail": exc.fix}
+    except Exception as exc:  # noqa: BLE001 — probe must still attempt cleanup
+        result = {"result": "FAIL", "issue": issue_number,
+                  "reason": "unexpected probe failure", "detail": str(exc)[:200]}
+
+    if issue_number is None:
+        result["cleanup"] = {"result": "NOT_APPLICABLE",
+                             "detail": "no scratch issue number was available"}
+        return result
+
+    cleanup_steps: "list[dict]" = []
+    cleanup_error: Optional[str] = None
+    if not issue_closed:
+        close = runner(["issue", "close", str(issue_number), "--repo", ctx.slug,
+                        "--reason", "completed"])
+        if close.returncode == 0:
+            issue_closed = True
+            cleanup_steps.append({"step": "close_issue", "result": "PASS"})
+        else:
+            cleanup_error = f"could not close probe issue: {close.stderr.strip()[:200]}"
+            cleanup_steps.append({"step": "close_issue", "result": "FAIL",
+                                  "detail": close.stderr.strip()[:200]})
+
+    before = None
+    if cleanup_error is None:
+        try:
+            before = lb.fetch_issue_state(issue_number, board, ctx, runner)
+        except Exception as exc:  # noqa: BLE001 — cleanup failure must stay structured
+            cleanup_error = f"could not verify probe issue cleanup: {exc}"
+        if before is None or before.state != "CLOSED":
+            cleanup_error = cleanup_error or "probe issue is not verifiably closed"
+        cleanup_steps.append({"step": "verify_closed", "result": "PASS"
+                              if cleanup_error is None else "FAIL"})
+
+    item_to_remove = (before.item_id if before else None) or project_item_id
+    if cleanup_error is None and item_to_remove:
+        remove = runner(["project", "item-delete", str(project.number), "--owner", owner,
+                         "--id", item_to_remove])
+        if remove.returncode != 0:
+            cleanup_error = f"could not remove probe Project item: {remove.stderr.strip()[:200]}"
+            cleanup_steps.append({"step": "remove_project_item", "result": "FAIL",
+                                  "item_id": item_to_remove,
+                                  "detail": remove.stderr.strip()[:200]})
+        else:
+            cleanup_steps.append({"step": "remove_project_item", "result": "PASS",
+                                  "item_id": item_to_remove})
+
+    if cleanup_error is None:
+        try:
+            after = lb.fetch_issue_state(issue_number, board, ctx, runner)
+        except Exception as exc:  # noqa: BLE001 — cleanup failure must stay structured
+            after = None
+            cleanup_error = f"could not verify Project item removal: {exc}"
+        if after is None or after.state != "CLOSED" or after.item_id is not None:
+            cleanup_error = cleanup_error or "probe cleanup verification still found an open issue or Project item"
+        cleanup_steps.append({"step": "verify_retained_issue_and_item_removal",
+                              "result": "PASS" if cleanup_error is None else "FAIL"})
+
+    if cleanup_error is None:
+        result["cleanup"] = {
+            "result": "PASS", "method": "closed issue retained; Project item removed",
+            "issue": issue_number, "steps": cleanup_steps,
+            "permanent_delete": "NOT_ATTEMPTED",
+        }
+    else:
+        prior = result.get("reason") or result.get("detail") or result.get("result")
+        result.update({"result": "FAIL", "reason": "scratch issue cleanup failed",
+                       "detail": f"probe outcome before cleanup: {prior}; {cleanup_error}"})
+        result["cleanup"] = {"result": "FAIL", "issue": issue_number,
+                             "method": "close and remove Project item",
+                             "detail": cleanup_error, "steps": cleanup_steps,
+                             "permanent_delete": "NOT_ATTEMPTED"}
+    return result
 
 
 def _parse_issue_number(stdout: str) -> Optional[int]:
@@ -775,15 +1038,21 @@ def bootstrap(ctx: "lb.RepoContext", runner: GhRunner, *, probe: bool = True,
     # (`auto_add`) reads back as an invalid enum, and defaulting on it would
     # silently erase the operator's (malformed but intentional) decision, the
     # exact thing this preservation exists to prevent. The doctor WARNs on the
-    # malformed value instead.
+    # malformed value instead and blocks adoption readiness.
     if forward_binding is None:
         forward_binding = lb.read_binding_config(ctx).forward_raw or lb.DEFAULT_FORWARD_BINDING
 
     project = resolve_or_create_project(ctx, runner)
     status = read_status_field(project, ctx, runner)
     kind = assert_fresh_or_canonical(status)
-    options = build_option_mapping(status, kind)
-    resulting_options = apply_status_options(status, options, runner)
+    migration = None
+    if kind in ("legacy", "legacy-transition"):
+        migration = migrate_legacy_status(project, status, ctx, runner)
+        options = migration["mapping"]
+        resulting_options = migration["resulting_options"]
+    else:
+        options = build_option_mapping(status, kind)
+        resulting_options = apply_status_options(status, options, runner)
     priority = ensure_priority_field(project, ctx, runner)
     workflows = configure_workflows(project, ctx, runner)
     repo_link = link_repo(project, ctx, runner)
@@ -791,7 +1060,8 @@ def bootstrap(ctx: "lb.RepoContext", runner: GhRunner, *, probe: bool = True,
     # Backfill (B) is a separate, deliberate `lifecycle_board.py --backfill`
     # command — never run here, so bootstrap never mutates issues onto the board
     # unattended (CI-safe by construction).
-    config_path = write_committed_config(ctx.main_root, ctx.origin_owner, project.number,
+    project_owner = _project_owner(project, ctx)
+    config_path = write_committed_config(ctx.main_root, project_owner, project.number,
                                          forward_binding)
 
     # Step 8b: scaffold the auto-add workflow ONLY when that forward binding was
@@ -806,11 +1076,12 @@ def bootstrap(ctx: "lb.RepoContext", runner: GhRunner, *, probe: bool = True,
     summary = {
         "ok": True,
         "gh_version": ".".join(map(str, version)),
-        "project": {"owner": ctx.origin_owner, "number": project.number,
+        "project": {"owner": project_owner, "number": project.number,
                     "id": project.id, "created": project.created,
                     "source_option_set": kind},
         "status_options": option_mapping,
         "resulting_options": [o.get("name") for o in resulting_options],
+        "migration": migration,
         "priority_field": priority,
         "workflows": workflows,
         "repo_link": repo_link,
@@ -829,10 +1100,26 @@ def bootstrap(ctx: "lb.RepoContext", runner: GhRunner, *, probe: bool = True,
     if warnings:
         summary["warnings"] = warnings
     if probe:
-        summary["probe"] = run_probe(project, ctx, runner)
+        summary["probe"] = run_probe(
+            project, ctx, runner,
+            verify_forward_binding=(forward_binding != "auto-add"),
+        )
+        summary["ok"] = summary["probe"].get("result") == "PASS"
+        summary["adoption_ready"] = _bootstrap_adoption_ready(summary, warnings, repo_link)
     else:
         summary["probe"] = {"result": "SKIPPED", "reason": "--no-probe"}
+        summary["adoption_ready"] = False
     return summary
+
+
+def _bootstrap_adoption_ready(summary: dict, warnings: "list[str]", repo_link: dict) -> bool:
+    """Conservative bootstrap-only readiness; doctor remains the final authority."""
+    return bool(
+        summary.get("ok")
+        and not warnings
+        and (repo_link.get("linked") or repo_link.get("already_linked"))
+        and (summary.get("probe", {}).get("forward_binding") or {}).get("result") != "PENDING"
+    )
 
 
 def _summarize_mapping(status: StatusField, options: "list[dict]", kind: str) -> "list[dict]":
@@ -875,12 +1162,16 @@ def main(argv: "list[str]") -> int:
                 raise BoardError("board_not_configured",
                                  "No committed board config — run the full bootstrap first",
                                  "python3 .../bootstrap_lifecycle_board.py")
-            project = Project(number=board.number, id="", created=False)
-            print(json.dumps({"ok": True, "probe": run_probe(project, ctx, lb.run_gh)}, indent=2))
-            return 0
+            project = Project(number=board.number, id="", created=False, owner=board.owner)
+            probe_result = run_probe(project, ctx, lb.run_gh, verify_forward_binding=True)
+            ok = probe_result.get("result") == "PASS"
+            print(json.dumps({"ok": ok, "adoption_ready": False,
+                              "readiness_scope": "probe-only; combine with lifecycle doctor",
+                              "probe": probe_result}, indent=2))
+            return 0 if ok else 1
         summary = bootstrap(ctx, lb.run_gh, probe=args.probe, forward_binding=args.forward_binding)
         print(json.dumps(summary, indent=2))
-        return 0
+        return 0 if summary.get("ok") else 1
     except BoardError as err:
         return lb._emit_error(err)
     except Exception as exc:  # noqa: BLE001 — edge-of-CLI belt-and-braces

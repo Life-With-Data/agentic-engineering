@@ -176,8 +176,8 @@ bash <absolute-skill-directory>/scripts/worktree-manager.sh gc
 
 ### Companion note: the land-* skills defer teardown to `gc`
 
-The land-* references — [`land-pr`](../../wf-delivery/references/land-pr.md), [`land-docs`](../../wf-documentation/references/land-docs.md), and
-[`land-plan-docs`](../../wf-grooming/references/land-plan-docs.md) — are worktree-aware by design and **do not**
+The land-* references — [`land-pr`](../../wf-delivery/references/land-pr.md) and
+[`land-docs`](../../wf-documentation/references/land-docs.md) — are worktree-aware by design and **do not**
 `git checkout <default>` from a linked worktree (the default branch is held by the primary tree, so
 that checkout would fail). Instead they refresh `origin/<base>` with `git fetch` and **defer local
 worktree + branch teardown to `gc`** rather than deleting inline. See land-pr's context-aware

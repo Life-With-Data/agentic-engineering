@@ -129,9 +129,8 @@ topic: <kebab-case-topic>
 → the `wf-grooming` planning route for implementation details
 ```
 
-**Output location:** Use the brainstorm or design-document location named by the
-repository's mapped `documentation` capability. If none exists, keep the result
-in the GitHub work item instead of inventing a directory.
+**Output location:** Keep the result in the GitHub work item. Do not create a
+repository brainstorm or plan file, branch, commit, or plan-only pull request.
 
 ### Phase 4: Handoff
 
@@ -170,7 +169,7 @@ This prevents wasted effort on misaligned designs.
 | Proposing overly complex solutions | Start simple, add complexity only if needed |
 | Ignoring existing codebase patterns | Research what exists first |
 | Making assumptions without validating | State assumptions explicitly and confirm |
-| Creating lengthy design documents | Keep it concise—details go in the plan |
+| Creating an overlong brainstorm body | Keep it concise—implementation detail goes in the issue's plan sections |
 
 ## Integration with Planning
 

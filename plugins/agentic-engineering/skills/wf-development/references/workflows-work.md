@@ -1,17 +1,16 @@
-# Work Plan Execution
+# Work a Planned GitHub Issue
 
 Execute a work plan efficiently while maintaining quality and finishing features.
 
 ## Introduction
 
-This route takes a work document (plan, specification, or tracked task) and
-executes it systematically. The focus is on **shipping complete features** by
-understanding requirements quickly, following existing patterns, and
-maintaining quality throughout.
+This route takes a planned GitHub issue and executes it systematically. The
+issue and its sub-issues are the durable specification and progress authority;
+a generated local packet makes that context convenient to read.
 
-## Input Document
+## Input Work Item
 
-<input_document> #$ARGUMENTS </input_document>
+<work_item> #$ARGUMENTS </work_item>
 
 ## Entry Gate
 
@@ -20,9 +19,9 @@ maintaining quality throughout.
 - `planned → in_progress` — the claim (Phase 1, via `--claim`).
 - `in_progress → in_review` — PR open (Phase 4, via `--set-status <N> in_review`).
 
-It never writes any other parent stage, never closes the parent issue, and never hand-assembles board GraphQL. The built-in "Item closed" automation owns `→ shipped` when the merge closes the issue; the shared reconciler owns every repair. Separately, it drives its **sub-issues'** `status:*` labels via `--sub-status` (in_progress/in_review/blocked/done) — a PR-less, board-free track defined by the `wf-setup` lifecycle route; only the owning agent writes it, never a dispatched sub-agent. Sub-issues are the task tracker; an in-session task list is disposable scratch state.
+It never writes any other parent stage, never closes the parent issue, and never hand-assembles board GraphQL. The built-in "Item closed" automation owns parent `Status = done` when the merge closes the issue; the shared reconciler owns every repair. Separately, it drives its **sub-issues'** `status:*` labels via `--sub-status` (in_progress/in_review/blocked/done) — a PR-less, board-free track defined by the `wf-setup` lifecycle route; only the owning agent writes it, never a dispatched sub-agent. Parent `done` and sub-issue `done` are distinct: sub-issues close before PR creation, while the parent reaches `done` only after merge. Sub-issues are the task tracker; an in-session task list is disposable scratch state.
 
-**Stage semantics.** Use the `wf-setup` lifecycle route for the 9-stage enum,
+**Stage semantics.** Use the `wf-setup` lifecycle route for the 7-value Status enum,
 writer table, and entry-gate/verdict vocabulary, then return here.
 
 **Execution discipline.** Decompose work by risk and dependency, define an exit
@@ -30,7 +29,10 @@ check for every subtask, and verify results through a channel independent of the
 one that produced them. The phases below define sequencing; repository capability
 targets define the commands and evidence available in the current repository.
 
-**Resolve the issue number `<N>`.** Take `<N>` from an explicit issue-number argument if one was given; otherwise read the `github_issue:` frontmatter key from the input plan document. If neither yields a number, there is no board item to gate on — proceed as the `no_board` branch (legacy flow) below.
+**Resolve the issue number `<N>`.** Take `<N>` from an explicit issue-number
+argument or explicit GitHub issue URL. Do not search repository plans or infer an
+issue from document frontmatter. If no issue is supplied, there is no Project item to
+gate on; proceed only through the explicit `no_board` legacy branch below.
 
 ### Preflight, banner, reconcile — then the gate
 
@@ -68,14 +70,16 @@ Run these in order, once, at entry:
    python3 "<skill-directory>/scripts/lifecycle_board.py" --gate work --issue <N>
    ```
 
-   The gate returns `{mode, verdict, route, reason, stage, issue, plan_doc, flags, ...}`. Branch on the **closed** `verdict` enum — never re-derive stage from prose or filenames:
+   The gate returns `{mode, verdict, route, reason, stage, issue, flags, ...}`.
+   Branch on the **closed** `verdict` enum — never re-derive stage from prose,
+   packet contents, or filenames:
 
    | `verdict` | What it means | Action |
    |-----------|---------------|--------|
-   | `proceed` | `stage ≥ planned` **and** a join-keyed plan doc exists | Continue to **Phase 1**. |
-   | `route_to_plan` | Not yet groomed to `planned`, **or** Status says planned but no plan doc | Tell the user to run **the `wf-grooming` planning route** first. Hotfixes bypass the board entirely (plain PR flow, no gate, no board exception). **STOP.** |
-   | `already_done` | Stage is terminal (`shipped`/`deployed`/`compounded`) or `abandoned` | Report the stage to the user and that the work is already at/past this command's scope. **STOP.** |
-   | `repair_needed` | Stale join key, or a stage claiming `planned`/`brainstormed` with no matching artifact | The board can't be trusted for this item. Report the flag/reason, tell the user to fix the doc's `github_issue:` frontmatter (or re-run the `wf-grooming` planning route if the plan doc is genuinely missing), and **STOP**. |
+   | `proceed` | Parent Status is `planned`, `in_progress`, or `in_review`, and the structured issue state is usable | Continue to **Phase 1**. The prior `Status = planned` write is the readiness attestation; no local file is required. |
+   | `route_to_plan` | Not yet attested `planned` | Tell the user to run **the `wf-grooming` planning route** first. Hotfixes bypass the board entirely (plain PR flow, no gate, no board exception). **STOP.** |
+   | `already_done` | Parent Status is terminal `done` or `abandoned` | Report the stage to the user and that the work is already at/past this command's scope. **STOP.** |
+   | `repair_needed` | Required Project or issue state is incomplete/inconsistent | Report the structured flag/reason and return to the workflow that owns the state. **STOP.** |
    | `no_board` | No board configured (mode is `github`/`none`) | Fall through to the **Legacy flow (no board)** below and continue **degraded** — no stage machinery, no board writes. |
 
    `claim_conflict` and `blocked` are **not** gate verdicts — they are returned by `--claim` in Phase 1, not here. Only `proceed` (with a board) and `no_board` (degraded) continue past this gate; every other verdict **STOPs**.
@@ -88,10 +92,14 @@ When `verdict == no_board`, the repo has no configured Projects board. Behave as
 
 ### Phase 1: Claim & Setup
 
-1. **Read Plan and Clarify**
+1. **Refresh Context, Read the Issue, and Clarify**
 
-   - Read the work document completely.
-   - Review any references or links provided in the plan.
+   - In Project mode, refresh the generated packet:
+     `python3 "<skill-directory>/scripts/lifecycle_board.py" --materialize-packet <N>`.
+   - Read the returned `packet_path` completely, then consult the parent issue
+     and sub-issues for current state. The packet is generated convenience,
+     never readiness or progress authority.
+   - Review references and links provided by the issue.
    - If anything is unclear or ambiguous, ask clarifying questions now and get user approval to proceed.
    - **Do not skip this** — better to ask now than build the wrong thing.
 
@@ -138,7 +146,7 @@ When `verdict == no_board`, the repo has no configured Projects board. Behave as
 
 4. **Decompose into tasks (sub-issues)**
 
-   the `wf-grooming` planning route already created the sub-issues that decompose this work item — you do **not** create them here. List them:
+   The `wf-grooming` planning route already created the sub-issues that decompose this work item — you do **not** create them here. List them:
 
    ```bash
    # Sub-issues of the claimed parent <N>:
@@ -157,11 +165,11 @@ When `verdict == no_board`, the repo has no configured Projects board. Behave as
 
 | Model | Use when | How it runs |
 |-------|----------|-------------|
-| **Inline** (default, below) | A plan/spec you implement yourself; simple, linear work | You implement each sub-issue directly in this session, closing each as its criteria pass. |
+| **Inline** (default, below) | An issue you implement yourself; simple, linear work | You implement each sub-issue directly in this session, closing each as its criteria pass. |
 | **Orchestrated** ([section](#orchestrated-execution-board-driven)) | Work backed by tracked sub-issues — one or many | You own the board/sub-issue state and drive one subagent per sub-issue, looping each to a terminal state before returning. |
 | **Swarm** ([section](#swarm-mode-optional)) | 5+ independent workstreams needing maximum parallelism | Long-lived teammates self-claim from a shared queue. |
 
-Even a **single** tracked item benefits from Orchestrated Execution — the orchestrator absorbs the retry/verify/unblock loop and returns a finished or verifiably-blocked result, not a half-step. The Inline loop below is the default for plan/spec files — **except when this command runs under the `wf-development` orchestration route in an autonomous mode (its fully-autonomous default, or `--final-review`)**, where Orchestrated is the default for all inputs: the orchestrator is a reviewer, not an implementer, and delegates every work item to a sub-agent whose diff it verifies before accepting.
+Even a **single** tracked item benefits from Orchestrated Execution — the orchestrator absorbs the retry/verify/unblock loop and returns a finished or verifiably-blocked result, not a half-step. The Inline loop below is the default when one agent implements the issue directly — **except when this command runs under the `wf-development` orchestration route in an autonomous mode (its fully-autonomous default, or `--final-review`)**, where Orchestrated is the default for all inputs: the orchestrator is a reviewer, not an implementer, and delegates every work item to a sub-agent whose diff it verifies before accepting.
 
 1. **Task Execution Loop** (board mode — iterate open sub-issues)
 
@@ -172,7 +180,7 @@ Even a **single** tracked item benefits from Orchestrated Execution — the orch
      - sub = next open, unblocked sub-issue (from `gh issue view <N> --repo <origin> --json subIssues`)
      - (multi-agent) claim it: gh issue edit <sub> --repo <origin> --add-assignee @me
      - python3 "<skill-directory>/scripts/lifecycle_board.py" --sub-status <sub> in_progress
-     - Read any referenced files from the plan
+     - Read any files referenced by the issue or generated packet
      - Look for similar patterns in the codebase
      - Implement following existing conventions
      - Write tests for new functionality
@@ -181,11 +189,10 @@ Even a **single** tracked item benefits from Orchestrated Execution — the orch
      - python3 "<skill-directory>/scripts/lifecycle_board.py" --sub-status <sub> in_review   # code done, awaiting acceptance verification
      - Verify acceptance criteria; when they pass:
      - python3 "<skill-directory>/scripts/lifecycle_board.py" --sub-status <sub> done   # strips the label AND closes the sub-issue
-     - Check off the corresponding checkbox in the plan doc ([ ] → [x])  # readability only, non-authoritative
      - Evaluate for incremental commit (see below)
    ```
 
-   `--sub-status … done` **replaces** the raw `gh issue close` — it strips the `status:*` label and closes the sub-issue as completed in one call. Mark a sub-issue `blocked` (`--sub-status <sub> blocked`) if you discover an open `blocked-by` while working it, and move it back to `in_progress` when unblocked. Never close the **parent** `<N>` here — the merge's "Item closed" automation stamps `shipped` for the parent downstream. Plan-doc checkboxes are non-authoritative doc content; still check them off so the plan reads as a living progress record, but the sub-issues (not the checkboxes) are the tracker.
+   `--sub-status … done` **replaces** the raw `gh issue close` — it strips the `status:*` label and closes the sub-issue as completed in one call. Mark a sub-issue `blocked` (`--sub-status <sub> blocked`) if you discover an open `blocked-by` while working it, and move it back to `in_progress` when unblocked. Never close the **parent** `<N>` here — the merge's "Item closed" automation stamps parent `Status = done` downstream. GitHub sub-issues and their native rollup are the progress record; never mutate copied packet or repository checkboxes.
 
    **Legacy flow** — no sub-issues exist; drive the existing **TodoWrite** loop instead:
    ```
@@ -194,7 +201,6 @@ Even a **single** tracked item benefits from Orchestrated Execution — the orch
      - Read referenced files; mirror existing patterns; implement; write tests
      - Run System-Wide Test Check; run tests
      - Mark task completed in TodoWrite
-     - Check off the plan-doc checkbox ([ ] → [x])
      - Evaluate for incremental commit
    ```
 
@@ -212,8 +218,6 @@ Even a **single** tracked item benefits from Orchestrated Execution — the orch
    **When to skip:** Leaf-node changes with no callbacks, no state persistence, no parallel interfaces. If the change is purely additive (new helper method, new view partial), the check takes 10 seconds and the answer is "nothing fires, skip."
 
    **When this matters most:** Any change that touches models with callbacks, error handling with fallback/retry, or functionality exposed through multiple interfaces.
-
-   **IMPORTANT**: Always update the original plan document by checking off completed items. Use the Edit tool to change `- [ ]` to `- [x]` for each task you finish. This keeps the plan as a living document showing progress and ensures no checkboxes are left unchecked. (The sub-issues, not the checkboxes, are the authoritative tracker.)
 
 2. **Incremental Commits**
 
@@ -246,7 +250,7 @@ Even a **single** tracked item benefits from Orchestrated Execution — the orch
 
 3. **Follow Existing Patterns**
 
-   - The plan should reference similar code — read those files first.
+   - The issue or packet should reference similar code — read those files first.
    - Match naming conventions exactly.
    - Reuse existing components where possible.
    - Follow project coding standards (see CLAUDE.md).
@@ -342,7 +346,7 @@ Even a **single** tracked item benefits from Orchestrated Execution — the orch
 
 ### Phase 4: Ship It
 
-The philosophy here: **opening the PR is the `in_review` transition, not a completion event.** The issue stays open. The merge — via `Closes #N` — is what closes the issue, and the built-in "Item closed" automation stamps `shipped`. This command's last board write is `in_review`; it never closes the issue and never writes a terminal stage.
+The philosophy here: **opening the PR is the `in_review` transition, not a completion event.** The issue stays open. The merge — via `Closes #N` — is what closes the issue, and the built-in "Item closed" automation stamps parent `Status = done`. This command's last board write is `in_review`; it never closes the issue and never writes a terminal stage.
 
 1. **Create Commit**
 
@@ -373,7 +377,7 @@ The philosophy here: **opening the PR is the `in_review` transition, not a compl
 
 3. **Create Pull Request**
 
-   Open the PR against the **default branch** with a `Closes #<N>` line in the body, so the merge closes the issue and the automation stamps `shipped`:
+   Open the PR against the **default branch** with a `Closes #<N>` line in the body, so the merge closes the issue and the automation stamps parent `Status = done`:
 
    ```bash
    git push -u origin feat/<N>-<slug>
@@ -437,7 +441,7 @@ The philosophy here: **opening the PR is the `in_review` transition, not a compl
    ```
 
    From here the lifecycle proceeds without any manual close protocol:
-   - **On merge:** `Closes #<N>` closes the issue; the pre-enabled "Item closed" automation stamps `shipped`. No manual close, no frontmatter write.
+   - **On merge:** `Closes #<N>` closes the issue; the pre-enabled "Item closed" automation stamps parent `Status = done`. No manual close or repository plan update.
    - **PR closed without merging:** the shared reconciler's closed repair set handles it — an assignee's PR closed unmerged regresses the item `in_review → in_progress` with an audit comment. There is no manual reopen protocol; the next `--reconcile` (Entry Gate step 2 on the next run, or a direct invocation) repairs it.
 
    In the **legacy flow**, skip this step — there is no board to advance; the PR is simply open.
@@ -445,7 +449,7 @@ The philosophy here: **opening the PR is the `in_review` transition, not a compl
 5. **Notify User**
    - Summarize what was completed.
    - Link to the PR.
-   - Note that the work item is now `in_review`; it becomes `shipped` automatically when the PR merges (and regresses to `in_progress` automatically if the PR is closed unmerged) — no manual tracking needed.
+   - Note that the parent work item is now `in_review`; it becomes `done` automatically when the PR merges (and regresses to `in_progress` automatically if the PR is closed unmerged) — no manual tracking needed.
    - Note any follow-up work needed.
    - Suggest next steps: use the `wf-review` comprehensive-review route, then
      the `wf-delivery` landing route to drive CI green, resolve review threads,
@@ -487,13 +491,13 @@ All state lives on the board and its sub-issues. **Only the orchestrator** touch
 | Block / needs human | `lifecycle_board.py --sub-status <sub> blocked`, then `gh issue edit <sub> --repo <origin> --add-blocked-by <blocker>` + `gh issue comment <sub> --repo <origin> --body "…"`, and surface the question |
 | Add follow-on (gates parent) | `gh issue create --repo <origin> --parent <N> --blocked-by <sub> --title "…" --body-file …` so the new sub-issue gates the parent until it is closed |
 
-The **parent** `<N>` is never closed inside the loop — its `shipped` stamp comes from the merge's "Item closed" automation (Phase 4). Close **sub-issues** as soon as their acceptance criteria pass and gates are green.
+The **parent** `<N>` is never closed inside the loop — its `Status = done` stamp comes from the merge's "Item closed" automation (Phase 4). Close **sub-issues** with `--sub-status ... done` as soon as their acceptance criteria pass and gates are green.
 
 ### Terminal conditions (a sub-issue is "done" when ONE holds)
 
 1. **Resolved** — acceptance criteria met, quality gates pass, AND every follow-on sub-issue it spawned
    is also terminal. Close the sub-issue here; the parent is never closed in the loop (Phase 4 / the
-   merge automation owns the parent's `shipped`).
+   merge automation owns parent `Status = done`).
 2. **Blocked / needs human** — genuinely stuck on a decision, access, or ambiguity you can't
    resolve from the repo or the issue. Add a blocker (`gh issue edit <sub> --repo <origin> --add-blocked-by <blocker>`) or a `human`-labeled
    comment, surface the question — don't guess. (Terminal for this run; re-enters
@@ -507,7 +511,7 @@ report "done" while an open sub-issue is unstarted or a follow-on is open.
 1. **Scope the set.** From the input: the parent `<N>` → its open sub-issues (`gh issue view <N> --repo <origin> --json subIssues`);
    explicit ids → those; none → `--ready-work`. Read each issue's body, acceptance criteria, and dependencies.
 2. **Plan waves.** A wave = sub-issues ready now (no open `blocked-by`). Within a wave,
-   split **parallel-safe** (file-disjoint — the plan usually names the files) from
+   split **parallel-safe** (file-disjoint — the issue or packet usually names the files) from
    **must-serialize** (same files). Announce the plan briefly before dispatching.
 3. **Dispatch.** Assign the sub-issue to yourself (`gh issue edit <sub> --repo <origin> --add-assignee @me`), mark it in progress (`lifecycle_board.py --sub-status <sub> in_progress`), then spawn one subagent per sub-issue with the brief below
    (Task tool / `general-purpose`, or a specialist agent). Send parallel dispatches in one message.
@@ -534,7 +538,7 @@ report "done" while an open sub-issue is unstarted or a follow-on is open.
      user in ONE batch (AskUserQuestion). On reply: remove the blocker and re-dispatch.
 6. **Next wave.** Re-check readiness (closing a sub-issue unblocks dependents and follow-ons). Repeat until
    the full set — initial and follow-ons — is terminal. Then proceed to Phase 3/4 for the PR
-   (the merge, not this loop, stamps the parent `shipped`).
+   (the merge, not this loop, stamps parent `Status = done`).
 
 ### Subagent brief template (copy, fill in)
 
@@ -545,7 +549,7 @@ SUB-ISSUE: <number> — <title>
 <paste the full issue: body, design notes, acceptance criteria, dependencies>
 
 CONTEXT:
-- Repo + relevant existing files (the plan names them); patterns to mirror
+- Repo + relevant existing files (the issue or packet names them); patterns to mirror
 - Conventions: match surrounding code, reuse existing components/helpers, do NOT add scope,
   backend, or features beyond this sub-issue. Keep the app runnable.
 
@@ -570,7 +574,7 @@ REPORT BACK (your final message = structured result, not prose to a human):
 - One sub-issue = one subagent, tightly scoped; subagents never run board/tracker state changes.
 - Discovered work becomes a follow-on sub-issue that gates its parent — never a silent extra.
 - Bound retries (~2), then block and escalate — don't loop forever. A retry that makes no strictly-measurable progress (gates still fail the same way, no criterion newly satisfied) is a dry attempt; two dry attempts is the stall bound — the same uniform no-progress rule the `wf-development` orchestration route applies run-wide.
-- Quality gates are mandatory before any sub-issue is closed; the parent's `shipped` comes from the merge.
+- Quality gates are mandatory before any sub-issue is closed; parent `Status = done` comes from the merge.
 
 ---
 
@@ -591,7 +595,7 @@ For complex plans with multiple independent workstreams, enable swarm mode for p
 
 To trigger swarm execution, say:
 
-> "Make a Task list and launch an army of agent swarm subagents to build the plan"
+> "Make a Task list and launch an army of agent swarm subagents to build this work item"
 
 Or explicitly request: "Use swarm mode for this work"
 
@@ -656,7 +660,7 @@ model; do not require a separately named orchestration skill.
 
 ### The Plan is Your Guide
 
-- Work documents should reference similar code and patterns
+- The issue or packet should reference similar code and patterns
 - Load those references and follow them
 - Don't reinvent - match what exists
 
@@ -684,7 +688,7 @@ model; do not require a separately named orchestration skill.
 Before creating PR, verify:
 
 - [ ] All clarifying questions asked and answered
-- [ ] No open sub-issues on the parent `<N>` (`gh issue view <N> --repo <origin> --json subIssues`), or all TodoWrite items checked (legacy flow) — the parent is stamped `shipped` by the merge automation, never closed by this command
+- [ ] No open sub-issues on the parent `<N>` (`gh issue view <N> --repo <origin> --json subIssues`), or all TodoWrite items completed (legacy flow) — parent `Status = done` is stamped by the merge automation, never by this command
 - [ ] Tests pass (run project's test command)
 - [ ] Linting passes (use linting-agent)
 - [ ] Code follows existing patterns
@@ -710,11 +714,11 @@ For most features: tests + linting + following patterns is sufficient.
 
 ## Common Pitfalls to Avoid
 
-- **Analysis paralysis** - Don't overthink, read the plan and execute
+- **Analysis paralysis** - Don't overthink, read the issue and packet, then execute
 - **Skipping clarifying questions** - Ask now, not after building wrong thing
 - **Ignoring plan references** - The plan has links for a reason
 - **Testing at the end** - Test continuously or suffer later
 - **Forgetting to track progress** - Close sub-issues as you finish them (board mode) or update TodoWrite (legacy), or lose track of what's done
-- **Closing the issue at PR creation** - Don't. Opening the PR is the `in_review` transition; the *merge* closes the issue via `Closes #<N>` and the automation stamps `shipped`. Manually closing at PR-open subverts the automation and the reconciler's repairs
+- **Closing the issue at PR creation** - Don't. Opening the PR is the `in_review` transition; the *merge* closes the issue via `Closes #<N>` and the automation stamps parent `Status = done`. Manually closing at PR-open subverts the automation and the reconciler's repairs
 - **Opening the PR with open sub-issues** - The parent can't enter `in_review` with open sub-issues; finish or deliberately re-scope them first
 - **Over-reviewing simple changes** - Save reviewer agents for complex work

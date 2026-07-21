@@ -49,8 +49,14 @@ including evidence-backed `not-applicable` entries.
 After the contract is valid, configure only the features the repository chooses:
 
 - [configuration flags](config-flags.md);
-- [lifecycle integration](lifecycle.md);
+- [lifecycle bootstrap](lifecycle-bootstrap.md), the authoritative executable
+  adoption and migration journey, followed by [lifecycle policy](lifecycle.md);
 - [hooks](install-hooks.md).
 
 These features may add plugin-owned configuration, but they must not redefine
 the repository capability map or install unrelated repository tooling.
+
+Setup is not complete merely because the capability contract validates. When
+the lifecycle is selected, follow the lifecycle-bootstrap journey through its
+forward-binding decision, tracked changes, optional deliberate backfill,
+ready-work view, doctor, and live verification completion boundary.

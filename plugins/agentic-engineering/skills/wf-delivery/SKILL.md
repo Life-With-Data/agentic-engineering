@@ -7,7 +7,9 @@ description: Workflow policy for CI repair, release preparation, pull requests, 
 
 Layer: Workflow policy
 
-Owns: preflight, CI gates, release evidence, PR creation, merge readiness, deployment handoff, and delivery reporting.
+Owns: preflight, CI gates, release evidence, PR creation, merge readiness,
+the final pre-merge compounding gate, deployment handoff, and delivery
+reporting.
 
 Requires repository capabilities: `test-execution`, `delivery`.
 
@@ -44,8 +46,11 @@ Artifact transports and release-media tooling come from repository capability ta
 3. Run the repository's delivery checks.
 4. Resolve CI and review threads.
 5. Create or update the PR with accurate evidence.
-6. Merge only when policy and repository gates pass.
-7. Deploy or verify production only through declared capabilities.
+6. Immediately before merge, perform the final compounding disposition against
+   the current PR head and record its audit evidence. This gate is mandatory
+   even when every CI and review signal is already green.
+7. Merge only when policy and repository gates pass.
+8. Deploy or verify production only through declared capabilities.
 
 ## Wrong-layer recovery
 

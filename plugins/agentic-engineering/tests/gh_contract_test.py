@@ -16,12 +16,12 @@ Two legs, per the plan's Test Strategy (tier 2):
       real failure (never a skip) — gh < 2.94.0 lacks --parent/--blocked-by.
 
   (b) Read-only JSON-shape probes — network + auth. Runs against THIS repo's own
-      history (aagnone3/agentic-engineering) and asserts the JSON shapes the
+      history (Life-With-Data/agentic-engineering) and asserts the JSON shapes the
       reconciler reads: issue state/stateReason, PR mergedAt, and
       closedByPullRequestsReferences. Auto-SKIPs when ``gh auth status`` fails
       (e.g. CI without a configured token). Capped at <= 4 gh calls.
 
-All gh invocations carry an explicit ``--repo aagnone3/agentic-engineering``
+All gh invocations carry an explicit ``--repo Life-With-Data/agentic-engineering``
 (fork-trap discipline — the plan's security invariant 7).
 
 Run with:
@@ -36,7 +36,7 @@ import shutil
 import subprocess
 import unittest
 
-REPO = "aagnone3/agentic-engineering"
+REPO = "Life-With-Data/agentic-engineering"
 MIN_GH = (2, 94, 0)
 
 # Flags the lifecycle design depends on, keyed by gh subcommand. Each flag must
@@ -57,6 +57,7 @@ HELP_FLAG_MATRIX = {
         "--field-id",
         "--single-select-option-id",
     ],
+    "project item-delete": ["--owner", "--id"],
     "project field-list": ["--owner", "--format"],
     "project create": ["--owner"],
 }

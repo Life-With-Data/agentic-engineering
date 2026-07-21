@@ -124,9 +124,9 @@ belong in mapped repository assets or a separately installed capability.
 
 Former standalone skills retained as internal references:
 
-- `wf-grooming`: `brainstorming`, `deepen-plan`, `interview-me`,
-  `land-plan-docs`, `report-bug`, `reproduce-bug`, `triage`,
-  `workflows-brainstorm`, `workflows-groom`, `workflows-plan`
+- `wf-grooming`: `brainstorming`, `deepen-plan`, `interview-me`, `report-bug`,
+  `reproduce-bug`, `triage`, `workflows-brainstorm`, `workflows-groom`,
+  `workflows-plan`
 - `wf-development`: `agent-native-architecture`, `api-and-interface-design`,
   `debugging-and-error-recovery`, `frontend-design`, `git-worktree`,
   `observability-and-instrumentation`, `resolve-parallel`,

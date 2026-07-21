@@ -34,7 +34,7 @@ Run the loop without babysitting it through **`/wf-development`**. Its orchestra
 Or run it bifurcated, splitting grooming from implementation at the `planned` boundary:
 
 - **`/wf-grooming`** — turn an idea, bug report, or stub issue into a **groomed, ready-to-claim work item** and stop there. Bug reports must be reproduced before they are considered groomed.
-- **`/wf-development --implement`** — start from groomed work and drive it to shipped. An ungroomed item routes back to `wf-grooming` instead of being planned mid-run.
+- **`/wf-development --implement`** — start from groomed work and drive it to `done`. An ungroomed item routes back to `wf-grooming` instead of being planned mid-run.
 
 📊 **[See FLOWS.md](plugins/agentic-engineering/FLOWS.md)** for mermaid diagrams of every flow and where the orchestrator pauses for you.
 
@@ -128,6 +128,11 @@ operational guidance, interviews only for gaps, writes the fixed capability map
 in root `AGENTS.md`, and validates it before offering optional lifecycle,
 configuration, and hook setup. Re-run it anytime; configuration and lifecycle
 diagnostics are routes of `wf-setup` on every platform.
+
+For a Projects lifecycle, follow the
+[`wf-setup` bootstrap journey](plugins/agentic-engineering/skills/wf-setup/references/lifecycle-bootstrap.md)
+through board migration, forward-binding choice, organization access, deliberate
+backfill, and read-only plus live readiness checks.
 
 <details>
 <summary>Local dev & per-provider details</summary>

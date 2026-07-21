@@ -23,7 +23,8 @@ search a guessed plan directory, todo directory, or documentation path.
 - Implemented change: route to `wf-testing`.
 - Verified change: route to `wf-review`.
 - Review-ready PR: route to `wf-delivery`.
-- Shipped work with a reusable lesson: route to `wf-documentation`.
+- A current PR needing its required knowledge-disposition check: route to
+  `wf-documentation` before delivery merges it.
 
 ## Execute
 
@@ -56,4 +57,5 @@ results, review findings and dispositions, delivery state, and remaining risk.
 
 Report the stage reached, tracker and artifact links, exact verification
 evidence, decisions made, deferred work, and blockers. The complete loop ends
-only after delivery and any warranted durable knowledge capture have completed.
+only after the pre-merge knowledge-disposition check and delivery have
+completed.

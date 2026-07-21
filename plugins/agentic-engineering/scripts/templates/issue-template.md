@@ -3,20 +3,10 @@ CANONICAL PARENT-ISSUE TEMPLATE (agentic-engineering eng workflow)
 
 Fill every section. Delete a section only if you can state why it does not apply
 (e.g. write "No external wiring required." rather than deleting that heading).
-This body is written to the parent GitHub issue by the `wf-grooming` planning route Step 7 via
-`--body-file`, and mirrors the plan doc under `docs/plans/`. The task breakdown
-below becomes the sub-issues (see `sub-issue-template.md`).
-
-Keep the YAML frontmatter — the Stop hook (`scripts/plan-tracker-guard.py`)
-requires `github_issue` on every plan that joins to a tracker.
+This body is written to the parent GitHub issue by the `wf-grooming` planning
+route via `--body-file`. The issue and its native sub-issues are the durable
+plan; no repository plan file or frontmatter join key is created.
 -->
----
-title: [Concise, outcome-oriented title]
-type: [feat|fix|refactor|chore]
-date: YYYY-MM-DD
-origin: docs/brainstorms/YYYY-MM-DD-<topic>-brainstorm.md  # if from a brainstorm, else omit
-github_issue: 123        # REQUIRED — populated by the `wf-grooming` planning route Step 7
----
 
 # [Issue Title]
 
@@ -33,7 +23,7 @@ matters (metric, bug report, user quote, failing scenario).
 ## Proposed Solution
 
 The high-level approach. Enough for a reviewer to agree with the direction
-before any code exists. Link the plan doc for full detail.
+before any code exists. Keep the complete implementation plan in this issue.
 
 ## Scope
 
@@ -57,14 +47,16 @@ from the provider dashboard and observe it in our logs).
 
 If purely internal, state explicitly: **No external wiring required.**
 
-## Task Breakdown (Sub-Issues)
+## Planned Sub-Issues
 
-Each checkbox becomes a sub-issue created under this parent. Order reflects
+Each entry becomes a native sub-issue under this parent. Order reflects
 dependencies (`--add-blocked-by`); a task blocked by another must follow it.
+After decomposition, GitHub's sub-issue list and rollup are progress authority;
+do not add or maintain a duplicate completion checklist in this body.
 
-- [ ] Task 1 — [what ships]
-- [ ] Task 2 — [what ships] (blocked by Task 1)
-- [ ] Task 3 — [what ships]
+- Task 1 — [what ships]
+- Task 2 — [what ships] (blocked by Task 1)
+- Task 3 — [what ships]
 
 ## Acceptance Criteria
 
@@ -97,7 +89,6 @@ naming up front with their mitigations.
 
 ## Sources & References
 
-- **Origin brainstorm:** [docs/brainstorms/…](path) — if applicable
-- **Plan doc:** [docs/plans/…](path)
+- **Origin discussion or issue:** [link] — if applicable
 - Similar implementations: `file_path:line_number`
 - Related issues / PRs: #NNN
