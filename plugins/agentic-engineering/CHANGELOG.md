@@ -5,6 +5,13 @@ All notable changes to the agentic-engineering plugin will be documented in this
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.5.0](https://github.com/Life-With-Data/agentic-engineering/compare/agentic-engineering-v4.4.1...agentic-engineering-v4.5.0) (2026-07-21)
+
+
+### Features
+
+* make GitHub issues canonical for lifecycle work ([#238](https://github.com/Life-With-Data/agentic-engineering/issues/238)) ([987f6bb](https://github.com/Life-With-Data/agentic-engineering/commit/987f6bb9246618e9f07e0d070b977fcc14573f11))
+
 ## [4.4.1](https://github.com/Life-With-Data/agentic-engineering/compare/agentic-engineering-v4.4.0...agentic-engineering-v4.4.1) (2026-07-20)
 
 
