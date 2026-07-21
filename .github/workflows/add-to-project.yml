@@ -1,0 +1,24 @@
+# Auto-adds newly opened issues to the lifecycle Projects v2 board.
+# Scaffolded by agentic-engineering bootstrap (forward binding = auto-add).
+# Forward-only: fires on issue `opened`; it does not re-add reopened or
+# transferred issues (use `lifecycle_board.py --backfill` for existing issues).
+# One manual step: add a repo secret ADD_TO_PROJECT_PAT (see the setup skill).
+# SECURITY: do NOT add `run:` steps that interpolate ${{ github.event.issue.* }}
+# — that reintroduces script injection. This job runs no untrusted code.
+name: Add issues to project
+on:
+  issues:
+    types: [opened]
+
+permissions: {}   # the PAT does the Projects write; GITHUB_TOKEN needs nothing
+
+jobs:
+  add-to-project:
+    runs-on: ubuntu-latest
+    permissions: {}
+    steps:
+      - uses: actions/add-to-project@5afcf98fcd03f1c2f92c3c83f58ae24323cc57fd  # v2
+        with:
+          project-url: https://github.com/orgs/Life-With-Data/projects/1
+          github-token: ${{ secrets.ADD_TO_PROJECT_PAT }}
+          # Optional filter: labeled: bug,needs-triage / label-operator: OR|AND|NOT
