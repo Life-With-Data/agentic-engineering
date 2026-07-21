@@ -31,9 +31,7 @@ import subprocess
 import sys
 from typing import Any, Optional
 
-_LB_SPEC = importlib.util.spec_from_file_location(
-    "lifecycle_board", pathlib.Path(__file__).resolve().with_name("lifecycle_board.py")
-)
+_LB_SPEC = importlib.util.spec_from_file_location("lifecycle_board", pathlib.Path(__file__).resolve().with_name("lifecycle_board.py"))
 assert _LB_SPEC is not None and _LB_SPEC.loader is not None
 lifecycle_board = importlib.util.module_from_spec(_LB_SPEC)
 sys.modules["lifecycle_board"] = lifecycle_board
@@ -137,10 +135,17 @@ def get_pr_context(origin_slug: str = "") -> dict[str, Any]:
     # via gh's default repo, which can be the upstream parent. Skip the PR read
     # entirely when origin is unresolved rather than risk the wrong repo.
     if gh_authenticated and origin_slug:
-        pr_result = run([
-            "gh", "pr", "view", "--repo", origin_slug,
-            "--json", "number,title,url,headRefName,baseRefName",
-        ])
+        pr_result = run(
+            [
+                "gh",
+                "pr",
+                "view",
+                "--repo",
+                origin_slug,
+                "--json",
+                "number,title,url,headRefName,baseRefName",
+            ]
+        )
         if pr_result.returncode == 0 and pr_result.stdout.strip():
             try:
                 pr_data = json.loads(pr_result.stdout)
@@ -174,13 +179,10 @@ def read_local_config_tracker(repo_root: str) -> tuple[Optional[str], Optional[s
     config_path = pathlib.Path(repo_root) / "agentic-engineering.local.md"
     if not config_path.is_file():
         return (None, None)
-    tracked = subprocess.run(
-        ["git", "-C", repo_root, "ls-files", "--error-unmatch", config_path.name],
-        text=True, capture_output=True)
+    tracked = subprocess.run(["git", "-C", repo_root, "ls-files", "--error-unmatch", config_path.name], text=True, capture_output=True)
     if tracked.returncode == 0:
         print(
-            f"warning: {config_path.name} is tracked in git — a PR must not carry it; "
-            "ignoring its issue_tracker override and falling back to auto-detect",
+            f"warning: {config_path.name} is tracked in git — a PR must not carry it; " "ignoring its issue_tracker override and falling back to auto-detect",
             file=sys.stderr,
         )
         return (None, None)
@@ -246,10 +248,7 @@ def build_recommendation(current_branch: str, default_branch: str, dirty: bool) 
             "action": "ask_user_branch_or_worktree_before_proceeding",
             "reason": "Working tree has changes on the default branch.",
             "safe_to_commit_on_current_branch": False,
-            "prompt": (
-                f"You are on `{default_branch}` with local changes. Continue on this branch, "
-                "create a feature branch, or use a worktree?"
-            ),
+            "prompt": (f"You are on `{default_branch}` with local changes. Continue on this branch, " "create a feature branch, or use a worktree?"),
         }
 
     if on_default and not dirty:
@@ -257,10 +256,7 @@ def build_recommendation(current_branch: str, default_branch: str, dirty: bool) 
             "action": "create_branch_or_worktree_before_implementation",
             "reason": "Current branch is the default branch.",
             "safe_to_commit_on_current_branch": False,
-            "prompt": (
-                f"You are on the default branch `{default_branch}`. Create a feature branch "
-                "or use a worktree before making changes."
-            ),
+            "prompt": (f"You are on the default branch `{default_branch}`. Create a feature branch " "or use a worktree before making changes."),
         }
 
     if current_branch == "HEAD":
@@ -275,9 +271,7 @@ def build_recommendation(current_branch: str, default_branch: str, dirty: bool) 
         "action": "continue_on_current_branch_or_confirm_new_branch",
         "reason": "Already on a non-default branch.",
         "safe_to_commit_on_current_branch": True,
-        "prompt": (
-            f"Already on feature branch `{current_branch}`. Continue here or create a new branch/worktree?"
-        ),
+        "prompt": (f"Already on feature branch `{current_branch}`. Continue here or create a new branch/worktree?"),
     }
 
 
@@ -307,8 +301,7 @@ def main() -> int:
     dirty = not (staged_clean and unstaged_clean and counts["untracked_files"] == 0)
 
     # Origin slug for the explicit-repo `gh pr view` (fork-trap discipline).
-    origin_owner, origin_repo = lifecycle_board.parse_origin(
-        git_ok(["remote", "get-url", "origin"]))
+    origin_owner, origin_repo = lifecycle_board.parse_origin(git_ok(["remote", "get-url", "origin"]))
     origin_slug = f"{origin_owner}/{origin_repo}" if origin_owner and origin_repo else ""
 
     data = {
@@ -355,7 +348,6 @@ def main() -> int:
     )
 
     data["integrations"] = {
-        "todos_dir_exists": os.path.isdir(os.path.join(repo_root, "todos")),
         "beads_installed": beads_installed,
         "beads_initialized": beads_initialized,
         "beads_remember_available": beads_installed,
