@@ -21,7 +21,6 @@ script changes). Wiring differs per platform:
 | `block-db-push.py` | Ships | Ships | Ships | Safety net |
 | `block-beads-jsonl-stage.py` | Ships | Claude-only | Claude-only | Claude-primary |
 | `nudge-todowrite-to-tracker.py` | Ships (`TodoWrite`) | N/A | N/A | No TodoWrite equivalent on Cursor/Codex |
-| `plan-tracker-guard.py` | Ships (`Stop`) | Claude-only | Claude-only | Claude-primary until verified |
 | `sdd-cache-pre.py` / `sdd-cache-post.py` | Ships (`WebFetch`, opt-in) | N/A | N/A | WebFetch-specific; opt-in via `AGENTIC_SDD_CACHE=1` |
 | `worktree-session.py` | Ships (`SessionStart` / `startup`) | N/A | N/A | Worktree bootstrap + staleness advisory; no-op outside `.claude/worktrees/*` |
 | `gc-worktrees.py` | Manual git `post-merge` hook | N/A | N/A | Destructive GC; **not** auto-wired — install deliberately |
@@ -150,23 +149,13 @@ config -> `github-project` -> `gh auth` -> `github` -> `none`), so the
 reminder always names the same tracker the rest of the lifecycle tooling
 agrees on. Resolves to `none` → silent (nothing to nudge toward). Beads is
 intentionally not a nudge target: under the unified lifecycle GitHub is the
-sole authoritative tracker and beads is a non-authoritative scratchpad (see
-`plan-tracker-guard.py` above).
+sole authoritative tracker and beads is a non-authoritative scratchpad.
 
 **Enable it:** add `nudge_todowrite: true` to `agentic-engineering.local.md`'s
 frontmatter (same file the `setup` skill writes `issue_tracker:` into). A
 *tracked* copy of that file is ignored (security invariant shared with the
 other local-config reads), so the flag only takes effect from an untracked,
 per-machine copy.
-
-## `plan-tracker-guard.py` — Stop — Claude-primary
-
-**Blocks** turn termination if a plan file (`docs/plans/*.md`) modified during
-the session lacks a tracker ID (`bead_id` / `linear_issue` / `github_issue`) in
-its YAML frontmatter — unless the plan opts out with `issue_tracker: none`.
-
-**Why:** Plans that aren't linked to a tracked issue get orphaned. This keeps
-the `wf-grooming` planning route output connected to whatever issue tracker the repo uses.
 
 ## `sdd-cache-pre.py` / `sdd-cache-post.py` — PreToolUse / PostToolUse (WebFetch), opt-in — Claude-only
 
@@ -250,7 +239,7 @@ clone.
   to copy, overriding the built-in defaults.
 
 **Cursor/Codex:** N/A — neither exposes a `SessionStart` worktree-bootstrap event,
-so this is Claude-only (like `plan-tracker-guard.py`). Adapted and generalized
+so this is Claude-only. Adapted and generalized
 from the BlueStar monorepo's `setup-worktree.sh` / `check-stale-worktree.sh`.
 
 ## `gc-worktrees.py` — manual git `post-merge` hook — opt-in
@@ -312,7 +301,6 @@ Automated regression tests live in [`../tests/`](../tests) and run in CI via
 - [`prevent_main_commit_test.py`](../tests/prevent_main_commit_test.py)
 - [`block_slack_webhook_test.py`](../tests/block_slack_webhook_test.py)
 - [`block_db_push_test.py`](../tests/block_db_push_test.py)
-- [`plan_tracker_guard_test.py`](../tests/plan_tracker_guard_test.py)
 - [`nudge_todowrite_to_tracker_test.py`](../tests/nudge_todowrite_to_tracker_test.py)
 - [`sdd_cache_pre_test.py`](../tests/sdd_cache_pre_test.py)
 - [`sdd_cache_post_test.py`](../tests/sdd_cache_post_test.py)

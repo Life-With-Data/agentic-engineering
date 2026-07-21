@@ -3,7 +3,7 @@
 Covers the destructive-foot-gun surface with an argv-recording fake gh
 (mirrors lifecycle_board_test.py's FakeRunner): golden-fixture assertions on
 the exact updateProjectV2Field mutation document + variables for a fresh
-default project (3 ids preserved + 6 new) and a canonical re-run (9 ids
+default project (3 ids preserved + 4 new) and a canonical re-run (7 ids
 preserved — idempotency); the fresh-project guard (unrecognized options ->
 BoardError with a diff, NO mutation recorded); env-override refusal;
 owner-from-origin (never @me in argv); and config-write content preservation
@@ -12,6 +12,7 @@ in a tempdir. No network, no gh.
 from __future__ import annotations
 
 import atexit
+import io
 import importlib.util
 import json
 import shutil
@@ -20,6 +21,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 SCRIPTS = Path(__file__).resolve().parent.parent / "scripts"
 
@@ -110,13 +112,22 @@ _CANONICAL_FIELD = bs.StatusField(
     field_id="FIELD_STATUS",
     options=[{"id": f"opt_{s}", "name": s} for s in bs.STAGES])
 
+_LEGACY_FIELD = bs.StatusField(
+    field_id="FIELD_STATUS",
+    options=[{"id": f"opt_{s}", "name": s} for s in bs.LEGACY_STAGES])
+
+_TRANSITION_FIELD = bs.StatusField(
+    field_id="FIELD_STATUS",
+    options=[{"id": ("opt_shipped" if s == "done" else f"opt_{s}"), "name": s}
+             for s in bs.LEGACY_TRANSITION_STAGES])
+
 
 class OptionMappingTest(unittest.TestCase):
     """Golden assertions on build_option_mapping — the id-preserving core."""
 
-    def test_fresh_default_preserves_three_ids_adds_six(self) -> None:
+    def test_fresh_default_preserves_three_ids_adds_four(self) -> None:
         options = bs.build_option_mapping(_DEFAULT_FIELD, "default")
-        # 9 options, in STAGES order, every one named + colored + described.
+        # 7 options, in STAGES order, every one named + colored + described.
         self.assertEqual([o["name"] for o in options], list(bs.STAGES))
         for o in options:
             self.assertIn("color", o)
@@ -125,14 +136,14 @@ class OptionMappingTest(unittest.TestCase):
         self.assertEqual(with_id, {
             "stub": "opt_todo",
             "in_progress": "opt_inprogress",
-            "shipped": "opt_done",
+            "done": "opt_done",
         })
-        # The other six carry NO id (they are genuinely new options).
+        # The other four carry NO id (they are genuinely new options).
         id_less = [o["name"] for o in options if "id" not in o]
         self.assertEqual(sorted(id_less),
-                         sorted(set(bs.STAGES) - {"stub", "in_progress", "shipped"}))
+                         sorted(set(bs.STAGES) - {"stub", "in_progress", "done"}))
 
-    def test_canonical_rerun_preserves_all_nine_ids(self) -> None:
+    def test_canonical_rerun_preserves_all_seven_ids(self) -> None:
         options = bs.build_option_mapping(_CANONICAL_FIELD, "canonical")
         self.assertEqual([o["name"] for o in options], list(bs.STAGES))
         # Idempotency: EVERY option keeps its id — never a partial/id-less list.
@@ -170,10 +181,10 @@ class MutationDocumentTest(unittest.TestCase):
                       "singleSelectOptions: [", query)
         self.assertNotIn("__OPTIONS__", query)  # template placeholder replaced
         self.assertEqual(flags["fieldId"], "FIELD_STATUS")
-        # 3 preserved ids (Todo→stub, In Progress→in_progress, Done→shipped), 6 id-less.
+        # 3 preserved ids (Todo→stub, In Progress→in_progress, Done→done), 4 id-less.
         self.assertEqual(query.count("id: "), 3)
         for old_id, new_name in (("opt_todo", "stub"), ("opt_inprogress", "in_progress"),
-                                 ("opt_done", "shipped")):
+                                 ("opt_done", "done")):
             self.assertIn(f'id: "{old_id}", name: "{new_name}"', query)
         for stage in bs.STAGES:
             self.assertIn(f'name: "{stage}"', query)
@@ -181,7 +192,7 @@ class MutationDocumentTest(unittest.TestCase):
         self.assertIn("color: GRAY", query)
         self.assertNotIn('color: "', query)
 
-    def test_canonical_rerun_sends_nine_ids(self) -> None:
+    def test_canonical_rerun_sends_seven_ids(self) -> None:
         runner = FakeRunner([
             (["api", "graphql"], _ok(json.dumps(
                 {"data": {"updateProjectV2Field": {"projectV2Field": {
@@ -191,8 +202,8 @@ class MutationDocumentTest(unittest.TestCase):
         bs.apply_status_options(_CANONICAL_FIELD, options, runner)
 
         query = runner.graphql_calls()[0]["query"]
-        # Idempotency guard: NOT a partial or id-less list — all nine ids sent.
-        self.assertEqual(query.count("id: "), 9)
+        # Idempotency guard: NOT a partial or id-less list — all seven ids sent.
+        self.assertEqual(query.count("id: "), 7)
         for s in bs.STAGES:
             self.assertIn(f'id: "opt_{s}", name: "{s}"', query)
 
@@ -229,6 +240,22 @@ class FreshProjectGuardTest(unittest.TestCase):
 
     def test_canonical_option_set_is_accepted(self) -> None:
         self.assertEqual(bs.assert_fresh_or_canonical(_CANONICAL_FIELD), "canonical")
+
+    def test_exact_legacy_option_set_is_accepted_for_migration(self) -> None:
+        self.assertEqual(bs.assert_fresh_or_canonical(_LEGACY_FIELD), "legacy")
+
+    def test_exact_transition_option_set_is_accepted_for_resume(self) -> None:
+        self.assertEqual(bs.assert_fresh_or_canonical(_TRANSITION_FIELD),
+                         "legacy-transition")
+
+    def test_duplicate_option_name_is_rejected(self) -> None:
+        duplicate = bs.StatusField(field_id="F", options=[
+            *[dict(option) for option in _CANONICAL_FIELD.options],
+            {"id": "duplicate-id", "name": "done"},
+        ])
+        with self.assertRaises(bs.BoardError) as caught:
+            bs.assert_fresh_or_canonical(duplicate)
+        self.assertEqual(caught.exception.code, "unrecognized_project")
 
     def test_unrecognized_option_set_hard_stops_with_diff_and_no_mutation(self) -> None:
         customized = bs.StatusField(field_id="F", options=[
@@ -275,6 +302,199 @@ class FreshProjectGuardTest(unittest.TestCase):
             bs.bootstrap(_ctx(), runner, probe=False, environ={})
         self.assertEqual(caught.exception.code, "unrecognized_project")
         self.assertEqual(runner.graphql_calls(), [])  # nothing mutated
+
+
+class LegacyMigrationTest(unittest.TestCase):
+    def test_preserves_shipped_id_moves_terminal_items_then_removes_legacy(self) -> None:
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            ctx = lb.RepoContext(root=str(root), main_root=str(root), origin_owner="acme",
+                                 origin_repo="widget", default_branch="main")
+            project = bs.Project(number=7, id="PROJ", created=False)
+            items = [
+                {"id": "I1", "status": "shipped", "content": {"number": 1}},
+                {"id": "I2", "status": "deployed", "content": {"number": 2}},
+                {"id": "I3", "status": "compounded", "content": {"number": 3}},
+                {"id": "I4", "status": "planned", "content": {"number": 4}},
+            ]
+            transitional_names = ["done" if s == "shipped" else s for s in bs.LEGACY_STAGES]
+            transitional = [{"id": ("opt_shipped" if s == "done" else f"opt_{s}"), "name": s}
+                            for s in transitional_names]
+            final = [{"id": ("opt_shipped" if s == "done" else f"opt_{s}"), "name": s}
+                     for s in bs.STAGES]
+            runner = FakeRunner([
+                (["project", "item-list", "7", "--owner", "acme"],
+                 _ok(json.dumps({"items": items}))),
+                (["api", "graphql"], _ok(json.dumps({"data": {"updateProjectV2Field": {
+                    "projectV2Field": {"options": transitional}}}}))),
+                (["project", "item-edit", "--id", "I2", "--project-id", "PROJ"], _ok("{}")),
+                (["project", "item-edit", "--id", "I3", "--project-id", "PROJ"], _ok("{}")),
+                (["project", "item-list", "7", "--owner", "acme"], _ok(json.dumps({"items": [
+                    {"id": "I1", "status": "done"}, {"id": "I2", "status": "done"},
+                    {"id": "I3", "status": "done"}, {"id": "I4", "status": "planned"}]}))),
+                (["api", "graphql"], _ok(json.dumps({"data": {"updateProjectV2Field": {
+                    "projectV2Field": {"options": final}}}}))),
+            ])
+            with mock.patch.object(lb, "git_common_dir", return_value=root / ".git"):
+                result = bs.migrate_legacy_status(project, _LEGACY_FIELD, ctx, runner)
+
+            self.assertEqual(result["resumed_from"], "legacy")
+            self.assertEqual([m["from"] for m in result["items_migrated"]],
+                             ["deployed", "compounded"])
+            self.assertEqual(len(runner.graphql_calls()), 2)
+            transitional_query, final_query = [c["query"] for c in runner.graphql_calls()]
+            self.assertIn('id: "opt_shipped", name: "done"', transitional_query)
+            self.assertIn('name: "deployed"', transitional_query)
+            self.assertNotIn('name: "deployed"', final_query)
+            snapshot = Path(result["snapshot_path"])
+            self.assertTrue(snapshot.is_file())
+            self.assertEqual(snapshot.stat().st_mode & 0o777, 0o600)
+            evidence = json.loads(snapshot.read_text(encoding="utf-8"))
+            self.assertEqual([i["status"] for i in evidence["items"]],
+                             ["shipped", "deployed", "compounded", "planned"])
+
+    def test_truncated_board_refuses_before_any_mutation(self) -> None:
+        items = [{"id": f"I{i}", "status": "planned"} for i in range(bs.MIGRATION_ITEM_LIMIT)]
+        runner = FakeRunner([(["project", "item-list"], _ok(json.dumps({"items": items})))])
+        with self.assertRaises(bs.BoardError) as caught:
+            bs.migrate_legacy_status(bs.Project(7, "PROJ", False), _LEGACY_FIELD, _ctx(), runner)
+        self.assertEqual(caught.exception.code, "migration_truncated")
+        self.assertEqual(runner.graphql_calls(), [])
+
+    def test_resumes_after_rename_without_repeating_it(self) -> None:
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            ctx = lb.RepoContext(root=str(root), main_root=str(root), origin_owner="acme",
+                                 origin_repo="widget", default_branch="main")
+            project = bs.Project(number=7, id="PROJ", created=False)
+            items = [{"id": "I1", "status": "done"},
+                     {"id": "I2", "status": "deployed"},
+                     {"id": "I3", "status": "compounded"}]
+            final = [{"id": ("opt_shipped" if s == "done" else f"opt_{s}"), "name": s}
+                     for s in bs.STAGES]
+            runner = FakeRunner([
+                (["project", "item-list"], _ok(json.dumps({"items": items}))),
+                (["project", "item-edit", "--id", "I2"], _ok("{}")),
+                (["project", "item-edit", "--id", "I3"], _ok("{}")),
+                (["project", "item-list"], _ok(json.dumps({"items": [
+                    {"id": "I1", "status": "done"}, {"id": "I2", "status": "done"},
+                    {"id": "I3", "status": "done"}]}))),
+                (["api", "graphql"], _ok(json.dumps({"data": {"updateProjectV2Field": {
+                    "projectV2Field": {"options": final}}}}))),
+            ])
+            with mock.patch.object(lb, "git_common_dir", return_value=root / ".git"):
+                result = bs.migrate_legacy_status(project, _TRANSITION_FIELD, ctx, runner)
+            self.assertEqual(result["resumed_from"], "legacy-transition")
+            self.assertEqual([m["from"] for m in result["items_migrated"]],
+                             ["deployed", "compounded"])
+            # Only the final contraction mutation runs; the rename is not replayed.
+            self.assertEqual(len(runner.graphql_calls()), 1)
+            self.assertNotIn('name: "deployed"', runner.graphql_calls()[0]["query"])
+
+    def test_resumes_after_partial_item_migration(self) -> None:
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            ctx = lb.RepoContext(root=str(root), main_root=str(root), origin_owner="acme",
+                                 origin_repo="widget", default_branch="main")
+            project = bs.Project(number=7, id="PROJ", created=False)
+            items = [{"id": "I1", "status": "done"},
+                     {"id": "I2", "status": "done"},
+                     {"id": "I3", "status": "compounded"}]
+            final = [{"id": ("opt_shipped" if s == "done" else f"opt_{s}"), "name": s}
+                     for s in bs.STAGES]
+            runner = FakeRunner([
+                (["project", "item-list"], _ok(json.dumps({"items": items}))),
+                (["project", "item-edit", "--id", "I3"], _ok("{}")),
+                (["project", "item-list"], _ok(json.dumps({"items": [
+                    {"id": "I1", "status": "done"}, {"id": "I2", "status": "done"},
+                    {"id": "I3", "status": "done"}]}))),
+                (["api", "graphql"], _ok(json.dumps({"data": {"updateProjectV2Field": {
+                    "projectV2Field": {"options": final}}}}))),
+            ])
+            with mock.patch.object(lb, "git_common_dir", return_value=root / ".git"):
+                result = bs.migrate_legacy_status(project, _TRANSITION_FIELD, ctx, runner)
+            self.assertEqual(result["items_migrated"],
+                             [{"id": "I3", "from": "compounded", "to": "done"}])
+
+    def test_failure_on_either_item_edit_leaves_recognized_resume_schema(self) -> None:
+        for fail_index in (0, 1):
+            with self.subTest(fail_index=fail_index), tempfile.TemporaryDirectory() as d:
+                root = Path(d)
+                ctx = lb.RepoContext(root=str(root), main_root=str(root), origin_owner="acme",
+                                     origin_repo="widget", default_branch="main")
+                responses = [(["project", "item-list"], _ok(json.dumps({"items": [
+                    {"id": "I2", "status": "deployed"},
+                    {"id": "I3", "status": "compounded"}]})))]
+                if fail_index == 0:
+                    responses.append((["project", "item-edit", "--id", "I2"], _fail("interrupted")))
+                else:
+                    responses.extend([
+                        (["project", "item-edit", "--id", "I2"], _ok("{}")),
+                        (["project", "item-edit", "--id", "I3"], _fail("interrupted")),
+                    ])
+                runner = FakeRunner(responses)
+                with mock.patch.object(lb, "git_common_dir", return_value=root / ".git"):
+                    with self.assertRaises(bs.BoardError) as caught:
+                        bs.migrate_legacy_status(bs.Project(7, "PROJ", False),
+                                                 _TRANSITION_FIELD, ctx, runner)
+                self.assertEqual(caught.exception.code, "migration_failed")
+                self.assertEqual(bs.assert_fresh_or_canonical(_TRANSITION_FIELD),
+                                 "legacy-transition")
+
+    def test_retries_final_contraction_after_failure(self) -> None:
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            ctx = lb.RepoContext(root=str(root), main_root=str(root), origin_owner="acme",
+                                 origin_repo="widget", default_branch="main")
+            project = bs.Project(number=7, id="PROJ", created=False)
+            items = [{"id": "I1", "status": "done"}, {"id": "I2", "status": "planned"}]
+            failed = FakeRunner([
+                (["project", "item-list"], _ok(json.dumps({"items": items}))),
+                (["project", "item-list"], _ok(json.dumps({"items": items}))),
+                (["api", "graphql"], _fail("interrupted final contraction")),
+            ])
+            with mock.patch.object(lb, "git_common_dir", return_value=root / ".git"):
+                with self.assertRaises(bs.BoardError) as caught:
+                    bs.migrate_legacy_status(project, _TRANSITION_FIELD, ctx, failed)
+            self.assertEqual(caught.exception.code, "board_write_failed")
+
+            final = [{"id": ("opt_shipped" if s == "done" else f"opt_{s}"), "name": s}
+                     for s in bs.STAGES]
+            retry = FakeRunner([
+                (["project", "item-list"], _ok(json.dumps({"items": items}))),
+                (["project", "item-list"], _ok(json.dumps({"items": items}))),
+                (["api", "graphql"], _ok(json.dumps({"data": {"updateProjectV2Field": {
+                    "projectV2Field": {"options": final}}}}))),
+            ])
+            with mock.patch.object(lb, "git_common_dir", return_value=root / ".git"):
+                result = bs.migrate_legacy_status(project, _TRANSITION_FIELD, ctx, retry)
+            self.assertEqual(result["items_migrated"], [])
+            self.assertEqual(result["resumed_from"], "legacy-transition")
+            snapshots = list((root / ".git" / "agentic-engineering" / "migrations").glob("*.json"))
+            self.assertEqual(len(snapshots), 2)  # same-second retries never overwrite evidence
+
+    def test_concurrent_legacy_value_refuses_final_contraction(self) -> None:
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            ctx = lb.RepoContext(root=str(root), main_root=str(root), origin_owner="acme",
+                                 origin_repo="widget", default_branch="main")
+            project = bs.Project(number=7, id="PROJ", created=False)
+            runner = FakeRunner([
+                (["project", "item-list"], _ok(json.dumps({"items": [
+                    {"id": "I1", "status": "deployed"}]}))),
+                (["project", "item-edit", "--id", "I1"], _ok("{}")),
+                # A concurrent drag/add lands on compounded after the first read.
+                (["project", "item-list"], _ok(json.dumps({"items": [
+                    {"id": "I1", "status": "done"},
+                    {"id": "I9", "status": "compounded"}]}))),
+            ])
+            with mock.patch.object(lb, "git_common_dir", return_value=root / ".git"):
+                with self.assertRaises(bs.BoardError) as caught:
+                    bs.migrate_legacy_status(project, _TRANSITION_FIELD, ctx, runner)
+            self.assertEqual(caught.exception.code, "migration_concurrent_change")
+            self.assertIn("1 project item", str(caught.exception))
+            # No schema mutation ran, so deployed/compounded remain available.
+            self.assertEqual(runner.graphql_calls(), [])
 
 
 class PreconditionTest(unittest.TestCase):
@@ -339,6 +559,50 @@ class OwnerFromOriginTest(unittest.TestCase):
             self.assertEqual((project.number, project.created), (5, False))
             # No `project create` was attempted.
             self.assertFalse(any(c[:2] == ["project", "create"] for c in runner.calls))
+
+    def test_trusted_canonical_owner_survives_full_bootstrap_for_a_fork(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            (Path(tmp) / bs.COMMITTED_CONFIG).write_text(
+                "---\ngithub_project_owner: canonical-org\ngithub_project_number: 5\n"
+                "github_project_forward_binding: workflow-only\n---\n", encoding="utf-8")
+            ctx = lb.RepoContext(root=tmp, main_root=tmp, origin_owner="fork-owner",
+                                 origin_repo="widget", default_branch="main")
+            fields = {"fields": [
+                {"name": "Status", "id": "F", "projectId": "P",
+                 "options": [{"id": f"o_{s}", "name": s} for s in bs.STAGES]},
+                {"name": "Priority", "id": "PRI", "options": []},
+            ]}
+            workflows = {"data": {"repositoryOwner": {"projectV2": {"workflows": {
+                "nodes": [{"id": "C", "name": "Item closed", "enabled": True}]}}}}}
+            links = {"data": {"repositoryOwner": {"projectV2": {"repositories": {
+                "nodes": [{"nameWithOwner": "fork-owner/widget"}]}}}}}
+            runner = FakeRunner([
+                (["--version"], _ok("gh version 2.96.0")),
+                (["auth", "status"], _ok("github.com scopes: project")),
+                (["project", "view", "5", "--owner", "canonical-org"],
+                 _ok(json.dumps({"number": 5, "id": "P"}))),
+                (["project", "field-list", "5", "--owner", "canonical-org"],
+                 _ok(json.dumps(fields))),
+                (["api", "graphql"], _ok(json.dumps({"data": {"updateProjectV2Field": {
+                    "projectV2Field": {"options": fields["fields"][0]["options"]}}}}))),
+                (["project", "field-list", "5", "--owner", "canonical-org"],
+                 _ok(json.dumps(fields))),
+                (["api", "graphql"], _ok(json.dumps(workflows))),
+                (["api", "graphql"], _ok(json.dumps(links))),
+            ])
+            with mock.patch.object(lb, "_trusted_board_owners", return_value={"canonical-org"}):
+                summary = bs.bootstrap(ctx, runner, probe=False, environ={})
+                configured_owner = lb.read_board_config(ctx).owner
+            self.assertEqual(summary["project"]["owner"], "canonical-org")
+            self.assertEqual(configured_owner, "canonical-org")
+            self.assertFalse(any(c[:2] == ["project", "create"] for c in runner.calls))
+            project_owner_flags = [c[c.index("--owner") + 1] for c in runner.calls
+                                   if c and c[0] == "project" and "--owner" in c]
+            self.assertTrue(project_owner_flags)
+            self.assertEqual(set(project_owner_flags), {"canonical-org"})
+            graphql_owner_flags = [v.split("=", 1)[1] for c in runner.calls
+                                   for v in c if v.startswith("owner=")]
+            self.assertEqual(set(graphql_owner_flags), {"canonical-org"})
 
 
 class WorkflowConfigTest(unittest.TestCase):
@@ -810,18 +1074,32 @@ class ProbeTest(unittest.TestCase):
         self.addCleanup(lambda: (setattr(lb, "load_cache", _orig_load),
                                  setattr(lb, "save_cache", _orig_save)))
 
-    def test_probe_passes_and_deletes_scratch_issue(self) -> None:
+    @staticmethod
+    def _payload(stage=None, *, state="OPEN", item=True):
+        items = [] if not item else [{
+            "id": "item99", "project": {"id": "P", "number": 3,
+                                          "owner": {"login": "acme"}},
+            "fieldValueByName": {"name": stage} if stage else None,
+        }]
+        return {"data": {"repository": {"issue": {
+            "number": 99, "state": state,
+            "stateReason": "COMPLETED" if state == "CLOSED" else None, "url": "u",
+            "authorAssociation": "OWNER", "blockedBy": {"totalCount": 0},
+            "assignees": {"nodes": []}, "closedByPullRequestsReferences": {"nodes": []},
+            "subIssues": {"nodes": []}, "projectItems": {"nodes": items}}}}}
+
+    def test_probe_passes_closes_issue_and_removes_project_item(self) -> None:
         ctx = self.ctx
         board_stub = {"fields": [{"name": "Status", "id": "F", "projectId": "P",
                                   "options": [{"id": f"o_{s}", "name": s} for s in bs.STAGES]}]}
-        issue_shipped = {"data": {"repository": {"issue": {
+        issue_done = {"data": {"repository": {"issue": {
             "number": 99, "state": "CLOSED", "stateReason": "COMPLETED", "url": "u",
             "authorAssociation": "OWNER", "assignees": {"nodes": []},
             "closedByPullRequestsReferences": {"nodes": []},
             "subIssues": {"nodes": []},
             "projectItems": {"nodes": [{"id": "item99",
                 "project": {"id": "P", "number": 3, "owner": {"login": "acme"}},
-                "fieldValueByName": {"name": "shipped"}}]}}}}}
+                "fieldValueByName": {"name": "done"}}]}}}}}
         project = bs.Project(number=3, id="P", created=True)
         runner = FakeRunner([
             (["issue", "create", "--repo", "acme/widget"],
@@ -839,17 +1117,223 @@ class ProbeTest(unittest.TestCase):
                     "fieldValueByName": None}]}}}}}))),
             (["project", "item-edit", "--id", "item99"], _ok("{}")),
             (["issue", "close", "99", "--repo", "acme/widget"], _ok("")),
-            # poll #1 → already shipped.
-            (["api", "graphql"], _ok(json.dumps(issue_shipped))),
-            (["issue", "delete", "99", "--repo", "acme/widget", "--yes"], _ok("")),
+            # poll #1 → already done.
+            (["api", "graphql"], _ok(json.dumps(issue_done))),
+            (["api", "graphql"], _ok(json.dumps(issue_done))),
+            (["project", "item-delete", "3", "--owner", "acme", "--id", "item99"], _ok("")),
+            (["api", "graphql"], _ok(json.dumps(
+                self._payload("done", state="CLOSED", item=False)))),
         ])
         result = bs.run_probe(project, ctx, runner, sleep=lambda _s: None)
         self.assertEqual(result["result"], "PASS")
         self.assertEqual(result["issue"], 99)
-        # Scratch issue was deleted (cleanup in the finally block).
-        self.assertTrue(any(c[:2] == ["issue", "delete"] for c in runner.calls))
+        self.assertEqual(result["cleanup"]["result"], "PASS")
+        self.assertEqual(result["cleanup"]["permanent_delete"], "NOT_ATTEMPTED")
+        self.assertFalse(any(c[:2] == ["issue", "delete"] for c in runner.calls))
 
-    def test_probe_fails_and_still_deletes_when_issue_create_ok_but_never_ships(self) -> None:
+    def test_auto_add_is_observed_before_any_direct_board_write(self) -> None:
+        config = Path(self.ctx.main_root) / bs.COMMITTED_CONFIG
+        config.write_text(
+            "---\ngithub_project_owner: acme\ngithub_project_number: 3\n"
+            "github_project_forward_binding: auto-add\n---\n", encoding="utf-8")
+        board_stub = {"fields": [{"name": "Status", "id": "F", "projectId": "P",
+                                  "options": [{"id": f"o_{s}", "name": s}
+                                              for s in bs.STAGES]}]}
+
+        def issue_payload(stage, state="OPEN"):
+            return {"data": {"repository": {"issue": {
+                "number": 99, "state": state, "stateReason": None, "url": "u",
+                "authorAssociation": "OWNER", "blockedBy": {"totalCount": 0},
+                "assignees": {"nodes": []}, "closedByPullRequestsReferences": {"nodes": []},
+                "subIssues": {"nodes": []}, "projectItems": {"nodes": [{
+                    "id": "item99", "project": {"id": "P", "number": 3,
+                                                  "owner": {"login": "acme"}},
+                    "fieldValueByName": {"name": stage} if stage else None}]}}}}}
+
+        runner = FakeRunner([
+            (["issue", "create"], _ok("https://github.com/acme/widget/issues/99\n")),
+            # Auto-add observation: read only, item is already present.
+            (["api", "graphql"], _ok(json.dumps(issue_payload(None)))),
+            # Only now may the lifecycle verb write Status=stub.
+            (["project", "field-list"], _ok(json.dumps(board_stub))),
+            (["api", "graphql"], _ok(json.dumps(issue_payload(None)))),
+            (["project", "item-edit", "--id", "item99"], _ok("{}")),
+            (["issue", "close"], _ok("")),
+            (["api", "graphql"], _ok(json.dumps(issue_payload("done", "CLOSED")))),
+            (["api", "graphql"], _ok(json.dumps(issue_payload("done", "CLOSED")))),
+            (["project", "item-delete", "3", "--owner", "acme", "--id", "item99"], _ok("")),
+            (["api", "graphql"], _ok(json.dumps(
+                self._payload("done", state="CLOSED", item=False)))),
+        ])
+        result = bs.run_probe(bs.Project(3, "P", True, "acme"), self.ctx, runner,
+                              sleep=lambda _s: None, now=lambda: 0.0)
+        self.assertEqual(result["result"], "PASS")
+        self.assertEqual(result["forward_binding"]["result"], "PASS")
+        self.assertFalse(any(c[:2] == ["project", "item-add"] for c in runner.calls))
+        self.assertFalse(any(c[:2] == ["issue", "delete"] for c in runner.calls))
+        first_write = next(i for i, c in enumerate(runner.calls)
+                           if c[:2] == ["project", "item-edit"])
+        self.assertGreater(first_write, 1)
+
+    def test_trusted_foreign_project_owner_reaches_probe_write_and_cleanup(self) -> None:
+        config = Path(self.ctx.main_root) / bs.COMMITTED_CONFIG
+        config.write_text(
+            "---\ngithub_project_owner: canonical-org\ngithub_project_number: 3\n"
+            "github_project_forward_binding: workflow-only\n---\n", encoding="utf-8")
+        ctx = lb.RepoContext(root=self.ctx.root, main_root=self.ctx.main_root,
+                             origin_owner="fork-owner", origin_repo="widget",
+                             default_branch="main")
+        fields = {"fields": [{"name": "Status", "id": "F", "projectId": "P",
+                              "options": [{"id": f"o_{s}", "name": s}
+                                          for s in bs.STAGES]}]}
+
+        def payload(*, state="OPEN", item=True, stage=None):
+            items = [] if not item else [{
+                "id": "foreign-item", "project": {"id": "P", "number": 3,
+                                                     "owner": {"login": "canonical-org"}},
+                "fieldValueByName": {"name": stage} if stage else None,
+            }]
+            return {"data": {"repository": {"issue": {
+                "number": 99, "state": state, "stateReason": None, "url": "u",
+                "authorAssociation": "OWNER", "blockedBy": {"totalCount": 0},
+                "assignees": {"nodes": []}, "closedByPullRequestsReferences": {"nodes": []},
+                "subIssues": {"nodes": []}, "projectItems": {"nodes": items}}}}}
+
+        runner = FakeRunner([
+            (["issue", "create", "--repo", "fork-owner/widget"],
+             _ok("https://github.com/fork-owner/widget/issues/99\n")),
+            (["project", "field-list", "3", "--owner", "canonical-org"],
+             _ok(json.dumps(fields))),
+            (["api", "graphql"], _ok(json.dumps(payload()))),
+            (["project", "item-edit", "--id", "foreign-item"], _ok("{}")),
+            (["issue", "close", "99", "--repo", "fork-owner/widget"], _ok("")),
+            (["api", "graphql"], _ok(json.dumps(payload(state="CLOSED", stage="done")))),
+            (["api", "graphql"], _ok(json.dumps(payload(state="CLOSED", stage="done")))),
+            (["project", "item-delete", "3", "--owner", "canonical-org",
+              "--id", "foreign-item"], _ok("")),
+            (["api", "graphql"], _ok(json.dumps(payload(state="CLOSED", item=False)))),
+        ])
+        with mock.patch.object(lb, "_trusted_board_owners", return_value={"canonical-org"}):
+            result = bs.run_probe(bs.Project(3, "P", False, "canonical-org"), ctx, runner,
+                                  sleep=lambda _s: None, now=lambda: 0.0)
+        self.assertEqual(result["result"], "PASS")
+        self.assertEqual(result["cleanup"]["result"], "PASS")
+
+    def test_item_removal_failure_overrides_success(self) -> None:
+        board_stub = {"fields": [{"name": "Status", "id": "F", "projectId": "P",
+                                  "options": [{"id": f"o_{s}", "name": s}
+                                              for s in bs.STAGES]}]}
+        issue = {"data": {"repository": {"issue": {
+            "number": 99, "state": "CLOSED", "stateReason": "COMPLETED", "url": "u",
+            "authorAssociation": "OWNER", "blockedBy": {"totalCount": 0},
+            "assignees": {"nodes": []}, "closedByPullRequestsReferences": {"nodes": []},
+            "subIssues": {"nodes": []}, "projectItems": {"nodes": [{"id": "item99",
+                "project": {"id": "P", "number": 3, "owner": {"login": "acme"}},
+                "fieldValueByName": {"name": "done"}}]}}}}}
+        runner = FakeRunner([
+            (["issue", "create"], _ok("https://github.com/acme/widget/issues/99\n")),
+            (["project", "field-list"], _ok(json.dumps(board_stub))),
+            (["api", "graphql"], _ok(json.dumps(issue))),
+            (["project", "item-edit"], _ok("{}")),
+            (["issue", "close"], _ok("")),
+            (["api", "graphql"], _ok(json.dumps(issue))),
+            (["api", "graphql"], _ok(json.dumps(issue))),
+            (["project", "item-delete", "3", "--owner", "acme", "--id", "item99"],
+             _fail("permission denied")),
+        ])
+        result = bs.run_probe(bs.Project(3, "P", True, "acme"), self.ctx, runner,
+                              sleep=lambda _s: None, now=lambda: 0.0)
+        self.assertEqual(result["result"], "FAIL")
+        self.assertEqual(result["cleanup"]["result"], "FAIL")
+
+    def test_cleanup_close_failure_is_reported(self) -> None:
+        runner = FakeRunner([
+            (["issue", "create"], _ok("https://github.com/acme/widget/issues/99\n")),
+            (["project", "field-list"], _fail("board denied")),
+            (["issue", "close", "99"], _fail("issue close denied")),
+        ])
+        result = bs.run_probe(bs.Project(3, "P", True, "acme"), self.ctx, runner,
+                              sleep=lambda _s: None, now=lambda: 0.0)
+        self.assertEqual(result["result"], "FAIL")
+        self.assertIn("close", result["cleanup"]["detail"])
+
+    def test_item_removal_must_be_verified(self) -> None:
+        board_stub = {"fields": [{"name": "Status", "id": "F", "projectId": "P",
+                                  "options": [{"id": f"o_{s}", "name": s}
+                                              for s in bs.STAGES]}]}
+        done = self._payload("done", state="CLOSED")
+        runner = FakeRunner([
+            (["issue", "create"], _ok("https://github.com/acme/widget/issues/99\n")),
+            (["project", "field-list"], _ok(json.dumps(board_stub))),
+            (["api", "graphql"], _ok(json.dumps(done))),
+            (["project", "item-edit"], _ok("{}")),
+            (["issue", "close"], _ok("")),
+            (["api", "graphql"], _ok(json.dumps(done))),
+            (["api", "graphql"], _ok(json.dumps(done))),
+            (["project", "item-delete", "3", "--owner", "acme", "--id", "item99"], _ok("")),
+            (["api", "graphql"], _ok(json.dumps(done))),
+        ])
+        result = bs.run_probe(bs.Project(3, "P", True, "acme"), self.ctx, runner,
+                              sleep=lambda _s: None, now=lambda: 0.0)
+        self.assertEqual(result["result"], "FAIL")
+        self.assertIn("still found", result["cleanup"]["detail"])
+
+    def test_probe_only_failure_is_false_json_and_nonzero(self) -> None:
+        failure = {"result": "FAIL", "reason": "no done", "cleanup": {"result": "PASS"}}
+        with mock.patch.object(lb, "repo_context", return_value=self.ctx), \
+             mock.patch.object(lb, "read_board_config", return_value=lb.BoardConfig(
+                 "acme", 3, "committed")), \
+             mock.patch.object(bs, "run_probe", return_value=failure), \
+             mock.patch("sys.stdout", new_callable=io.StringIO) as stdout:
+            exit_code = bs.main(["--probe-only"])
+        payload = json.loads(stdout.getvalue())
+        self.assertEqual(exit_code, 1)
+        self.assertFalse(payload["ok"])
+        self.assertFalse(payload["adoption_ready"])
+
+    def test_probe_only_success_does_not_claim_global_adoption_readiness(self) -> None:
+        passed = {"result": "PASS", "cleanup": {"result": "PASS"}}
+        with mock.patch.object(lb, "repo_context", return_value=self.ctx), \
+             mock.patch.object(lb, "read_board_config", return_value=lb.BoardConfig(
+                 "acme", 3, "committed")), \
+             mock.patch.object(bs, "run_probe", return_value=passed), \
+             mock.patch("sys.stdout", new_callable=io.StringIO) as stdout:
+            exit_code = bs.main(["--probe-only"])
+        payload = json.loads(stdout.getvalue())
+        self.assertEqual(exit_code, 0)
+        self.assertTrue(payload["ok"])
+        self.assertFalse(payload["adoption_ready"])
+        self.assertIn("doctor", payload["readiness_scope"])
+
+    def test_default_probe_failure_marks_bootstrap_not_ok(self) -> None:
+        status = bs.StatusField("F", [{"id": f"o_{s}", "name": s} for s in bs.STAGES])
+        project = bs.Project(3, "P", False, "acme")
+        with mock.patch.object(bs, "check_env_overrides"), \
+             mock.patch.object(bs, "check_gh_version", return_value=(2, 96, 0)), \
+             mock.patch.object(bs, "check_gh_authenticated"), \
+             mock.patch.object(lb, "read_binding_config", return_value=lb.BindingConfig(
+                 "workflow-only", "workflow-only", None, "committed")), \
+             mock.patch.object(bs, "resolve_or_create_project", return_value=project), \
+             mock.patch.object(bs, "read_status_field", return_value=status), \
+             mock.patch.object(bs, "assert_fresh_or_canonical", return_value="canonical"), \
+             mock.patch.object(bs, "apply_status_options", return_value=status.options), \
+             mock.patch.object(bs, "ensure_priority_field", return_value={"created": False}), \
+             mock.patch.object(bs, "configure_workflows", return_value={"warnings": []}), \
+             mock.patch.object(bs, "link_repo", return_value={"warning": None}), \
+             mock.patch.object(bs, "write_committed_config", return_value="config"), \
+             mock.patch.object(bs, "run_probe", return_value={"result": "FAIL"}):
+            summary = bs.bootstrap(self.ctx, lambda _args: _ok(""), probe=True, environ={})
+        self.assertFalse(summary["ok"])
+        self.assertFalse(summary["adoption_ready"])
+
+    def test_bootstrap_warnings_and_missing_link_block_adoption_ready(self) -> None:
+        summary = {"ok": True, "probe": {"forward_binding": {"result": "PASS"}}}
+        self.assertFalse(bs._bootstrap_adoption_ready(
+            summary, ["Item closed is disabled"], {"already_linked": True}))
+        self.assertFalse(bs._bootstrap_adoption_ready(
+            summary, [], {"linked": False, "already_linked": False}))
+
+    def test_probe_failure_still_closes_and_removes_project_item(self) -> None:
         ctx = self.ctx
         board_stub = {"fields": [{"name": "Status", "id": "F", "projectId": "P",
                                   "options": [{"id": f"o_{s}", "name": s} for s in bs.STAGES]}]}
@@ -872,12 +1356,17 @@ class ProbeTest(unittest.TestCase):
             (["project", "item-edit", "--id", "item99"], _ok("{}")),
             (["issue", "close", "99", "--repo", "acme/widget"], _ok("")),
             (["api", "graphql"], _ok(json.dumps(open_stub))),
-            (["issue", "delete", "99", "--repo", "acme/widget", "--yes"], _ok("")),
+            (["api", "graphql"], _ok(json.dumps(
+                self._payload("stub", state="CLOSED")))),
+            (["project", "item-delete", "3", "--owner", "acme", "--id", "item99"], _ok("")),
+            (["api", "graphql"], _ok(json.dumps(
+                self._payload("stub", state="CLOSED", item=False)))),
         ])
         result = bs.run_probe(project, ctx, runner, sleep=lambda _s: None, now=lambda: next(clock))
         self.assertEqual(result["result"], "FAIL")
         self.assertEqual(result["observed_stage"], "stub")
-        self.assertTrue(any(c[:2] == ["issue", "delete"] for c in runner.calls))
+        self.assertEqual(result["cleanup"]["result"], "PASS")
+        self.assertFalse(any(c[:2] == ["issue", "delete"] for c in runner.calls))
 
 
 if __name__ == "__main__":

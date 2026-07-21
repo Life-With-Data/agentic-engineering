@@ -7,11 +7,17 @@ logic — it delegates entirely to the [`land-pr`](land-pr.md) reference, which:
 - resolves every review thread and finding through the `wf-review`
   PR-comment-resolution route,
 - confirms the PR was independently reviewed and is mergeable,
+- performs the mandatory final compounding check against the current PR head and records its
+  `captured` or `not needed` audit evidence,
 - merges and cleans up (deletes the branch, fast-forwards the local default branch), and
-- idempotently closes the corresponding tracker item — dispatching on the resolved issue tracker
-  (the lifecycle board via the shared reconciler, or `github` / `none` legacy close).
+- dispatches on the resolved issue tracker: lifecycle-board mode verifies `done` and deletes its
+  exact packet through the lifecycle engine, plain GitHub mode performs its legacy issue close, and
+  `none` performs no tracker or packet write.
 
-`land-pr` verifies the `shipped` stamp via `lifecycle_board.py --reconcile` rather than writing status itself — the merge automation is the writer; the reconciler only repairs drift if the automation missed it.
+`land-pr` verifies the `done` stamp via `lifecycle_board.py --reconcile` rather than writing Status
+itself — the merge automation is the writer; the reconciler only repairs drift if the automation
+missed it. Compounding is not a Status value, and deployment/publication remains native delivery
+evidence outside the ticket lifecycle.
 
 ## Run
 
@@ -20,4 +26,5 @@ number and optional `--auto` context through.
 
 The **merge gate** is the reference's: pause-and-ask by default, auto-merge only in an autonomous
 context (`--auto`, or when called from the `wf-development` orchestration route in an autonomous run) and only once
-all landability conditions hold. See the reference for the full landability contract.
+all landability conditions hold, including the current-head final compounding disposition. See the
+reference for the full landability contract.

@@ -140,8 +140,8 @@ from Step 4, with an explicit yes from Step 5. Hand it to the
 route when appropriate.
 
 If the user wants the intent to persist for a multi-session project or handoff,
-offer to save it using the location and format named by the repository's mapped
-`documentation` capability. Only save after confirmation.
+offer to save it in the GitHub work item. Only save after confirmation; do not
+create a repository plan or brainstorm file.
 
 ## Example
 

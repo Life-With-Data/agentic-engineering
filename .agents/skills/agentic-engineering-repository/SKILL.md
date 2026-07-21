@@ -111,7 +111,9 @@ construction, and permission weakening.
 ## Documentation
 
 - `plugins/<name>/README.md` documents a distributed plugin.
-- `docs/plans/` stores implementation plans.
+- GitHub issues and sub-issues store active brainstorms and implementation plans.
+- `docs/brainstorms/` and `docs/plans/` are historical archives; do not create
+  new files there.
 - `docs/solutions/` stores compounded engineering learnings.
 - `docs/` contains the generated and hand-written GitHub Pages site.
 - `CLAUDE.md` and `AGENTS.md` define repository-wide operating guidance.

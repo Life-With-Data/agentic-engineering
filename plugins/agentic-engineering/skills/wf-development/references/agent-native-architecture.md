@@ -230,7 +230,8 @@ When designing an agent-native system, verify these **before implementation**:
 - [ ] **iCloud Storage:** iCloud-first with local fallback for multi-device sync
 - [ ] **Cost Awareness:** Model tier selection (Haiku/Sonnet/Opus)
 
-**When designing architecture, explicitly address each checkbox in your plan.**
+**When designing architecture, explicitly address every acceptance criterion in
+the issue.**
 </architecture_checklist>
 
 <quick_start>

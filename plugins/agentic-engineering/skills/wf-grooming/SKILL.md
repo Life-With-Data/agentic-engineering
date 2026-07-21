@@ -7,7 +7,9 @@ description: Workflow policy for turning ideas, requests, bug reports, and un-gr
 
 Layer: Workflow policy
 
-Owns: intent discovery, scope decisions, bug-report readiness, reproduction-before-grooming, plan artifacts, and the transition to ready-for-development.
+Owns: intent discovery, scope decisions, bug-report readiness,
+reproduction-before-grooming, issue-backed plans, and the transition to
+ready-for-development.
 
 Requires repository capabilities: `repository-overview`, `documentation`.
 
@@ -49,7 +51,6 @@ Production or integration failures also require `observability`. A bug remains u
 - Produce the implementation plan and issue decomposition: read [workflow plan](references/workflows-plan.md).
 - Strengthen an existing plan: read [deepen plan](references/deepen-plan.md).
 - Sort an intake queue: read [triage](references/triage.md).
-- Ship plan documents before implementation when required: read [land plan docs](references/land-plan-docs.md).
 
 Load only the references needed for the active route.
 

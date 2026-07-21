@@ -21,4 +21,10 @@ Use the repository's mapped branch, commit, push, PR, review, CI, and merge
 procedure. Detect an existing PR for the same work before opening another. Do
 not assume auto-merge, a hosting provider, or authority to publish.
 
+When documentation compounds engineering work whose implementation PR is still
+open, return the changes to its owning development/delivery workflow and amend
+that same PR; do not use this documentation-only delivery lane. A post-merge
+documentation PR is appropriate only for genuinely new knowledge discovered
+after merge, not as the routine compounding path.
+
 Report paths, checks, PR or publication state, and remaining blockers.

@@ -82,11 +82,11 @@ flowchart TD
     D --> T
     ready -->|yes| L["wf-delivery"]
     L --> ci["repair CI and resolve threads"]
-    ci --> merge{"merge gates pass?"}
+    ci --> K["wf-documentation: final compounding disposition"]
+    K --> merge{"current head passes every merge gate?"}
     merge -->|no| ci
-    merge -->|yes| shipped([Shipped])
-    shipped --> deploy["deployment handoff*"]
-    shipped --> K["wf-documentation"]
+    merge -->|yes| done([Done])
+    done --> deploy["deployment/release handoff*"]
 ```
 
 `*` Deployment requires `infrastructure-operations` and `security-and-access` in addition to the base `delivery` capability.
@@ -103,21 +103,20 @@ stateDiagram-v2
     brainstormed --> planned: wf-grooming plan route
     planned --> in_progress: wf-development claim
     in_progress --> in_review: wf-development opens PR
-    in_review --> shipped: merge automation
-    shipped --> deployed: repository delivery automation
-    shipped --> compounded: wf-documentation compound route
+    in_review --> done: merge automation
 
     stub --> abandoned
     brainstormed --> abandoned
     planned --> abandoned
     in_progress --> abandoned
     in_review --> abandoned
-    shipped --> abandoned
-    deployed --> abandoned
-    compounded --> abandoned
+    done --> abandoned
 ```
 
-`deployed` and `compounded` are order-independent refinements of `shipped`. `abandoned` is the explicit off-ramp. The lifecycle reference under `wf-setup` defines entry gates, writer contracts, claims, and the closed repair set.
+`done` is the terminal successful ticket state and `abandoned` is the explicit off-ramp.
+Deployment/publication remains native delivery evidence, while compounding is a mandatory pre-merge
+disposition against the current PR head. The lifecycle reference under `wf-setup` defines entry
+gates, writer contracts, claims, and the closed repair set.
 
 ## Setup flow
 

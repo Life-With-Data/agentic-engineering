@@ -5,25 +5,38 @@ improves evidence and sequencing without turning planning into implementation.
 
 ## Inputs
 
-- The current plan and work-item identifier, when one exists.
+- The current GitHub issue-backed plan and work-item identifier.
 - Acceptance criteria and validation requirements.
 - The repository contract's primary targets for `repository-overview`,
   `documentation`, and any capability implicated by the change.
 
 ## Procedure
 
-1. Mark claims in the plan as established, inferred, or unknown.
-2. Inspect repository evidence for every unknown that can change scope,
+1. Read the current lifecycle state with
+   `lifecycle_board.py --gate orchestrate --issue <N>`. If implementation has
+   started (`in_progress`, `in_review`, or `done`), do not rewrite scope or
+   regress Status; stop and route the proposed change through the owning
+   development/delivery workflow.
+2. Classify the proposed edits. Evidence and wording improvements may retain
+   `planned`; any material scope, acceptance, validation, dependency, security,
+   or provenance change invalidates the existing readiness attestation. Before
+   making such a change, set Status back to `brainstormed` through the lifecycle
+   engine and leave it there while decisions remain unresolved.
+3. Mark claims in the plan as established, inferred, or unknown.
+4. Inspect repository evidence for every unknown that can change scope,
    architecture, safety, or validation.
-3. Follow supporting capability targets only when the primary target is
+5. Follow supporting capability targets only when the primary target is
    insufficient for that question.
-4. Research external primary sources only for unstable or third-party facts.
-5. Identify interfaces, migrations, rollout boundaries, failure modes, and
+6. Research external primary sources only for unstable or third-party facts.
+7. Identify interfaces, migrations, rollout boundaries, failure modes, and
    observability needs introduced by the plan.
-6. Reorder work so dependencies and risk-reducing probes occur first.
-7. Make each validation step falsifiable: name the behavior, evidence, and
+8. Reorder work so dependencies and risk-reducing probes occur first.
+9. Make each validation step falsifiable: name the behavior, evidence, and
    expected outcome without inventing repository commands.
-8. Record unresolved decisions as explicit blockers or owner questions.
+10. Record unresolved decisions as explicit blockers or owner questions.
+11. After a material change is resolved, re-enter the main planning route so
+    its provenance check, decomposition writer, groom verification, and
+    `Status = planned` attestation all run against the revised issue.
 
 ## Review lenses
 
@@ -44,6 +57,7 @@ local operational context.
 
 ## Completion
 
-Return the revised plan plus a short change log covering strengthened evidence,
-new risks, reordered work, and unresolved blockers. A deeper plan is still a
-plan: do not claim work, edit product code, or silently resolve product choices.
+Update the issue and sub-issues, then return the revised plan plus a short
+change log covering strengthened evidence, new risks, reordered work, and
+unresolved blockers. A deeper plan is still a plan: do not create repository
+plan files, claim work, edit product code, or silently resolve product choices.

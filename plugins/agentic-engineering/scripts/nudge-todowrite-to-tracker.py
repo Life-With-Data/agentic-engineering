@@ -12,9 +12,8 @@ Silent (exit 0, no output) unless BOTH:
     repo has a durable tracker, and the reminder would be noise otherwise)
   - a tracker actually resolves to something other than "none"
 
-Under the unified lifecycle GitHub is the sole authoritative tracker (see
-plan-tracker-guard.py); beads is a non-authoritative scratchpad and is
-therefore not a nudge target here.
+Under the unified lifecycle GitHub is the sole authoritative tracker; beads is
+a non-authoritative scratchpad and is therefore not a nudge target here.
 
 Never blocks: this hook only ever exits 0.
 """

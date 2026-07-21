@@ -1,6 +1,6 @@
 ---
 name: wf-documentation
-description: Workflow policy for creating, reviewing, repairing, compounding, and shipping documentation. Use when documentation is the primary deliverable or when completed engineering work must leave durable knowledge. Repository locations, tooling, and publication steps come from repository capability targets.
+description: Workflow policy for creating, reviewing, repairing, compounding, and shipping documentation. Use when documentation is the primary deliverable or when engineering work must leave durable knowledge before delivery completes. Repository locations, tooling, and publication steps come from repository capability targets.
 ---
 
 # Documentation workflow
@@ -30,7 +30,7 @@ Stop on contract failure. Read the primary target for both required capabilities
 ## Route the request
 
 - Capture a solved problem: read [compound docs](references/compound-docs.md).
-- Run the workflow compounding stage: read [workflow compound](references/workflows-compound.md).
+- Run the pre-merge workflow compounding stage: read [workflow compound](references/workflows-compound.md).
 - Review and refine a document: read [document review](references/document-review.md).
 - Turn a debugging lesson into maintained guidance: read [reflect for skill updates](references/reflect-for-skill-updates.md).
 - Ship documentation changes: read [land docs](references/land-docs.md).

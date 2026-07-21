@@ -4,7 +4,7 @@
 // dict in plugins/*/scripts/*.py must have a matching entry in the relevant
 // plugin's config_registry.py, OR be explicitly allowlisted with a
 // justification (a key that belongs to a *different* frontmatter document,
-// e.g. a docs/plans/*.md tracker field, not agentic-engineering(.local).md).
+// not agentic-engineering(.local).md).
 //
 // This is a forward check (every read is registered) plus a reverse check
 // (every registered flag's `owner` script exists and actually contains the
@@ -29,11 +29,7 @@ const PLUGINS_DIR = path.join(ROOT, "plugins")
 // ---- agentic-engineering(.local).md config flags -------------------------
 // Keyed by "<plugin>:<relpath-from-plugin>:<line>". Keep this list small and
 // current — a stale entry (no matching call at that key) fails the test.
-const ALLOWLIST: Record<string, string> = {
-  "agentic-engineering:scripts/lifecycle_board.py:1089":
-    "github_issue is a docs/plans/*.md plan-tracker field (find_docs_for_issue), " +
-    "not an agentic-engineering(.local).md config flag.",
-}
+const ALLOWLIST: Record<string, string> = {}
 
 // ---- discovery: every plugin's scripts/*.py -------------------------------
 

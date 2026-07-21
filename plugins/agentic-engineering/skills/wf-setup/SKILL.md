@@ -36,7 +36,8 @@ This is the only workflow allowed to proceed temporarily with an invalid contrac
 - Create or repair the fixed capability map: read [repository context contract](references/repository-context-contract.md).
 - Inspect or change configuration: read [config flags](references/config-flags.md).
 - Install portable hooks after a skills-only installation: read [install hooks](references/install-hooks.md).
-- Understand lifecycle policy during bootstrap: read [lifecycle](references/lifecycle.md).
+- Adopt or migrate the GitHub Projects lifecycle: read [lifecycle bootstrap](references/lifecycle-bootstrap.md), then use [lifecycle](references/lifecycle.md) for operating policy.
+- Understand lifecycle policy without changing setup: read [lifecycle](references/lifecycle.md).
 - Verify lifecycle and setup readiness: read [lifecycle doctor](references/lifecycle-doctor.md).
 
 Load only the selected references. Setup references never override repository-owned operational guidance.
@@ -50,6 +51,9 @@ Setup is complete only when:
 3. Gaps, safety boundaries, and `not-applicable` decisions are resolved from repository evidence or the setup interview.
 4. The strict validator exits successfully.
 5. Requested plugin configuration, lifecycle, and hooks are verified through their diagnostics.
+6. Lifecycle adoption, when selected, meets the setup-completion checklist in
+   [lifecycle bootstrap](references/lifecycle-bootstrap.md), including the
+   chosen forward binding and live verification.
 
 ## Wrong-layer recovery
 

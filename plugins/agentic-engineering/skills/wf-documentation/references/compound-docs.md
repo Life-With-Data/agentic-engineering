@@ -1,8 +1,9 @@
 # Compound a solved problem
 
-Use this reference after a non-trivial problem is solved and verified. Capture
-durable reasoning without assuming where a repository stores documentation or
-whether it uses repository skills.
+Use this reference after a non-trivial problem is solved and verified, normally
+before its implementation PR merges. Decide whether the work produced durable
+knowledge without assuming where a repository stores documentation or whether
+it uses repository skills.
 
 ## Gate
 
@@ -14,7 +15,15 @@ Compound only when:
 - the repository's `documentation` capability identifies an appropriate home.
 
 Skip compounding for one-off facts, speculative fixes, or information already
-owned by an existing source.
+owned by an accurate existing source.
+
+Every disposition has one of two successful results:
+
+- **`captured`** — the lesson meets the gate and the appropriate durable owner
+  is accurate in the current change. Identify the owned artifact paths.
+- **`not needed`** — the lesson does not meet the gate or is already maintained.
+  Record a short reason; do not create filler documentation merely to produce an
+  artifact.
 
 ## Build the record
 
@@ -45,6 +54,7 @@ incident involved an agent.
 
 ## Validate and hand off
 
-Run the repository's documentation checks, verify links and examples, and use
-the repository's normal documentation-delivery path. Report the new durable
-source and the capability that owns it.
+Run the repository's documentation checks and verify links and examples. When
+the record compounds implementation that is still in review, add it to that
+same PR and use the normal code-PR checks; do not open a routine follow-up
+documentation PR. Report the durable source and the capability that owns it.

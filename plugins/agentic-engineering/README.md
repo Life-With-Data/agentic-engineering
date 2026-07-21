@@ -106,15 +106,14 @@ Beads is **not** a tracker mode. It remains an opt-in, non-authoritative impleme
 
 #### Lifecycle
 
-In `github-project` mode, every work item flows through nine stages on the board's built-in Status field:
+In `github-project` mode, every work item flows through seven stages on the board's built-in Status field:
 
 ```
-stub → brainstormed → planned → in_progress → in_review → shipped
-                                                    ↓
-                              deployed / compounded (terminal refinements) · abandoned (off-ramp)
+stub → brainstormed → planned → in_progress → in_review → done
+                                                            ↘ abandoned (off-ramp)
 ```
 
-`deployed` and `compounded` are **order-independent** refinements of `shipped`; `abandoned` is reachable from any stage — closing an item as not-planned abandons it even post-ship (the `deployed` high-water rule applies to rollbacks, not to explicit not-planned closes). Each transition has exactly one writer, and a shared reconciler applies a closed set of five repairs. The full vocabulary — stages, writer contracts, entry-gate verdicts, claim semantics, and security invariants — lives in the [`wf-setup` lifecycle reference](skills/wf-setup/references/lifecycle.md), which workflow routers load when lifecycle state matters. Humans and agents have parity: assign yourself and drag a card to `in_progress` (the drag is the claim), or run `--claim`; manual card order in views is decorative (the API cannot read it).
+`planned` is the trusted readiness attestation: the current issue and its sub-issues contain implementation-ready scope, acceptance and validation criteria, dependencies, and applicable security or provenance considerations. `done` means the accepted repository work merged and the issue closed; `abandoned` is reachable from any stage. Deployment/publication uses native delivery evidence, and compounding is a mandatory pre-merge disposition rather than another Status value. Each transition has exactly one writer, and a shared reconciler applies a closed repair set. The full vocabulary — stages, writer contracts, entry-gate verdicts, claim semantics, and security invariants — lives in the [`wf-setup` lifecycle reference](skills/wf-setup/references/lifecycle.md), which workflow routers load when lifecycle state matters. Humans and agents have parity: assign yourself and drag a card to `in_progress` (the drag is the claim), or run `--claim`; manual card order in views is decorative (the API cannot read it).
 
 ## MCP Servers
 
@@ -137,7 +136,7 @@ MCP servers start automatically when the plugin is enabled.
 Installing the plugin wires in a small set of Claude Code hooks (declared in
 [`.claude-plugin/plugin.json`](.claude-plugin/plugin.json), documented in full in
 [`scripts/HOOKS.md`](scripts/HOOKS.md)). Most are always-on safety nets that keep
-the plan → work → PR → review flow from being short-circuited (e.g.
+the groom → work → PR → review flow from being short-circuited (e.g.
 `block-no-verify`, `prevent-main-commit`, `block-slack-webhook`).
 
 Skills-only installs (`npx skills@latest add Life-With-Data/agentic-engineering`
@@ -174,38 +173,43 @@ to python3 (stdlib only). See [`scripts/HOOKS.md`](scripts/HOOKS.md) for details
 
 The `github-project` lifecycle is opinionated about your repo's shape. Read these eyes-open before bootstrapping a board:
 
-- **One board per repo.** Board reads are repo-scoped, so a shared or portfolio board is read-tolerated but never written for foreign items — but the v1 design assumes one board holds one repo's issues.
-- **Default-branch merges drive `shipped`.** A merged PR that closes an issue via `Closes #N` stamps `shipped` through GitHub's built-in "Item closed" automation. Git-flow repos that merge into an integration branch get the ~10-line issue-closer workflow from the [`wf-setup` lifecycle recipes](skills/wf-setup/references/lifecycle/references/gh-recipes.md), or cards stall at `in_review` with a `merged_to_non_default_branch` reconciler comment naming the fix.
+- **One board per owner by default.** An organization- or user-owned Project may aggregate that
+  owner's repositories. Every engine operation scopes itself to the current origin repository and
+  ignores foreign-repository items; a dedicated per-repository board also remains valid.
+- **Default-branch merges drive `done`.** A merged PR that closes an issue via `Closes #N` stamps `done` through GitHub's built-in "Item closed" automation. Git-flow repos that merge into an integration branch use the issue-closer workflow from the [`wf-setup` lifecycle recipes](skills/wf-setup/references/lifecycle-github-recipes.md), or cards stall at `in_review` with a `merged_to_non_default_branch` reconciler comment naming the fix.
 - **Issues are enabled** on the repo (preflight hard-errors otherwise).
 - **Issue text is untrusted data.** Titles, bodies, and comments are quoted, never obeyed; only structured, permission-gated fields (Status, assignee, labels, PR merge state, `stateReason`) drive control flow.
 - **The board is agent-managed after bootstrap.** Bootstrap's fresh-project guard refuses to adopt a customized project; once set up, **do not rename the Status options** — per-entry name re-resolution turns a rename into an `option missing` hard error.
 - **github.com only** — not GitHub Enterprise Server (the GraphQL surface lags). Requires **`gh` ≥ 2.94.0** with the **`project`** OAuth scope everywhere these skills run.
-- **GitHub Free suffices** for the single-repo topology (its one auto-add workflow is all the plugin uses).
 - **POSIX environment** — macOS, Linux, or WSL. Native Windows is untested.
-- **Fork-based contributors** (origin = a personal fork, board under the canonical owner) need the documented owner-allowlist entry so the owner-equals-origin check passes.
+- **Fork-based contributors** (origin = a personal fork, board under the canonical owner) must configure that existing board and record the out-of-band owner trust described in the [`wf-setup` lifecycle-bootstrap journey](skills/wf-setup/references/lifecycle-bootstrap.md); bootstrap never infers authority to create for the canonical owner.
 
-## Delivery-topology assumptions
+## Delivery evidence
 
-`shipped` means "merged to the default branch," and `deployed` is an optional, high-water refinement on top of it. What that means depends on how you deploy:
-
-- **Trunk-based CD:** `deployed` is nearly redundant with `shipped` — fine to ignore entirely.
-- **Multi-environment:** `deployed` = production only. Staging and dev jobs never stamp the board.
-- **Git-flow:** integration-branch merges stall items until the issue-closer workflow (or a manual close) fires — see the assumptions above.
-- **Release trains / libraries:** `shipped` = "merged to the default branch," **NOT** "in users' hands." Read it eyes-open; a release cut is a separate event.
-- **External CD:** use the `deployment_status` adapter where GitHub Deployment records exist (Vercel, Cloudflare Pages); use `vercel.deployment.promoted` via `vercel/repository-dispatch` for promotion flows (Vercel fires build-time `deployment_status`, not promotion). Netlify/Railway/Fly have no Deployment records — those repos ignore the `deployed` stage.
-- **No-deploy repos:** `shipped → compounded` is the intended path; there is nothing to deploy.
-
-`deployed` is a **high-water mark** — it means "has reached production at least once." Rollbacks and revert PRs never move the board backward.
+Lifecycle Status ends at `done`. Repositories continue to record deployment, publication, release,
+and rollback facts through their native delivery systems. The final compounding disposition runs
+before merge and records `captured` or `not needed` against the current PR head without creating a
+second ticket state.
 
 ## Verify your setup
+
+Follow the [`wf-setup` lifecycle-bootstrap journey](skills/wf-setup/references/lifecycle-bootstrap.md)
+to create or safely migrate the Project, choose how new issues arrive, provision
+organization access, backfill deliberately, and establish the ready-work view.
+For `auto-add`, its tracked scaffold must be merged and its secret provisioned
+before live verification.
 
 Run the **`wf-setup` diagnostics route** after install or bootstrap and **before
 your first work item**. It renders a PASS/WARN/FAIL/SKIP checklist across the
 local toolchain, repo shape, board schema, and delivery topology, with a named
 fix per finding, and ends with **"Ready for first work item: yes/no."** Re-run it
 after changing board config, tokens, or CD wiring. Pass **`--live`** to that
-route for the end-to-end probe (create → board-add → close → assert `shipped` →
-cleanup), which is the only path that creates anything and cleans up afterward.
+route for the end-to-end probe (create -> verify the selected forward binding
+-> close -> assert `done` -> remove the Project item), which is the only path
+that creates anything. The probe verifies the issue is closed and the Project
+item is absent; it does not attempt permanent issue deletion or require
+administrator-level delete authority. A probe, close, or Project-item cleanup
+failure overrides the read-only verdict.
 
 ## Installation
 
