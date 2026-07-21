@@ -28,7 +28,7 @@ jobs:
   scan:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: actions/setup-python@v5
         with:
           python-version: "3.x"
@@ -51,7 +51,7 @@ jobs:
   audit:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       # The agent tier needs credentials — either a Claude Pro/Max subscription
       # token (CLAUDE_CODE_OAUTH_TOKEN, from `claude setup-token`) or a direct
