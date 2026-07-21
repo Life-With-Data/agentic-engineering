@@ -38,7 +38,29 @@ Or run it bifurcated, splitting grooming from implementation at the `planned` bo
 
 📊 **[See FLOWS.md](plugins/agentic-engineering/FLOWS.md)** for mermaid diagrams of every flow and where the orchestrator pauses for you.
 
-The workflows auto-detect how you track work — a GitHub Projects v2 lifecycle board (`github-project`), plain GitHub Issues (`github`), or none — and adapt their bookkeeping accordingly. [beads](https://github.com/gastownhall/beads) remains an optional, non-authoritative implementer scratchpad.
+The only supported tracker today is a GitHub Projects v2 lifecycle board (`github-project`); more trackers may come later. The workflows auto-detect whether the board is configured — an unconfigured repo still works, but with no lifecycle claims and no tracker writes until the `wf-setup` lifecycle bootstrap configures a board. [beads](https://github.com/gastownhall/beads) may optionally serve as an in-session implementer scratchpad, but it is never a source of truth: no gate reads it, nothing syncs it, and its files are never committed.
+
+### Worktree cleanup
+
+Parallel sessions leave worktrees and branches behind — under `.worktrees/` (manager-created) and `.claude/worktrees/` (harness-created). Two plain scripts clean them up systematically; no agent needed:
+
+```bash
+bun run worktrees:sync              # just merged a PR in the browser: reap every merged
+                                    # worktree in both roots and delete stale merged branches
+bun run worktrees:finish -- <name>  # done with one branch: remove its worktree, delete the
+                                    # branch, and fast-forward the primary tree onto base
+```
+
+Both grade merge evidence by strength: branches with an unambiguous record — `git cherry` patch equivalence (squash/rebase merges) or a merge-commit record (GitHub's default merge button) — are reaped immediately, while branches indistinguishable from freshly created ones (fast-forwarded or commit-less: no unique commits, no merge record) must first sit idle through a 30-minute grace window, tunable via `WORKTREE_GC_GRACE_MIN`. Unmerged work is never touched (`finish` requires an explicit `--force` to discard it, and also refuses the ambiguous fresh-or-fast-forward shape without `--force`). `sync` is the catch-all for any teardown an agent session deferred — e.g. a session that could not `finish` its own worktree because it was running inside it. Note the `--` — `bun run` needs it to pass arguments through to the script.
+
+**In consuming repositories** — any repo that installs this marketplace — the same commands run through the bundled CLI, no checkout of this repo required (needs [Bun](https://bun.sh) on PATH):
+
+```bash
+npx github:Life-With-Data/agentic-engineering worktrees sync
+npx github:Life-With-Data/agentic-engineering worktrees finish <name>
+```
+
+`worktrees` operates on whatever git repository you run it from and passes every argument straight through to the bundled `worktree-manager.sh` (`sync`, `finish <name> [base] [--force]`, `gc`, `list`, `create`, ...). Exit codes pass through unchanged, so it is safe to wire into scripts or hooks.
 
 ## Install
 
@@ -104,6 +126,9 @@ install above for the full surface.
 npx github:Life-With-Data/agentic-engineering install agentic-engineering --to <target>
 # pin a release: npx github:Life-With-Data/agentic-engineering#v3.0.0 install ...
 ```
+
+The same CLI also exposes `convert`, `list`, `sync`, and `worktrees` (the
+bundled worktree manager — see [Worktree cleanup](#worktree-cleanup)).
 
 | Target | Output | Notes |
 |--------|--------|-------|

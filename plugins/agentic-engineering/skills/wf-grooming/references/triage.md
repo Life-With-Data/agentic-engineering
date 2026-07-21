@@ -6,7 +6,8 @@ operational guidance.
 
 ## Prepare
 
-Resolve the configured GitHub tracker mode through the workflow preflight. Read
+Resolve the GitHub tracker state through the workflow preflight (a configured
+Project board, or an unconfigured repo awaiting the wf-setup bootstrap). Read
 the repository overview and any existing issue template or contribution rules.
 Gather the candidate items without changing them.
 

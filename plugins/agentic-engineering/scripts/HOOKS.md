@@ -23,7 +23,6 @@ script changes). Wiring differs per platform:
 | `nudge-todowrite-to-tracker.py` | Ships (`TodoWrite`) | N/A | N/A | No TodoWrite equivalent on Cursor/Codex |
 | `sdd-cache-pre.py` / `sdd-cache-post.py` | Ships (`WebFetch`, opt-in) | N/A | N/A | WebFetch-specific; opt-in via `AGENTIC_SDD_CACHE=1` |
 | `worktree-session.py` | Ships (`SessionStart` / `startup`) | N/A | N/A | Worktree bootstrap + staleness advisory; no-op outside `.claude/worktrees/*` |
-| `gc-worktrees.py` | Manual git `post-merge` hook | N/A | N/A | Destructive GC; **not** auto-wired — install deliberately |
 
 Harness config files:
 
@@ -145,9 +144,10 @@ fought.
 
 **Tracker resolution:** reuses `workflow-repo-preflight.py`'s
 `resolve_issue_tracker()` chain verbatim (local override > committed board
-config -> `github-project` -> `gh auth` -> `github` -> `none`), so the
-reminder always names the same tracker the rest of the lifecycle tooling
-agrees on. Resolves to `none` → silent (nothing to nudge toward). Beads is
+config -> `github-project`, otherwise `unconfigured`), so the reminder always
+names the same tracker the rest of the lifecycle tooling agrees on. An
+`unconfigured` repo (no board yet) → silent (nothing to nudge toward until
+the wf-setup lifecycle bootstrap configures a board). Beads is
 intentionally not a nudge target: under the unified lifecycle GitHub is the
 sole authoritative tracker and beads is a non-authoritative scratchpad.
 
@@ -228,6 +228,15 @@ tree, a non-git dir, or a hand-made worktree elsewhere) it:
    rebase/squash merges (different SHAs) are caught, while a fresh commit-less
    branch or one with unmerged work is left silent.
 
+The advisory is deliberately this hook's ceiling: actually removing a merged
+worktree and its branch is destructive, so no hook does it. Sweep merged
+worktrees on demand with the
+[`wf-development` worktree manager](../skills/wf-development/scripts/worktree-manager.sh):
+`worktree-manager.sh sync` reaps merged `.claude/worktrees/` (and `.worktrees/`)
+trees plus stale merged branches, `finish <name>` tears down one worktree, and
+`gc` sweeps `.worktrees/` unattended — all apply the same `git cherry`
+merged-check before removing anything.
+
 **Config is by environment variable, not frontmatter** — matching the
 `sdd-cache` precedent: which command installs deps, and whether to bootstrap at
 all, is a per-machine choice that shouldn't ride a PR and flip behavior for every
@@ -241,34 +250,6 @@ clone.
 **Cursor/Codex:** N/A — neither exposes a `SessionStart` worktree-bootstrap event,
 so this is Claude-only. Adapted and generalized
 from the BlueStar monorepo's `setup-worktree.sh` / `check-stale-worktree.sh`.
-
-## `gc-worktrees.py` — manual git `post-merge` hook — opt-in
-
-**Never auto-wired.** Unlike every hook above, this one is **destructive**
-(it removes worktrees and deletes local branches), so the plugin does not enable
-it anywhere. Install it deliberately as a git `post-merge` hook so it sweeps
-merged Claude worktrees at `git pull` time:
-
-```bash
-printf '#!/bin/sh\npython3 "$(git rev-parse --show-toplevel)/.claude/plugins/agentic-engineering/scripts/gc-worktrees.py"\n' \
-  > .git/hooks/post-merge && chmod +x .git/hooks/post-merge
-```
-
-(Point the path at wherever the plugin is installed, or run the script by hand.)
-
-It removes a `<repo>/.claude/worktrees/<name>` worktree **and** its local branch
-only when ALL hold: it's under `.claude/worktrees/`, it's not the worktree the
-hook is running in, its working tree is clean, it's fully merged (`git cherry`
-shows zero `+` and at least one `-`, so fresh commit-less worktrees and branches
-with new work are protected), and nothing outside `node_modules`/`.git` was
-modified within the grace window (default 30 min) — so a concurrent live session
-is never yanked out from under itself.
-
-- `WORKTREE_GC=0` — skip entirely.
-- `WORKTREE_GC_GRACE_MIN=<n>` — activity window in minutes (default 30).
-
-Always exits 0 — a GC failure never fails the surrounding `git pull`/`merge`.
-Adapted and generalized from the BlueStar monorepo's `gc-worktrees.sh`.
 
 ## Testing hooks
 

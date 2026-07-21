@@ -10,9 +10,9 @@ logic — it delegates entirely to the [`land-pr`](land-pr.md) reference, which:
 - performs the mandatory final compounding check against the current PR head and records its
   `captured` or `not needed` audit evidence,
 - merges and cleans up (deletes the branch, fast-forwards the local default branch), and
-- dispatches on the resolved issue tracker: lifecycle-board mode verifies `done` and deletes its
-  exact packet through the lifecycle engine, plain GitHub mode performs its legacy issue close, and
-  `none` performs no tracker or packet write.
+- dispatches on the resolved issue tracker: with a configured board (`github-project`) it verifies
+  `done` and deletes its exact packet through the lifecycle engine; in an unconfigured repository
+  (no board yet) it performs no tracker or packet write.
 
 `land-pr` verifies the `done` stamp via `lifecycle_board.py --reconcile` rather than writing Status
 itself — the merge automation is the writer; the reconciler only repairs drift if the automation

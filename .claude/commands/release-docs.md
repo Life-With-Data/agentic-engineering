@@ -16,8 +16,9 @@ bun run docs:build
 
 This rewrites, from the filesystem truth:
 
-- `docs/pages/agents.html`, `commands.html`, `skills.html`, `mcp-servers.html` — the component card sections (between `<!-- GENERATED:<id> START/END -->` markers) and each page's "On This Page" sidebar.
-- `docs/index.html` — the four stat numbers (agents / commands / skills / MCP servers).
+- `docs/pages/agents.html`, `skills.html`, `mcp-servers.html` — the component card sections (between `<!-- GENERATED:<id> START/END -->` markers) and each page's "On This Page" sidebar.
+- `docs/pages/changelog.html` — the version entries, rendered from the plugin's `CHANGELOG.md`.
+- `docs/index.html` — the `data-stat` numbers (agents / skills / MCP servers) and the plugin version.
 
 All other page chrome (nav, intros, manual-config, footer) is preserved verbatim — edit those by hand.
 

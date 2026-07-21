@@ -32,7 +32,7 @@ targets define the commands and evidence available in the current repository.
 **Resolve the issue number `<N>`.** Take `<N>` from an explicit issue-number
 argument or explicit GitHub issue URL. Do not search repository plans or infer an
 issue from document frontmatter. If no issue is supplied, there is no Project item to
-gate on; proceed only through the explicit `no_board` legacy branch below.
+gate on; proceed only through the explicit **No board (unconfigured)** branch below.
 
 ### Preflight, banner, reconcile — then the gate
 
@@ -47,7 +47,7 @@ Run these in order, once, at entry:
    Relevant fields:
    - `repo.current_branch`, `repo.default_branch`, `repo.working_tree_dirty`
    - `github.current_branch_pr` (if `gh` is installed/authenticated)
-   - `integrations.issue_tracker_resolved` — one of `github-project | github | none`
+   - `integrations.issue_tracker_resolved` — `github-project` (the only supported tracker) or `unconfigured` (no board configured yet)
    - `integrations.issue_tracker_source`
    - `recommendation.action` and `recommendation.prompt`
 
@@ -80,13 +80,13 @@ Run these in order, once, at entry:
    | `route_to_plan` | Not yet attested `planned` | Tell the user to run **the `wf-grooming` planning route** first. Hotfixes bypass the board entirely (plain PR flow, no gate, no board exception). **STOP.** |
    | `already_done` | Parent Status is terminal `done` or `abandoned` | Report the stage to the user and that the work is already at/past this command's scope. **STOP.** |
    | `repair_needed` | Required Project or issue state is incomplete/inconsistent | Report the structured flag/reason and return to the workflow that owns the state. **STOP.** |
-   | `no_board` | No board configured (mode is `github`/`none`) | Fall through to the **Legacy flow (no board)** below and continue **degraded** — no stage machinery, no board writes. |
+   | `no_board` | The repository is unconfigured (no Project board yet) | Direct the user to the `wf-setup` lifecycle bootstrap first; if the user chooses to proceed before configuring a board, fall through to **No board (unconfigured)** below — no stage machinery, no tracker writes. |
 
-   `claim_conflict` and `blocked` are **not** gate verdicts — they are returned by `--claim` in Phase 1, not here. Only `proceed` (with a board) and `no_board` (degraded) continue past this gate; every other verdict **STOPs**.
+   `claim_conflict` and `blocked` are **not** gate verdicts — they are returned by `--claim` in Phase 1, not here. Only `proceed` (with a board) and `no_board` (unconfigured) continue past this gate; every other verdict **STOPs**.
 
-### Legacy flow (no board)
+### No board (unconfigured)
 
-When `verdict == no_board`, the repo has no configured Projects board. Behave as the plugin did before the lifecycle: drive the work with **TodoWrite** as the task list, use plain `gh issue`/`gh pr` in `github` mode (or nothing in `none` mode), and skip every `--claim`/`--set-status`/`--ready-work`/sub-issue step below. The Phases still apply structurally; substitute TodoWrite for the board wherever a stage transition or sub-issue action is named, and open the PR normally in Phase 4 without a board write.
+When `verdict == no_board`, the repo has no configured Projects board — lifecycle gates require one. Setup comes first: direct the user to the `wf-setup` lifecycle bootstrap to configure a board. If the user chooses to proceed in the unconfigured state instead, work may continue but there are no lifecycle claims and no tracker writes: use **TodoWrite** strictly as ephemeral in-session scratch — never a tracker, no `gh issue` writes — and skip every `--claim`/`--set-status`/`--ready-work`/sub-issue step below. The Phases still apply structurally; open the PR normally in Phase 4 without a board write.
 
 ## Execution Workflow
 
@@ -116,7 +116,7 @@ When `verdict == no_board`, the repo has no configured Projects board. Behave as
    - `claim_conflict` — another assignee holds it (or a race left multiple assignees and you yielded). Report the holder from `reason` and **STOP**.
    - `blocked` — the issue has open blocking issues. Report them and **STOP**; dependencies are advisory but a blocked item is not ready to work.
 
-   In the **legacy flow**, skip this step — TodoWrite is your tracker and there is no assignment to claim.
+   In **unconfigured (`no_board`) work**, skip this step — there is no board and no assignment to claim.
 
 3. **Setup Environment**
 
@@ -157,7 +157,7 @@ When `verdict == no_board`, the repo has no configured Projects board. Behave as
 
    (`<origin>` is `owner/repo` from the origin remote — every `gh` write in this command carries an explicit `--repo`/`--owner`.)
 
-   The open sub-issues are the authoritative task list. **TodoWrite** remains the implementer's in-session scratchpad for finer-grained steps — non-authoritative and disposable. (Beads is opt-in for long-running personal notes only: never a gate input, never synced, never a lifecycle writer.)
+   The open sub-issues are the authoritative task list. **TodoWrite** remains the implementer's in-session scratchpad for finer-grained steps — non-authoritative and disposable. (Beads MAY optionally serve the same in-session role for super-fine-grained personal task scratch, but it is in no way a source of truth: no gate reads it, nothing syncs it, it never writes lifecycle state, and its files must never be committed — the `block-beads-jsonl-stage` hook enforces that. The GitHub Project board is the only authoritative tracker.)
 
 ### Phase 2: Execute
 
@@ -194,7 +194,7 @@ Even a **single** tracked item benefits from Orchestrated Execution — the orch
 
    `--sub-status … done` **replaces** the raw `gh issue close` — it strips the `status:*` label and closes the sub-issue as completed in one call. Mark a sub-issue `blocked` (`--sub-status <sub> blocked`) if you discover an open `blocked-by` while working it, and move it back to `in_progress` when unblocked. Never close the **parent** `<N>` here — the merge's "Item closed" automation stamps parent `Status = done` downstream. GitHub sub-issues and their native rollup are the progress record; never mutate copied packet or repository checkboxes.
 
-   **Legacy flow** — no sub-issues exist; drive the existing **TodoWrite** loop instead:
+   **Untracked (`no_board`)** — no sub-issues exist; drive an ephemeral in-session **TodoWrite** loop instead (scratch only, never a tracker — no `gh issue` writes):
    ```
    while (tasks remain):
      - Mark task in_progress in TodoWrite
@@ -302,7 +302,7 @@ Even a **single** tracked item benefits from Orchestrated Execution — the orch
    gh issue view <N> --repo <origin> --json subIssues
    ```
 
-   If any sub-issue is still open, either finish and close it (`--sub-status <sub> done`), or (if it is genuinely out of scope for this PR) re-parent/close it deliberately — do not open the PR while the parent has open sub-issues. In the legacy flow this reduces to "all TodoWrite items checked."
+   If any sub-issue is still open, either finish and close it (`--sub-status <sub> done`), or (if it is genuinely out of scope for this PR) re-parent/close it deliberately — do not open the PR while the parent has open sub-issues. In unconfigured (no-board) work this reduces to "all TodoWrite scratch items checked."
 
    This is not just a checklist item: the engine **enforces** it. The Phase-4 `--set-status <N> in_review` write (below) **refuses with `open_sub_issues`** if any sub-issue is still open — so skipping this check surfaces a hard error rather than silently advancing an incomplete parent. Resolve the sub-issues, then the write succeeds.
 
@@ -327,7 +327,7 @@ Even a **single** tracked item benefits from Orchestrated Execution — the orch
    `wf-review` stage.
 
 5. **Final Validation**
-   - No open sub-issues on the parent (board mode), or all TodoWrite items checked (legacy)
+   - No open sub-issues on the parent (board configured), or all TodoWrite scratch items checked (unconfigured)
    - All tests pass
    - Linting passes
    - Code follows existing patterns
@@ -444,7 +444,7 @@ The philosophy here: **opening the PR is the `in_review` transition, not a compl
    - **On merge:** `Closes #<N>` closes the issue; the pre-enabled "Item closed" automation stamps parent `Status = done`. No manual close or repository plan update.
    - **PR closed without merging:** the shared reconciler's closed repair set handles it — an assignee's PR closed unmerged regresses the item `in_review → in_progress` with an audit comment. There is no manual reopen protocol; the next `--reconcile` (Entry Gate step 2 on the next run, or a direct invocation) repairs it.
 
-   In the **legacy flow**, skip this step — there is no board to advance; the PR is simply open.
+   In **unconfigured (`no_board`) work**, skip this step — there is no board to advance; the PR is simply open.
 
 5. **Notify User**
    - Summarize what was completed.
@@ -688,7 +688,7 @@ model; do not require a separately named orchestration skill.
 Before creating PR, verify:
 
 - [ ] All clarifying questions asked and answered
-- [ ] No open sub-issues on the parent `<N>` (`gh issue view <N> --repo <origin> --json subIssues`), or all TodoWrite items completed (legacy flow) — parent `Status = done` is stamped by the merge automation, never by this command
+- [ ] No open sub-issues on the parent `<N>` (`gh issue view <N> --repo <origin> --json subIssues`), or all TodoWrite scratch items completed (unconfigured) — parent `Status = done` is stamped by the merge automation, never by this command
 - [ ] Tests pass (run project's test command)
 - [ ] Linting passes (use linting-agent)
 - [ ] Code follows existing patterns
@@ -718,7 +718,7 @@ For most features: tests + linting + following patterns is sufficient.
 - **Skipping clarifying questions** - Ask now, not after building wrong thing
 - **Ignoring plan references** - The plan has links for a reason
 - **Testing at the end** - Test continuously or suffer later
-- **Forgetting to track progress** - Close sub-issues as you finish them (board mode) or update TodoWrite (legacy), or lose track of what's done
+- **Forgetting to track progress** - Close sub-issues as you finish them (board configured) or update TodoWrite scratch (unconfigured), or lose track of what's done
 - **Closing the issue at PR creation** - Don't. Opening the PR is the `in_review` transition; the *merge* closes the issue via `Closes #<N>` and the automation stamps parent `Status = done`. Manually closing at PR-open subverts the automation and the reconciler's repairs
 - **Opening the PR with open sub-issues** - The parent can't enter `in_review` with open sub-issues; finish or deliberately re-scope them first
 - **Over-reviewing simple changes** - Save reviewer agents for complex work

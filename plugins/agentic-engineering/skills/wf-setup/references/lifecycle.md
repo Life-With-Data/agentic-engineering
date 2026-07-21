@@ -102,7 +102,7 @@ the workflow ladder.
 | `already_done` | This stage or a later one is already reached | Stop and follow `route`. |
 | `route_to_plan` | The item is not attested `planned` for work | Stop and hand off to planning. |
 | `repair_needed` | Required Project/issue state is incomplete or inconsistent | Report the structured reason and repair through the owning workflow. |
-| `no_board` | Not in `github-project` mode | Use the route's documented degraded behavior without Status writes. |
+| `no_board` | The repository is unconfigured (no Project board yet) | Direct the user to this skill's lifecycle bootstrap to configure a board. Work may still proceed without one, but with no lifecycle claims, no Status writes, and no tracker writes. |
 
 `route_to_work` is a route carried by `already_done`, not a verdict.
 `claim_conflict` and `blocked` come only from `--claim`.
@@ -115,7 +115,10 @@ Universal rules:
   silently correct a deliberate Project edit.
 - **Hotfixes bypass the board.** A hotfix with no Project item follows the
   repository's plain PR process.
-- **`no_board` degrades explicitly.** It never fabricates lifecycle state.
+- **`no_board` is explicit.** Lifecycle gates require a configured board; an
+  unconfigured repository is directed to this skill's lifecycle bootstrap.
+  Routes that proceed anyway make no lifecycle claims and never fabricate
+  lifecycle state.
 
 ## Claim and stage-write semantics
 
@@ -198,13 +201,21 @@ a broad common-directory subtree. Reconciliation invokes the same exact,
 idempotent cleanup for already-closed `done` or `abandoned` items, so a human
 close-as-not-planned does not strand its packet.
 
-## Modes and identity
+## Mode and identity
 
-`lifecycle_board.py` resolves:
+`github-project` is the only supported tracker mode; more trackers may be
+supported in the future. `lifecycle_board.py` resolves:
 
 - `github-project` — committed Project config; full Status machinery.
-- `github` — GitHub Issues without Project Status writes.
-- `none` — no authenticated GitHub tracker.
+- `unconfigured` — no configured board yet. A state, not a mode: gates return
+  `no_board` and direct to this skill's lifecycle bootstrap; until then there
+  are no lifecycle claims and no tracker writes of any kind.
+
+Beads is never a tracker and never a source of truth. It may optionally be used
+in-session as a personal scratchpad for super-fine-grained task notes, but no
+gate reads it, nothing syncs it, and its files must never be committed — the
+`block-beads-jsonl-stage` hook enforces that beads data never enters the
+repository. The GitHub Project board is the only authoritative tracker.
 
 Project identity lives in committed config (`github_project_owner:` and
 `github_project_number:` in `agentic-engineering.md`; an untracked

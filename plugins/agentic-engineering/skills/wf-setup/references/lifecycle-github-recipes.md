@@ -17,7 +17,7 @@ gh issue create --repo owner/repo \
 
 ## Sub-issue status (the `--sub-status` verb)
 
-`lifecycle_board.py --sub-status <N> <status>` is the one writer of a sub-issue's `status:*` label (see the reference's *Sub-issue status* section). It is board-free — pure `gh issue`/`gh label` — so it needs no `project` scope and runs in `github` mode. The gh calls it makes, for transparency:
+`lifecycle_board.py --sub-status <N> <status>` is the one writer of a sub-issue's `status:*` label (see the reference's *Sub-issue status* section). It is board-free — pure `gh issue`/`gh label` — so it needs no `project` scope. The gh calls it makes, for transparency:
 
 ```bash
 # 1. read current labels + open/closed state (one call)

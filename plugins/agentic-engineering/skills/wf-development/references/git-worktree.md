@@ -69,6 +69,12 @@ bash <skill-directory>/scripts/worktree-manager.sh copy-env feature-login
 
 # Clean up completed worktrees
 bash <skill-directory>/scripts/worktree-manager.sh cleanup
+
+# Done with one branch: verify it merged, then remove worktree + branch
+bash <skill-directory>/scripts/worktree-manager.sh finish feature-login
+
+# Just merged a PR in the browser: reap everything merged, in both roots
+bash <skill-directory>/scripts/worktree-manager.sh sync
 ```
 
 ## Commands
@@ -155,10 +161,18 @@ bash <skill-directory>/scripts/worktree-manager.sh gc develop   # base = develop
 1. It lives under `.worktrees/` (never the main tree)
 2. It is not the worktree `gc` is running from
 3. Its working tree is clean (no uncommitted changes)
-4. It is fully merged into the base — `git cherry <base> <branch>` shows no `+` commits
-   (patch-equivalence catches squash/rebase merges where SHAs differ); a brand-new empty
-   branch (no commits) is left alone
+4. Its branch shows merge evidence, graded into three tiers:
+   - **patch** — `git cherry <base> <branch>` shows every branch commit's patch already in
+     the base under a different sha (squash/rebase merges). Unambiguous.
+   - **merge-commit** — the branch tip is recorded as the merged-in (non-first) parent of a
+     merge commit reachable from the base (GitHub's default "Merge pull request" button,
+     where `base..branch` is empty). Unambiguous.
+   - **ancestor-only** — the tip is an ancestor of the base with no unique commits and no
+     merge record: a fast-forward merge OR a brand-new commit-less branch. Git genuinely
+     cannot tell these apart, so this tier is only ever reaped after the grace window of
+     inactivity (see `sync` below); ancestry alone is never treated as sufficient evidence.
 5. It is idle — nothing outside `node_modules`/`.git` modified in the last grace window
+   (`gc` applies the grace window to every tier)
 
 **Configuration (env vars):**
 - `WORKTREE_GC=0` — skip GC entirely
@@ -174,23 +188,100 @@ bash <absolute-skill-directory>/scripts/worktree-manager.sh gc
 ```
 `gc` always exits 0, so it never fails the surrounding git operation.
 
-### Companion note: the land-* skills defer teardown to `gc`
+### `finish <name-or-path> [base] [--force]` (single-target teardown)
+
+The explicit "I am done with this branch" command. Verifies the branch landed, then tears
+down the worktree and its local branch and leaves the primary tree on an updated base.
+
+**Example:**
+```bash
+bash <skill-directory>/scripts/worktree-manager.sh finish feature-login
+bash <skill-directory>/scripts/worktree-manager.sh finish sess-a1b2c3     # .claude/worktrees/ name
+bash <skill-directory>/scripts/worktree-manager.sh finish feature-x --force  # discard unmerged work
+```
+
+**What happens:**
+1. Resolves the target as a literal path, then `.worktrees/<name>`, then
+   `.claude/worktrees/<name>` — harness-created session worktrees are covered. The primary
+   checkout itself is never a valid target. The branch it verifies and deletes is always the
+   branch **checked out in that worktree**, never one derived from the directory name (harness
+   worktrees routinely differ, e.g. dir `atomic-tumbling-owl`, branch
+   `worktree-atomic-tumbling-owl`).
+2. Refuses a dirty tree — or a branch without **unambiguous** merge evidence — unless
+   `--force` is given. Unambiguous means tier patch (`git cherry` patch-equivalence,
+   catching squash/rebase merges) or tier merge-commit (the tip is the merged-in parent of a
+   merge commit in the base — GitHub's default merge button). A branch on the ancestor-only
+   tier — no unique commits, no merge record — is refused with a message naming the
+   ambiguity: it is indistinguishable from a branch that was just created, so `finish` will
+   not destroy it; if it truly landed via fast-forward, re-run with `--force`.
+3. In the primary tree: checks out the base branch and `git pull --ff-only` (tolerates
+   offline / no upstream).
+4. Removes the worktree (`--force` only when `--force` was given) and deletes the local
+   branch.
+
+`finish` may be run from **inside the target worktree**: it detects this, runs the
+destructive steps from the primary tree, and warns that the caller's shell cwd will be gone.
+
+> **Terminal-action caveat (agent sessions):** when a session runs `finish` on the worktree it
+> is currently inside, the session's own cwd is deleted — **any further command in that
+> shell/session fails**. Make `finish` the **last** action of the session (report first, then
+> finish, then nothing), or defer teardown by handing the human the ready-to-paste one-liner
+> instead: `bun run worktrees:finish -- <name>` (agentic-engineering repo) or
+> `npx github:Life-With-Data/agentic-engineering worktrees finish <name>` (consuming repos).
+> Never describe deferred cleanup as a manual `git worktree remove`.
+
+### `sync [base]` (post-merge sweep across BOTH roots)
+
+The one-liner after merging a PR in the browser. Runs `git fetch --prune origin` (warns and
+continues offline), then applies the `gc` reap to **both** `.worktrees/` and
+`.claude/worktrees/`, with grace depending on the evidence tier:
+
+- **patch / merge-commit** (squash-, rebase-, and merge-commit-merged): reaped with **zero
+  grace** — an explicit invocation is explicit intent, so the idle gate is skipped while
+  every other safety gate (clean tree, not the current worktree) still applies.
+- **ancestor-only** (fast-forward-merged OR freshly created with no commits — git cannot
+  tell which): reaped only once the worktree has been idle longer than
+  `WORKTREE_GC_GRACE_MIN` minutes (default 30). Within the window `sync` keeps it and
+  prints the reason (`no merge evidence ... younger than <N>m grace — kept`). This is what
+  protects a pristine worktree one session just created from a `sync` running concurrently
+  in another session.
+
+Finally it deletes leftover local branches whose worktree is already gone, whose upstream is
+gone (`[gone]`), and which show merge evidence — covering branches stranded by earlier
+manual cleanups. (For these, the `[gone]` upstream is itself evidence: a fresh local-only
+branch never has an upstream, so ancestor-only + `[gone]` deletes safely.) Idempotent; safe
+to run from the primary tree at any time — the catch-all for any teardown a session
+deferred.
+
+**Example:**
+```bash
+bash <skill-directory>/scripts/worktree-manager.sh sync
+bash <skill-directory>/scripts/worktree-manager.sh sync develop   # base = develop
+```
+
+### Companion note: the land-* skills defer teardown to `finish`/`sync`
 
 The land-* references — [`land-pr`](../../wf-delivery/references/land-pr.md) and
 [`land-docs`](../../wf-documentation/references/land-docs.md) — are worktree-aware by design and **do not**
 `git checkout <default>` from a linked worktree (the default branch is held by the primary tree, so
 that checkout would fail). Instead they refresh `origin/<base>` with `git fetch` and **defer local
-worktree + branch teardown to `gc`** rather than deleting inline. See land-pr's context-aware
-post-merge cleanup (its step 6) for the canonical pattern.
+worktree + branch teardown to `finish` (or `sync`) from the primary tree** rather than deleting
+inline. See land-pr's context-aware post-merge cleanup (its step 7) for the canonical pattern.
 
-Because teardown is deferred to `gc`, mind its two coverage limits (both from the rules above):
-- **It cannot self-reap the active worktree.** `gc` skips the worktree it runs from and any worktree
-  touched within the grace window (`WORKTREE_GC_GRACE_MIN`, default 30m) — so a skill landing *from* a
-  worktree can never reap that same worktree in the same pass. It is reaped by a later `gc`, or by
-  running `gc` from the primary tree.
-- **It only reaps `$GIT_ROOT/.worktrees/`.** A worktree created elsewhere — e.g. a harness worktree
-  under `.claude/worktrees/` — is outside `gc`'s scope and needs a manual
-  `git worktree remove <path>` from the primary tree.
+Because teardown is deferred, mind these coverage notes:
+- **The sweeps never self-reap the active worktree.** `gc` and `sync` skip the worktree they run
+  from (`gc` additionally skips any worktree touched within the grace window,
+  `WORKTREE_GC_GRACE_MIN`, default 30m; `sync` applies that same window to worktrees on the
+  ambiguous ancestor-only tier) — so a sweep issued *from* a worktree can never reap that
+  same worktree in the same pass. `finish <name>` on the current worktree DOES proceed, but only
+  as a terminal action (see the caveat in the finish section: the cwd is deleted, nothing may run
+  after it). Otherwise clean it up afterwards with `finish <name>` (or a later `gc`/`sync`) from
+  the primary tree, or hand the human the one-liner (`bun run worktrees:finish -- <name>` /
+  `npx github:Life-With-Data/agentic-engineering worktrees finish <name>`).
+- **`gc` only reaps `$GIT_ROOT/.worktrees/`.** A worktree elsewhere — e.g. a harness worktree under
+  `.claude/worktrees/` — is outside `gc`'s scope; use `finish <name>` (single target) or `sync`
+  (sweep), both of which cover `.claude/worktrees/` too. Raw `git worktree remove` is no longer
+  needed.
 
 ## Workflow Examples
 

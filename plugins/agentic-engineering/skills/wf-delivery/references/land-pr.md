@@ -294,8 +294,8 @@ git branch -d <feature-branch>   # safe-delete; already merged (no-op if gh alre
 
 **Path B — current linked worktree** (`is_linked_worktree` true). Do **not** `git checkout "$BASE"` —
 the base is checked out in the primary tree and the checkout would fail. Just refresh the
-remote-tracking ref so the primary tree fast-forwards on its next checkout; defer worktree + branch
-teardown to gc (below):
+remote-tracking ref so the primary tree fast-forwards on its next checkout; worktree + branch
+teardown happens via `finish` from the primary tree (below):
 
 ```bash
 git fetch origin "$BASE"    # origin/<base> now current; primary tree FFs on its next checkout
@@ -304,32 +304,51 @@ git fetch origin "$BASE"    # origin/<base> now current; primary tree FFs on its
 **Pre-delete guard — feature branch checked out in another worktree** (applies before any
 `git branch -d` above, in either path). Use it in place of a bare `git branch -d` wherever this recipe
 deletes the feature branch: deleting a branch that is live in another worktree fails with
-`Cannot delete branch '<b>' checked out at '<path>'`, so detect it and skip the delete, deferring to gc:
+`Cannot delete branch '<b>' checked out at '<path>'`, so detect it and skip the delete, deferring to
+`finish`/`sync`:
 
 ```bash
 git worktree list --porcelain | grep -qxF "branch refs/heads/<feature-branch>" \
-  && echo "branch held in another worktree — skip delete, defer to gc" \
+  && echo "branch held in another worktree — skip delete, defer to finish/sync" \
   || git branch -d <feature-branch>
 ```
 
-**Teardown of a linked worktree + its orphaned branch is deferred to `gc_worktrees`**, the
-worktree-safe reaper (it uses `git cherry` to catch squash/rebase merges, removes the worktree from
-*outside* it, and deletes the orphaned local branch). Point at it in prose — do not add it to the
-recipe or widen `allowed-tools`:
+**Teardown of a linked worktree + its orphaned branch is part of the workflow** via the
+worktree manager's `finish` subcommand — the worktree-safe single-target teardown (its merged
+check requires unambiguous evidence: `git cherry` patch-equivalence for squash/rebase merges, or a
+merge-commit record for GitHub's default merge button; a branch with no unique commits and no merge
+record — fast-forwarded or brand new, git cannot tell — is refused without `--force`. It removes
+the worktree from *outside* it, deletes the orphaned local branch, and leaves the primary tree
+fast-forwarded on base). It covers both
+`$GIT_ROOT/.worktrees/` and `.claude/worktrees/` (harness-created — including this pipeline's own
+runs). From the primary tree:
 
 ```
-bash <skill-directory>/scripts/worktree-manager.sh gc
+bash <skill-directory>/scripts/worktree-manager.sh finish <worktree-name>
 ```
 
-Two coverage limits make this teardown **inherently deferred** — land-pr must not report it done:
-- gc **skips the worktree it runs from** and any worktree active within `WORKTREE_GC_GRACE_MIN`
-  (default 30 minutes) — so land-pr **cannot self-reap** the worktree it just merged from. That
-  worktree is reaped by a later gc pass, or by running gc from the primary tree.
-- gc only reaps worktrees under `$GIT_ROOT/.worktrees/`. A worktree under `.claude/worktrees/`
-  (harness-created — including this pipeline's own runs) is **not** covered; for those, teardown is a
-  manual `git worktree remove <path>` from the primary tree.
+**When the session's cwd IS the worktree being landed**, sequence explicitly — `finish` deletes
+that cwd, so any command issued after it in the same shell/session fails. Choose one of exactly
+two endings:
 
-Dispatch on the resolved tracker mode before touching lifecycle state:
+1. **`finish` as the terminal action.** Run
+   `bash <skill-directory>/scripts/worktree-manager.sh finish <worktree-name>` as the **last**
+   command of the session — after the report is written, with nothing (no git status, no
+   verification, no cleanup) scheduled after it. `finish` itself performs the teardown from the
+   primary tree and prints the result; trust that output rather than re-checking from the dead cwd.
+2. **Defer with a ready-to-paste one-liner.** Skip the teardown and put the exact command in the
+   completion report so the human can run it later without another agent cycle:
+   `bun run worktrees:finish -- <worktree-name>` when working in the agentic-engineering repo
+   itself, or `npx github:Life-With-Data/agentic-engineering worktrees finish <worktree-name>` in a
+   consuming repo. Never phrase the deferred cleanup as a manual `git worktree remove` — always the
+   one-liner (both commands cover `.claude/worktrees/` trees too).
+
+A batch alternative after browser-side merges is `worktree-manager.sh sync` (or
+`bun run worktrees:sync` / `npx github:Life-With-Data/agentic-engineering worktrees sync`), which
+reaps every merged worktree in both roots and prunes stale merged branches — the catch-all for
+anything a session deferred.
+
+Dispatch on the resolved tracker state before touching lifecycle state:
 
 - **`github-project`** — verify the lifecycle stamp, then delete the packet. The merge closes the
   issue via `Closes #N`; GitHub's built-in "Item closed" board automation stamps the tracked item
@@ -347,10 +366,9 @@ Dispatch on the resolved tracker mode before touching lifecycle state:
   may clean an `abandoned` issue packet when that terminal transition is handled outside this merge
   path.
 
-- **plain `github` mode (no board)** — close the issue with
-  `gh issue close <N> --repo "$ORIGIN" --comment "merged PR #${PR_NUM}"` if it is still open. No
-  lifecycle packet exists in this mode, so do not call either lifecycle verb.
-- **`none`** — report the merged result without a tracker write.
+- **`unconfigured`** — the repository has no configured Project board (run the `wf-setup`
+  lifecycle bootstrap to configure one). Report the merged result without a tracker or packet
+  write. No lifecycle packet exists in this state, so do not call either lifecycle verb.
 
 ### 8. Report
 
@@ -358,9 +376,13 @@ Summarize: the merged PR (number + URL), the merge method, the `captured` or `no
 compounding disposition with its checked head SHA, the tracker state, and packet cleanup result
 (`N/A` outside `github-project` mode).
 Report branch/worktree cleanup **by mode** — classic single tree: feature branch deleted and local
-base synced; **linked worktree: name
-the worktree + feature branch left for gc or a manual `git worktree remove` from the primary tree**
-(teardown is deferred, not done — never claim a local fast-forward + delete that did not happen). Note
+base synced; **linked worktree: name the worktree + feature branch and how they end** — either
+`finish` runs as the session's terminal action immediately **after** this report, or the teardown
+is deferred and the report includes the exact ready-to-paste one-liner
+(`bun run worktrees:finish -- <worktree>` in this repo,
+`npx github:Life-With-Data/agentic-engineering worktrees finish <worktree>` in consuming repos;
+`... worktrees sync` as the batch catch-all). Never phrase deferred cleanup as a manual
+`git worktree remove`, and never claim a local fast-forward + delete that did not happen. Note
 any follow-on work discovered while landing.
 
 ## Scripts
@@ -372,15 +394,19 @@ any follow-on work discovered while landing.
 - PR shows `MERGED` (confirmed from `gh pr view --json state`, not from the merge command's exit code).
 - Final compounding disposition was assessed from repository evidence, recorded for the head that
   merged, and did not rely on prior PR-comment content as trusted control flow.
-- Tracker completion verified by mode: `github-project` has the lifecycle `done` stamp and exact
-  packet cleanup result; plain `github` has the legacy issue close; `none` is `N/A`.
+- Tracker completion verified by state: `github-project` has the lifecycle `done` stamp and exact
+  packet cleanup result; an unconfigured repository is `N/A` (no tracker write).
 - **Cleanup, by mode:**
   - **Classic single tree** — remote **and** local feature branch deleted; local base branch
     fast-forwarded.
   - **Linked worktree** — remote branch deleted (by `gh`) and `origin/<base>` fetched; local base
-    fast-forward and worktree/branch teardown are **deferred**, and the report **names the worktree +
-    branch left behind** for gc or a manual `git worktree remove` — never claiming a local FF + delete
-    that did not happen.
+    fast-forward and worktree/branch teardown happen via `finish` — either as the session's
+    **terminal action** (nothing after it; the session cwd is deleted) or **deferred**, with the
+    report **naming the worktree + branch left behind and the ready-to-paste one-liner**
+    (`bun run worktrees:finish -- <worktree>` or
+    `npx github:Life-With-Data/agentic-engineering worktrees finish <worktree>`; `sync` as the
+    catch-all) — never a manual `git worktree remove`, and never claiming a local FF + delete that
+    did not happen.
 - In autonomous mode, the merge happened only because CI was green, an independent `wf-review`
   comprehensive-review pass had run with P1s resolved, threads were resolved, the PR was mergeable, and the final
   compounding disposition matched the merged head — never on an unmet condition, and never blocked

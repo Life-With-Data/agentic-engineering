@@ -6,6 +6,7 @@ import {
   statSync,
 } from "fs";
 import path from "path";
+import { SCRIPT_BUNDLES } from "../scripts/script-bundles";
 import { parseFrontmatter } from "../src/utils/frontmatter";
 
 const ROOT = path.resolve(import.meta.dir, "..");
@@ -58,46 +59,9 @@ const CAPABILITIES = [
   "documentation",
 ];
 
-const SCRIPT_BUNDLES: Record<string, Record<string, string>> = {
-  "wf-grooming": {
-    "repository-context.py": "scripts/repository-context.py",
-    "lifecycle_board.py": "scripts/lifecycle_board.py",
-  },
-  "wf-development": {
-    "repository-context.py": "scripts/repository-context.py",
-    "lifecycle_board.py": "scripts/lifecycle_board.py",
-    "workflow-repo-preflight.py": "scripts/workflow-repo-preflight.py",
-    "worktree-manager.sh": "skills/wf-development/scripts/worktree-manager.sh",
-  },
-  "wf-testing": {
-    "repository-context.py": "scripts/repository-context.py",
-  },
-  "wf-review": {
-    "repository-context.py": "scripts/repository-context.py",
-    "get-pr-comments": "skills/wf-review/scripts/get-pr-comments",
-    "resolve-pr-thread": "skills/wf-review/scripts/resolve-pr-thread",
-  },
-  "wf-delivery": {
-    "repository-context.py": "scripts/repository-context.py",
-    "lifecycle_board.py": "scripts/lifecycle_board.py",
-    "pr-landable-status": "skills/wf-delivery/scripts/pr-landable-status",
-    "worktree-manager.sh": "skills/wf-development/scripts/worktree-manager.sh",
-  },
-  "wf-documentation": {
-    "repository-context.py": "scripts/repository-context.py",
-  },
-  "wf-setup": {
-    "repository-context.py": "scripts/repository-context.py",
-    "lifecycle_board.py": "scripts/lifecycle_board.py",
-    "bootstrap_lifecycle_board.py": "scripts/bootstrap_lifecycle_board.py",
-    "config_registry.py": "scripts/config_registry.py",
-    "block-db-push.py": "scripts/block-db-push.py",
-    "block-no-verify.py": "scripts/block-no-verify.py",
-    "block-slack-webhook.py": "scripts/block-slack-webhook.py",
-    "hook_payload.py": "scripts/hook_payload.py",
-    "prevent-main-commit.py": "scripts/prevent-main-commit.py",
-  },
-};
+// The bundle map (which skill vendors which canonical script) lives in
+// scripts/script-bundles.ts, shared with the mechanical fixer
+// scripts/sync-skill-scripts.ts so the gate and the tool can never drift.
 
 function recursiveFiles(dir: string): string[] {
   const files: string[] = [];
@@ -174,9 +138,10 @@ describe("workflow skill architecture", () => {
       expect(readdirSync(scriptDirectory).sort()).toEqual(Object.keys(expected).sort());
 
       for (const [file, canonical] of Object.entries(expected)) {
-        expect(readFileSync(path.join(scriptDirectory, file), "utf8")).toBe(
-          readFileSync(path.join(PLUGIN, canonical), "utf8"),
-        );
+        expect(
+          readFileSync(path.join(scriptDirectory, file), "utf8"),
+          `${owner}/scripts/${file} out of sync with canonical ${canonical} — run \`bun run skills:sync\``,
+        ).toBe(readFileSync(path.join(PLUGIN, canonical), "utf8"));
       }
     }
   });

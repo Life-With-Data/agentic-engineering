@@ -55,12 +55,15 @@ CONFIG_FLAGS = [
         default="auto-detect",
         description=(
             "Override which issue tracker /workflows-* skills resolve to. "
-            "Unset auto-detects: committed board config -> github-project, "
-            "gh auth -> github, otherwise none."
+            "github-project (a GitHub Project board) is currently the only "
+            "supported tracker; more may be supported later. Unset "
+            "auto-detects: committed board config -> github-project, "
+            "otherwise the repo is unconfigured (run the wf-setup lifecycle "
+            "bootstrap)."
         ),
         owner="scripts/workflow-repo-preflight.py",
         file="local",
-        choices=("github-project", "github", "none"),
+        choices=("github-project",),
     ),
     ConfigFlag(
         key="nudge_todowrite",

@@ -54,6 +54,20 @@ bun run docs:build
 bun run docs:check
 ```
 
+Some wf-* skills vendor byte-identical copies of canonical plugin scripts so
+skills-only installs stay self-contained; the bundle map lives in
+`scripts/script-bundles.ts`. Edit the canonical script, never a vendored
+copy, then run:
+
+```bash
+bun run skills:sync
+bun run skills:check
+```
+
+`skills:sync` refreshes every copy mechanically; `skills:check` fails when
+any copy drifts and can be wired as an optional local pre-commit or pre-push
+git hook for early warning (CI and `bun test` remain the gate).
+
 `bun test` is the source of truth for counts, manifests, frontmatter,
 conversion policy, generated documentation, and converter behavior. Report
 the exact failing test; do not weaken or skip gates.

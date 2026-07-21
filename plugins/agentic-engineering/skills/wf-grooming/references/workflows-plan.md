@@ -25,8 +25,9 @@ Branch only on its closed verdicts:
   `planned` or later Status already owns the handoff). Never regress it.
 - `repair_needed` — STOP and report the missing/stale issue identity; repair
   that identity before planning.
-- `no_board` — continue through the plain GitHub or untracked path without a
-  Status write.
+- `no_board` — the repository is unconfigured (no Project board yet). Direct
+  the user to the `wf-setup` lifecycle bootstrap first; if planning continues
+  without one, make no lifecycle claims and no tracker writes.
 
 Do not bypass this gate because the issue body looks complete. `Status` is the
 readiness authority and the provenance result protects grooming of externally
@@ -97,10 +98,10 @@ The verb creates or updates the parent and sub-issues, wires dependencies, and
 sets `Status = planned`. That write is the readiness attestation defined once
 in the `wf-setup` [lifecycle reference](../../wf-setup/references/lifecycle.md#the-7-status-values).
 Do not invoke it while any scope, acceptance, validation, dependency, security,
-or provenance decision remains unresolved. In plain GitHub mode, perform the
-equivalent issue writes without a Status transition and apply the same exact
-temporary-file cleanup. With no tracker, return the complete plan and state
-that it is untracked.
+or provenance decision remains unresolved. In an unconfigured repository
+(`no_board`), return the complete plan, state that the repo has no configured
+board yet (the `wf-setup` lifecycle bootstrap configures one), perform no
+tracker writes, and apply the same exact temporary-file cleanup.
 
 In Project mode, after a successful GitHub update, run:
 
