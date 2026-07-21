@@ -42,7 +42,7 @@ The only supported tracker today is a GitHub Projects v2 lifecycle board (`githu
 
 ### Worktree cleanup
 
-Parallel sessions leave worktrees and branches behind — under `.worktrees/` (manager-created) and `.claude/worktrees/` (harness-created). Two plain scripts clean them up systematically; no agent needed:
+Parallel sessions leave worktrees and branches behind — under `.worktrees/` (manager-created) and `.claude/worktrees/` (harness-created). Every worktree-manager subcommand operates on both roots — including `list`, `switch`, `cleanup`, and the unattended `gc` — while `create` only ever creates under `.worktrees/`. Two plain scripts clean them up systematically; no agent needed:
 
 ```bash
 bun run worktrees:sync              # just merged a PR in the browser: reap every merged
@@ -201,6 +201,16 @@ Syncs personal skills from `~/.claude/skills/` (as symlinks, so edits reflect im
 ## Why it works
 
 The split is roughly **80% planning and review, 20% execution.** Plan thoroughly before writing code, review hard to catch issues *and* capture the learning, then codify that knowledge so it's reusable. Quality stays high, so future changes stay cheap — and the system gets smarter every time you use it.
+
+## Contributing
+
+Repository guidance lives in [AGENTS.md](AGENTS.md); `bun test` is the
+authoritative gate. For local early warning, opt in to the versioned
+pre-commit hook (runs the fast `bun run skills:check` byte-comparison):
+
+```bash
+bun run hooks:install
+```
 
 ## Learn more
 

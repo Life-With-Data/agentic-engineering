@@ -65,8 +65,21 @@ bun run skills:check
 ```
 
 `skills:sync` refreshes every copy mechanically; `skills:check` fails when
-any copy drifts and can be wired as an optional local pre-commit or pre-push
-git hook for early warning (CI and `bun test` remain the gate).
+any copy drifts. For early warning before CI, opt in to the versioned
+pre-commit hook (`.githooks/pre-commit`, which runs `bun run skills:check`):
+
+```bash
+bun run hooks:install
+```
+
+This installs a shim into the clone's shared `.git/hooks/pre-commit` that
+delegates to `.githooks/pre-commit` in whichever worktree you commit from,
+so one install covers every worktree. It deliberately does not set
+`core.hooksPath` (which replaces the hook search path and silently disables
+hooks other tools installed) and refuses to overwrite a pre-commit hook it
+did not install; if `core.hooksPath` is already set, follow the script's
+printed chaining instructions. The hook is opt-in early warning only -- CI
+and `bun test` remain the gate.
 
 `bun test` is the source of truth for counts, manifests, frontmatter,
 conversion policy, generated documentation, and converter behavior. Report

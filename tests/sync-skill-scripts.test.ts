@@ -110,3 +110,27 @@ describe("sync-skill-scripts", () => {
     expect(result.exitCode).toBe(0);
   });
 });
+
+describe("versioned pre-commit hook", () => {
+  const hook = path.join(ROOT, ".githooks", "pre-commit");
+
+  test("exists and is executable", () => {
+    const mode = statSync(hook).mode;
+    expect(mode & 0o111).not.toBe(0);
+  });
+
+  test("invokes skills:check and nothing slower", () => {
+    const body = readFileSync(hook, "utf8");
+    expect(body).toContain("skills:check");
+    // Keep the hook fast and offline: no full test or typecheck runs.
+    expect(body).not.toContain("bun test");
+    expect(body).not.toContain("typecheck");
+  });
+
+  test("is wired to an opt-in installer script", () => {
+    const pkg = JSON.parse(readFileSync(path.join(ROOT, "package.json"), "utf8"));
+    expect(pkg.scripts["hooks:install"]).toContain(".githooks");
+    const installerMode = statSync(path.join(ROOT, ".githooks", "install.sh")).mode;
+    expect(installerMode & 0o111).not.toBe(0);
+  });
+});

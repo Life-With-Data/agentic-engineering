@@ -1,4 +1,6 @@
-"""Tests for the `finish` and `sync` subcommands of ``worktree-manager.sh``.
+"""Tests for ``worktree-manager.sh`` — `finish`/`sync` plus the dual-root
+behavior of the older subcommands (`gc`, `list`, `switch`, `copy-env`,
+`create`).
 
 Like ``worktree_session_test.py``, these build real throwaway git repos with
 subprocess ``git`` and drive the script end-to-end. Each fixture uses a bare
@@ -34,6 +36,18 @@ by the WORKTREE_GC_GRACE_MIN idle window (default 30m). Pinned invariants:
     (the harness-worktree shape), `finish <dirname>` and `sync` operate on the
     branch actually checked out in the worktree — a decoy local branch named
     after the directory is never touched.
+
+Dual-root invariants (every subcommand manages BOTH `.worktrees/` and
+`.claude/worktrees/`; only `create` still creates under `.worktrees/`):
+
+  - `gc` reaps a merged `.claude/worktrees/` tree (grace 0) and keeps an
+    unmerged sibling — even when `.worktrees/` does not exist,
+  - `list` shows entries from both roots, labeled per root,
+  - `switch` and `copy-env` resolve a bare name to a `.claude/worktrees/`
+    entry,
+  - a name present in BOTH roots is an ambiguity error listing the candidate
+    paths instead of silently picking one,
+  - `create` refuses a name that already exists under `.claude/worktrees/`.
 
 Run with: ``python3 -m unittest tests.worktree_manager_test``.
 """
@@ -419,6 +433,81 @@ class WorktreeManagerTest(unittest.TestCase):
         self.assertNotIn("claude/legacy-cleanup-375de8", self._branches())
         self.assertIn("sess-375de8", self._branches())  # decoy untouched
         self.assertIn("claude/legacy-cleanup-375de8", r.stdout)
+
+    def test_gc_reaps_merged_claude_root_and_keeps_unmerged(self):
+        """`gc` covers `.claude/worktrees/` too: with grace 0 it reaps a
+        squash-merged harness worktree and keeps an unmerged sibling — and it
+        must proceed even though `.worktrees/` does not exist at all."""
+        self._make_repo()
+        merged = self._add_worktree(".claude/worktrees/gc-merged", "feat/gc-merged")
+        wip = self._add_worktree(".claude/worktrees/gc-wip", "feat/gc-wip", push=False)
+        self._browser_squash_merge("feat/gc-merged")
+        r = self._run(self.primary, "gc", extra_env={"WORKTREE_GC_GRACE_MIN": "0"})
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertFalse(merged.exists())
+        self.assertNotIn("feat/gc-merged", self._branches())
+        self.assertTrue(wip.exists())
+        self.assertIn("feat/gc-wip", self._branches())
+        self.assertIn("not fully merged", r.stdout)
+
+    def test_list_shows_entries_from_both_roots(self):
+        self._make_repo()
+        self._add_worktree(".worktrees/local-wt", "feat/local-wt", push=False)
+        self._add_worktree(
+            ".claude/worktrees/harness-wt", "claude/harness-wt", push=False
+        )
+        r = self._run(self.primary, "list")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("local-wt", r.stdout)
+        self.assertIn("harness-wt", r.stdout)
+        # Entries are labeled with their root so same-named dirs are tellable apart.
+        self.assertIn("[.worktrees]", r.stdout)
+        self.assertIn("[.claude/worktrees]", r.stdout)
+        self.assertIn("feat/local-wt", r.stdout)
+        self.assertIn("claude/harness-wt", r.stdout)
+
+    def test_switch_resolves_claude_root_name(self):
+        self._make_repo()
+        wt = self._add_worktree(".claude/worktrees/switchy", "claude/switchy", push=False)
+        r = self._run(self.primary, "switch", "switchy")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn(str(wt), r.stdout)
+
+    def test_copy_env_resolves_claude_root_name(self):
+        self._make_repo()
+        (self.primary / ".env").write_text("SECRET=1\n")
+        wt = self._add_worktree(".claude/worktrees/envy", "claude/envy", push=False)
+        r = self._run(self.primary, "copy-env", "envy")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual((wt / ".env").read_text(), "SECRET=1\n")
+
+    def test_ambiguous_name_across_roots_errors_listing_candidates(self):
+        """The same directory name in both roots must be a hard error naming
+        both candidates — never a silent pick of one root."""
+        self._make_repo()
+        local = self._add_worktree(".worktrees/dup", "feat/dup-local", push=False)
+        harness = self._add_worktree(
+            ".claude/worktrees/dup", "claude/dup-harness", push=False
+        )
+        for cmd in (("switch", "dup"), ("copy-env", "dup")):
+            r = self._run(self.primary, *cmd)
+            err = r.stdout + r.stderr
+            self.assertNotEqual(r.returncode, 0, f"{cmd}: {err}")
+            self.assertIn("ambiguous", err)
+            self.assertIn(str(local), err)
+            self.assertIn(str(harness), err)
+        # Both worktrees are untouched.
+        self.assertTrue(local.exists())
+        self.assertTrue(harness.exists())
+
+    def test_create_refuses_name_colliding_with_claude_root(self):
+        self._make_repo()
+        wt = self._add_worktree(".claude/worktrees/sess-abc", "claude/sess-abc", push=False)
+        r = self._run(self.primary, "create", "sess-abc")
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn(".claude/worktrees", r.stdout + r.stderr)
+        self.assertTrue(wt.exists())
+        self.assertFalse((self.primary / ".worktrees" / "sess-abc").exists())
 
 
 if __name__ == "__main__":

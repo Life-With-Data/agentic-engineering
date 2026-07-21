@@ -19,9 +19,56 @@ WORKTREE_DIR="$GIT_ROOT/.worktrees"
 
 # Harness-created session worktrees (parallel/web sessions, isolation:"worktree"
 # subagents) live under this subdir of the PRIMARY checkout, not .worktrees/.
-# `create`/`list`/`gc` keep targeting .worktrees/ only; `finish` and `sync`
-# cover both roots.
+# Every subcommand manages BOTH roots; only `create` still targets .worktrees/
+# (.claude/worktrees/ is the harness's creation domain).
 HARNESS_WORKTREE_SUBDIR=".claude/worktrees"
+
+# The two managed worktree roots, resolved against the PRIMARY checkout (the
+# manager may be invoked from inside a linked worktree). Lazily computed once:
+#   ROOT_PRIMARY - the primary checkout itself
+#   ROOT_LOCAL   - $ROOT_PRIMARY/.worktrees        (this manager's creation domain)
+#   ROOT_HARNESS - $ROOT_PRIMARY/.claude/worktrees (the harness's creation domain)
+# Iterate the pair as: for root in "$ROOT_LOCAL" "$ROOT_HARNESS"; do ...
+init_roots() {
+  [ -n "${ROOT_PRIMARY:-}" ] && return 0
+  ROOT_PRIMARY=$(primary_root)
+  ROOT_LOCAL="$ROOT_PRIMARY/.worktrees"
+  ROOT_HARNESS="$ROOT_PRIMARY/$HARNESS_WORKTREE_SUBDIR"
+}
+
+# Short display label for a managed root: ".worktrees" or ".claude/worktrees".
+root_label() {
+  printf '%s\n' "${1#"$ROOT_PRIMARY"/}"
+}
+
+# Resolve a worktree NAME across both managed roots. Prints the single match's
+# path on stdout. Returns 0 on exactly one match, 1 on none; when the name
+# exists in BOTH roots it prints the candidates to stderr and returns 2 —
+# callers must fail rather than guess.
+resolve_worktree_name() {
+  local name="$1"
+  init_roots
+  local root candidates=()
+  for root in "$ROOT_LOCAL" "$ROOT_HARNESS"; do
+    if [[ -d "$root/$name" && -e "$root/$name/.git" ]]; then
+      candidates+=("$root/$name")
+    fi
+  done
+  if [[ ${#candidates[@]} -eq 0 ]]; then
+    return 1
+  fi
+  if [[ ${#candidates[@]} -gt 1 ]]; then
+    echo -e "${RED}Error: ambiguous worktree name: $name — exists in both managed roots:${NC}" >&2
+    local c
+    for c in "${candidates[@]}"; do
+      echo "  $c" >&2
+    done
+    echo "Disambiguate with an explicit path, or remove one of them." >&2
+    return 2
+  fi
+  printf '%s\n' "${candidates[0]}"
+  return 0
+}
 
 # Ensure .worktrees is ignored (any ignore source or pattern form counts).
 # --no-index: a tracked path is never reported ignored, which would re-append on every run.
@@ -97,6 +144,15 @@ create_worktree() {
     return
   fi
 
+  # Refuse a name already used by a harness-created worktree — a duplicate
+  # name across roots would make every by-name subcommand ambiguous.
+  init_roots
+  if [[ -d "$ROOT_HARNESS/$branch_name" ]]; then
+    echo -e "${RED}Error: '$branch_name' already exists under $HARNESS_WORKTREE_SUBDIR/: $ROOT_HARNESS/$branch_name${NC}"
+    echo "Pick a different name — creating it under .worktrees/ too would make the name ambiguous."
+    exit 1
+  fi
+
   echo -e "${BLUE}Creating worktree: $branch_name${NC}"
   echo "  From: $from_branch"
   echo "  Path: $worktree_path"
@@ -123,29 +179,29 @@ create_worktree() {
   echo ""
 }
 
-# List all worktrees
+# List all worktrees in both managed roots
 list_worktrees() {
+  init_roots
   echo -e "${BLUE}Available worktrees:${NC}"
   echo ""
 
-  if [[ ! -d "$WORKTREE_DIR" ]]; then
-    echo -e "${YELLOW}No worktrees found${NC}"
-    return
-  fi
+  local count=0 root label
+  for root in "$ROOT_LOCAL" "$ROOT_HARNESS"; do
+    [[ -d "$root" ]] || continue
+    label=$(root_label "$root")
+    for worktree_path in "$root"/*; do
+      if [[ -d "$worktree_path" && -e "$worktree_path/.git" ]]; then
+        count=$((count + 1))
+        local worktree_name=$(basename "$worktree_path")
+        local branch=$(git -C "$worktree_path" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "unknown")
 
-  local count=0
-  for worktree_path in "$WORKTREE_DIR"/*; do
-    if [[ -d "$worktree_path" && -e "$worktree_path/.git" ]]; then
-      count=$((count + 1))
-      local worktree_name=$(basename "$worktree_path")
-      local branch=$(git -C "$worktree_path" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "unknown")
-
-      if [[ "$PWD" == "$worktree_path" ]]; then
-        echo -e "${GREEN}✓ $worktree_name${NC} (current) → branch: $branch"
-      else
-        echo -e "  $worktree_name → branch: $branch"
+        if [[ "$PWD" == "$worktree_path" ]]; then
+          echo -e "${GREEN}✓ $worktree_name${NC} (current) [$label] → branch: $branch"
+        else
+          echo -e "  $worktree_name [$label] → branch: $branch"
+        fi
       fi
-    fi
+    done
   done
 
   if [[ $count -eq 0 ]]; then
@@ -162,7 +218,7 @@ list_worktrees() {
   echo "  Path: $GIT_ROOT"
 }
 
-# Switch to a worktree
+# Switch to a worktree (name resolved across both managed roots)
 switch_worktree() {
   local worktree_name="$1"
 
@@ -172,9 +228,12 @@ switch_worktree() {
     read -r worktree_name
   fi
 
-  local worktree_path="$WORKTREE_DIR/$worktree_name"
+  local worktree_path rc=0
+  worktree_path=$(resolve_worktree_name "$worktree_name") || rc=$?
 
-  if [[ ! -d "$worktree_path" ]]; then
+  if [[ $rc -eq 2 ]]; then
+    exit 1
+  elif [[ $rc -ne 0 ]]; then
     echo -e "${RED}Error: Worktree not found: $worktree_name${NC}"
     echo ""
     list_worktrees
@@ -190,11 +249,13 @@ switch_worktree() {
 copy_env_to_worktree() {
   local worktree_name="$1"
   local worktree_path
+  init_roots
 
   if [[ -z "$worktree_name" ]]; then
-    # Check if we're currently in a worktree
-    local current_dir=$(pwd)
-    if [[ "$current_dir" == "$WORKTREE_DIR"/* ]]; then
+    # Check if we're currently in a worktree (either managed root).
+    # pwd -P: the roots are physical paths (primary_root resolves symlinks).
+    local current_dir=$(pwd -P)
+    if [[ "$current_dir" == "$ROOT_LOCAL"/* || "$current_dir" == "$ROOT_HARNESS"/* ]]; then
       worktree_path="$current_dir"
       worktree_name=$(basename "$worktree_path")
       echo -e "${BLUE}Detected current worktree: $worktree_name${NC}"
@@ -205,9 +266,12 @@ copy_env_to_worktree() {
       return 1
     fi
   else
-    worktree_path="$WORKTREE_DIR/$worktree_name"
+    local rc=0
+    worktree_path=$(resolve_worktree_name "$worktree_name") || rc=$?
 
-    if [[ ! -d "$worktree_path" ]]; then
+    if [[ $rc -eq 2 ]]; then
+      return 1
+    elif [[ $rc -ne 0 ]]; then
       echo -e "${RED}Error: Worktree not found: $worktree_name${NC}"
       list_worktrees
       return 1
@@ -218,9 +282,10 @@ copy_env_to_worktree() {
   echo ""
 }
 
-# Clean up completed worktrees
+# Clean up completed worktrees (both managed roots)
 cleanup_worktrees() {
-  if [[ ! -d "$WORKTREE_DIR" ]]; then
+  init_roots
+  if [[ ! -d "$ROOT_LOCAL" && ! -d "$ROOT_HARNESS" ]]; then
     echo -e "${YELLOW}No worktrees to clean up${NC}"
     return
   fi
@@ -230,21 +295,26 @@ cleanup_worktrees() {
 
   local found=0
   local to_remove=()
+  local root label
 
-  for worktree_path in "$WORKTREE_DIR"/*; do
-    if [[ -d "$worktree_path" && -e "$worktree_path/.git" ]]; then
-      local worktree_name=$(basename "$worktree_path")
+  for root in "$ROOT_LOCAL" "$ROOT_HARNESS"; do
+    [[ -d "$root" ]] || continue
+    label=$(root_label "$root")
+    for worktree_path in "$root"/*; do
+      if [[ -d "$worktree_path" && -e "$worktree_path/.git" ]]; then
+        local worktree_name=$(basename "$worktree_path")
 
-      # Skip if current worktree
-      if [[ "$PWD" == "$worktree_path" ]]; then
-        echo -e "${YELLOW}(skip) $worktree_name - currently active${NC}"
-        continue
+        # Skip if current worktree
+        if [[ "$PWD" == "$worktree_path" ]]; then
+          echo -e "${YELLOW}(skip) $worktree_name [$label] - currently active${NC}"
+          continue
+        fi
+
+        found=$((found + 1))
+        to_remove+=("$worktree_path")
+        echo -e "${YELLOW}• $worktree_name [$label]${NC}"
       fi
-
-      found=$((found + 1))
-      to_remove+=("$worktree_path")
-      echo -e "${YELLOW}• $worktree_name${NC}"
-    fi
+    done
   done
 
   if [[ $found -eq 0 ]]; then
@@ -268,10 +338,12 @@ cleanup_worktrees() {
     echo -e "${GREEN}✓ Removed: $worktree_name${NC}"
   done
 
-  # Clean up empty directory if nothing left
-  if [[ -z "$(ls -A "$WORKTREE_DIR" 2>/dev/null)" ]]; then
-    rmdir "$WORKTREE_DIR" 2>/dev/null || true
-  fi
+  # Clean up empty container directories if nothing left
+  for root in "$ROOT_LOCAL" "$ROOT_HARNESS"; do
+    if [[ -d "$root" && -z "$(ls -A "$root" 2>/dev/null)" ]]; then
+      rmdir "$root" 2>/dev/null || true
+    fi
+  done
 
   echo -e "${GREEN}Cleanup complete!${NC}"
 }
@@ -450,15 +522,16 @@ reap_merged_worktrees() {
 # Unlike `cleanup` (interactive, force-removes EVERY inactive worktree regardless of merge
 # state — which can destroy unmerged parallel work), `gc` only reaps a worktree when ALL of
 # the reap_merged_worktrees gates hold, so it is safe to run unattended from an agentic loop
-# or a git post-merge hook. Scope: .worktrees/ only (use `sync` to also cover
-# .claude/worktrees/). Always returns 0 — never aborts a caller.
+# or a git post-merge hook. Scope: BOTH managed roots (.worktrees/ and .claude/worktrees/).
+# Always returns 0 — never aborts a caller.
 #
 # Base branch: $1, else $WORKTREE_GC_BASE, else origin/main (falls back to local main).
 # WORKTREE_GC_GRACE_MIN overrides the idle window (default 30). WORKTREE_GC=0 skips entirely.
 gc_worktrees() {
   [ "${WORKTREE_GC:-1}" = "0" ] && return 0
+  init_roots
 
-  if [[ ! -d "$WORKTREE_DIR" ]]; then
+  if [[ ! -d "$ROOT_LOCAL" && ! -d "$ROOT_HARNESS" ]]; then
     echo -e "${GREEN}No worktrees to gc${NC}"
     return 0
   fi
@@ -471,7 +544,7 @@ gc_worktrees() {
 
   # gc applies the same grace to EVERY tier — no fast path here; only sync
   # skips the idle gate for unambiguous (patch/merge-commit) merges.
-  reap_merged_worktrees "$base" "$grace" "$grace" "$WORKTREE_DIR"
+  reap_merged_worktrees "$base" "$grace" "$grace" "$ROOT_LOCAL" "$ROOT_HARNESS"
 
   if [ "$REAPED_COUNT" -eq 0 ]; then
     echo -e "${GREEN}No merged worktrees to reap${NC}"
@@ -479,10 +552,13 @@ gc_worktrees() {
     echo -e "${GREEN}Reaped $REAPED_COUNT merged worktree(s) + local branch(es)${NC}"
   fi
 
-  # Remove the container dir if nothing is left.
-  if [[ -d "$WORKTREE_DIR" && -z "$(ls -A "$WORKTREE_DIR" 2>/dev/null)" ]]; then
-    rmdir "$WORKTREE_DIR" 2>/dev/null || true
-  fi
+  # Remove the container dirs if nothing is left.
+  local d
+  for d in "$ROOT_LOCAL" "$ROOT_HARNESS"; do
+    if [[ -d "$d" && -z "$(ls -A "$d" 2>/dev/null)" ]]; then
+      rmdir "$d" 2>/dev/null || true
+    fi
+  done
 
   return 0
 }
@@ -523,20 +599,24 @@ finish_worktree() {
     exit 1
   fi
 
-  local primary; primary=$(primary_root)
+  init_roots
+  local primary="$ROOT_PRIMARY"
 
-  # Resolve the target: explicit path first, then by name under both roots.
+  # Resolve the target: explicit path first, then by name across both roots
+  # (a name present in BOTH roots is ambiguous and refused).
   local path=""
   if [[ -e "$target/.git" ]]; then
     path=$(cd "$target" && pwd -P)
-  elif [[ -e "$primary/.worktrees/$target/.git" ]]; then
-    path="$primary/.worktrees/$target"
-  elif [[ -e "$primary/$HARNESS_WORKTREE_SUBDIR/$target/.git" ]]; then
-    path="$primary/$HARNESS_WORKTREE_SUBDIR/$target"
   else
-    echo -e "${RED}Error: worktree not found: $target${NC}"
-    echo "Looked for a path, $primary/.worktrees/$target, and $primary/$HARNESS_WORKTREE_SUBDIR/$target"
-    exit 1
+    local rc=0
+    path=$(resolve_worktree_name "$target") || rc=$?
+    if [[ $rc -eq 2 ]]; then
+      exit 1
+    elif [[ $rc -ne 0 ]]; then
+      echo -e "${RED}Error: worktree not found: $target${NC}"
+      echo "Looked for a path, $ROOT_LOCAL/$target, and $ROOT_HARNESS/$target"
+      exit 1
+    fi
   fi
 
   if [[ "$path" == "$primary" ]]; then
@@ -627,7 +707,7 @@ finish_worktree() {
 # primary tree at any time; idempotent.
 sync_worktrees() {
   local base; base=$(resolve_base "$1")
-  local primary; primary=$(primary_root)
+  init_roots
   local grace="${WORKTREE_GC_GRACE_MIN:-30}"
 
   if ! git -C "$GIT_ROOT" fetch --prune -q origin 2>/dev/null; then
@@ -636,7 +716,7 @@ sync_worktrees() {
 
   echo -e "${BLUE}Syncing worktrees (base: $base)...${NC}"
 
-  reap_merged_worktrees "$base" 0 "$grace" "$primary/.worktrees" "$primary/$HARNESS_WORKTREE_SUBDIR"
+  reap_merged_worktrees "$base" 0 "$grace" "$ROOT_LOCAL" "$ROOT_HARNESS"
   local reaped="$REAPED_COUNT"
 
   # Branches left behind by earlier manual cleanups: worktree already gone,
@@ -666,7 +746,7 @@ sync_worktrees() {
 
   # Remove empty container dirs.
   local d
-  for d in "$primary/.worktrees" "$primary/$HARNESS_WORKTREE_SUBDIR"; do
+  for d in "$ROOT_LOCAL" "$ROOT_HARNESS"; do
     if [[ -d "$d" && -z "$(ls -A "$d" 2>/dev/null)" ]]; then
       rmdir "$d" 2>/dev/null || true
     fi
@@ -724,18 +804,27 @@ Git Worktree Manager
 
 Usage: worktree-manager.sh <command> [options]
 
+Every subcommand operates on BOTH managed roots — .worktrees/ and
+.claude/worktrees/ (harness-created session worktrees) — except create, which
+only ever creates under .worktrees/ (.claude/worktrees/ is the harness's
+creation domain). Names are resolved across both roots; a name present in both
+is an error listing the candidates.
+
 Commands:
-  create <branch-name> [from-branch]  Create new worktree (copies .env files automatically)
-                                      (from-branch defaults to main)
-  list | ls                           List all worktrees
-  switch | go [name]                  Switch to worktree
+  create <branch-name> [from-branch]  Create new worktree under .worktrees/ (copies .env files
+                                      automatically; from-branch defaults to main). Refuses a
+                                      name already present under .claude/worktrees/.
+  list | ls                           List all worktrees in both roots (labeled per root)
+  switch | go [name]                  Switch to worktree (name resolved across both roots)
   copy-env | env [name]               Copy .env files from main repo to worktree
                                       (if name omitted, uses current worktree)
-  cleanup | clean                     Interactively remove ALL inactive worktrees (prompts)
+  cleanup | clean                     Interactively remove ALL inactive worktrees in both
+                                      roots (prompts)
   gc [base-branch]                    Non-interactively reap only MERGED, clean, idle worktrees
-                                      and their local branches (safe for unattended/loop use;
-                                      base defaults to origin/main). Merge evidence is tiered
-                                      (see below); every tier waits out the idle grace.
+                                      in both roots and their local branches (safe for
+                                      unattended/loop use; base defaults to origin/main).
+                                      Merge evidence is tiered (see below); every tier waits
+                                      out the idle grace.
   finish <name-or-path> [base] [--force]
                                       Tear down ONE worktree you are done with: verify its
                                       branch landed in base with unambiguous evidence (git
@@ -789,20 +878,18 @@ Examples:
   worktree-manager.sh sync                       # after a browser merge: reap everything merged
   worktree-manager.sh list
 
-Cleanup commands compared:
+Cleanup commands compared (all cover BOTH roots — .worktrees/ and .claude/worktrees/):
   - cleanup: interactive; force-removes every inactive worktree (can drop unmerged work)
-  - gc:      non-interactive; only reaps .worktrees/ trees fully merged into the base, with a
-             clean tree, idle for WORKTREE_GC_GRACE_MIN minutes (default 30); also deletes the
+  - gc:      non-interactive; only reaps trees fully merged into the base, with a clean
+             tree, idle for WORKTREE_GC_GRACE_MIN minutes (default 30); also deletes the
              orphaned local branch. Skips with WORKTREE_GC=0. Safe to wire into a git
              post-merge hook or run at the end of a parallel/swarm agentic session.
   - finish:  explicit single-target teardown requiring unambiguous merge evidence
-             (patch or merge-commit tier; ancestor-only refuses without --force); covers
-             .claude/worktrees/ too, runs teardown from the primary tree, and leaves the
-             primary tree on an updated base.
-  - sync:    gc across BOTH roots (.worktrees/ and .claude/worktrees/) — zero grace for
-             unambiguously merged trees, WORKTREE_GC_GRACE_MIN grace for ancestor-only
-             (fast-forward-or-fresh) trees — plus deletion of leftover merged local branches
-             whose upstream is gone. The post-merge one-liner.
+             (patch or merge-commit tier; ancestor-only refuses without --force); runs
+             teardown from the primary tree and leaves the primary tree on an updated base.
+  - sync:    gc with zero grace for unambiguously merged trees, WORKTREE_GC_GRACE_MIN grace
+             for ancestor-only (fast-forward-or-fresh) trees — plus deletion of leftover
+             merged local branches whose upstream is gone. The post-merge one-liner.
 
 EOF
 }

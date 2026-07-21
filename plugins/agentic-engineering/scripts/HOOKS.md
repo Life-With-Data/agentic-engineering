@@ -234,7 +234,7 @@ worktrees on demand with the
 [`wf-development` worktree manager](../skills/wf-development/scripts/worktree-manager.sh):
 `worktree-manager.sh sync` reaps merged `.claude/worktrees/` (and `.worktrees/`)
 trees plus stale merged branches, `finish <name>` tears down one worktree, and
-`gc` sweeps `.worktrees/` unattended — all apply the same `git cherry`
+`gc` sweeps both roots unattended — all apply the same `git cherry`
 merged-check before removing anything.
 
 **Config is by environment variable, not frontmatter** — matching the

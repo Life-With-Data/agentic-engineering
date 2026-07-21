@@ -93,9 +93,12 @@ bash <skill-directory>/scripts/worktree-manager.sh create feature-login
 ```
 
 **What happens:**
-1. Checks if worktree already exists
+1. Checks if worktree already exists; refuses a name that already exists under
+   `.claude/worktrees/` (the harness's creation domain) — a duplicate name across roots
+   would make every by-name subcommand ambiguous
 2. Updates the base branch from remote
-3. Creates new worktree and branch
+3. Creates new worktree and branch (always under `.worktrees/` — `create` never
+   targets `.claude/worktrees/`)
 4. **Copies all .env files from main repo** (.env, .env.local, .env.test, etc.)
 5. Shows path for cd-ing to the worktree
 
@@ -109,7 +112,8 @@ bash <skill-directory>/scripts/worktree-manager.sh list
 ```
 
 **Output shows:**
-- Worktree name
+- Worktree name, labeled with its root — entries from BOTH managed roots
+  (`.worktrees/` and `.claude/worktrees/`) are listed
 - Branch name
 - Which is current (marked with ✓)
 - Main repo status
@@ -126,6 +130,10 @@ bash <skill-directory>/scripts/worktree-manager.sh switch feature-login
 **Optional:**
 - If name not provided, lists available worktrees and prompts for selection
 
+The name is resolved across both managed roots (`.worktrees/` and `.claude/worktrees/`);
+a name present in BOTH roots is an error listing the candidate paths. `copy-env` resolves
+names the same way.
+
 ### `cleanup` or `clean`
 
 Interactively cleans up inactive worktrees with confirmation.
@@ -136,7 +144,8 @@ bash <skill-directory>/scripts/worktree-manager.sh cleanup
 ```
 
 **What happens:**
-1. Lists all inactive worktrees
+1. Lists all inactive worktrees in both managed roots (`.worktrees/` and
+   `.claude/worktrees/`), labeled per root
 2. Asks for confirmation
 3. Removes selected worktrees
 4. Cleans up empty directories
@@ -158,7 +167,7 @@ bash <skill-directory>/scripts/worktree-manager.sh gc develop   # base = develop
 ```
 
 **A worktree is reaped only when ALL hold:**
-1. It lives under `.worktrees/` (never the main tree)
+1. It lives under a managed root — `.worktrees/` or `.claude/worktrees/` (never the main tree)
 2. It is not the worktree `gc` is running from
 3. Its working tree is clean (no uncommitted changes)
 4. Its branch shows merge evidence, graded into three tiers:
@@ -278,10 +287,11 @@ Because teardown is deferred, mind these coverage notes:
   after it). Otherwise clean it up afterwards with `finish <name>` (or a later `gc`/`sync`) from
   the primary tree, or hand the human the one-liner (`bun run worktrees:finish -- <name>` /
   `npx github:Life-With-Data/agentic-engineering worktrees finish <name>`).
-- **`gc` only reaps `$GIT_ROOT/.worktrees/`.** A worktree elsewhere — e.g. a harness worktree under
-  `.claude/worktrees/` — is outside `gc`'s scope; use `finish <name>` (single target) or `sync`
-  (sweep), both of which cover `.claude/worktrees/` too. Raw `git worktree remove` is no longer
-  needed.
+- **Every teardown command covers both managed roots.** `gc`, `cleanup`, `finish`, and `sync`
+  (and the read/navigate commands `list`, `switch`, `copy-env`) all operate on
+  `.claude/worktrees/` (harness-created) as well as `.worktrees/`; a worktree anywhere ELSE
+  (a hand-made one outside both roots) is outside every sweep's scope and needs `finish <path>`
+  with an explicit path. Raw `git worktree remove` is no longer needed.
 
 ## Workflow Examples
 
