@@ -46,6 +46,7 @@ Production or integration failures also require `observability`. A bug remains u
 - Unclear intent or competing approaches: read [interview-me](references/interview-me.md), then [brainstorming](references/brainstorming.md).
 - Formal brainstorm stage: read [workflow brainstorm](references/workflows-brainstorm.md).
 - Groom an idea, bug report, or stub: read [workflow groom](references/workflows-groom.md).
+- Work item with a significant UI/design aspect: read [design context](references/design-context.md).
 - Reproduce reported behavior before grooming a bug: read [reproduce bug](references/reproduce-bug.md).
 - Create or improve the bug report: read [report bug](references/report-bug.md).
 - Produce the implementation plan and issue decomposition: read [workflow plan](references/workflows-plan.md).
