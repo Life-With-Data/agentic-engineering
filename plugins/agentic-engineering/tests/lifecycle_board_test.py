@@ -1,7 +1,7 @@
 """Tier-1 hermetic tests for lifecycle_board.py's pure decision core.
 
 Covers: gate verdict tables, claim decisions (sole-assignee / blocked),
-the CLOSED five-repair reconciler set with never-repair negatives, repo-scoped
+the CLOSED six-repair reconciler set with never-repair negatives, repo-scoped
 ready-work merge + Priority sort + truncation flag, packet safety,
 and call-count budgets via an argv-recording fake runner. No network, no gh.
 """
@@ -26,12 +26,14 @@ spec.loader.exec_module(lb)
 
 
 def _issue(number=1, state="OPEN", state_reason=None, assignees=(), stage=None,
-           closing_prs=(), open_subs=(), blocked=0):
+           closing_prs=(), open_subs=(), blocked=0, parent_number=None,
+           item_id="item"):
     return lb.IssueState(
         number=number, state=state, state_reason=state_reason,
         assignees=list(assignees), author_association="OWNER", stage=stage,
-        item_id="item", closing_prs=list(closing_prs),
+        item_id=item_id, closing_prs=list(closing_prs),
         open_sub_issues=list(open_subs), blocked_by_count=blocked,
+        parent_number=parent_number,
     )
 
 
@@ -144,7 +146,7 @@ class ClaimTest(unittest.TestCase):
 
 
 class ReconcilerTest(unittest.TestCase):
-    """The repair set is CLOSED at five; everything else is a never-repair."""
+    """The repair set is CLOSED at six; everything else is a never-repair."""
 
     def test_rule1_merged_close_missed_becomes_done(self) -> None:
         s = _issue(state="CLOSED", state_reason="COMPLETED", stage="in_review",
@@ -227,6 +229,48 @@ class ReconcilerTest(unittest.TestCase):
                    closing_prs=[_pr()])
         repairs, _ = lb.plan_repairs([s], "main")
         self.assertEqual(repairs, [])
+
+    # Rule 6: sub_issue_on_board — an OPEN, parented issue must not occupy the
+    # board (the Project tracks the PARENT); its board item is archived.
+    def test_rule6_open_parented_boarded_issue_is_deboarded(self) -> None:
+        s = _issue(number=263, state="OPEN", stage="stub", parent_number=265,
+                   item_id="IT_9")
+        repairs, flags = lb.plan_repairs([s], "main")
+        self.assertEqual([(r.rule, r.to_stage, r.deboard_item_id) for r in repairs],
+                         [("sub_issue_on_board", None, "IT_9")])
+        self.assertIn("265", repairs[0].comment)  # audit comment names the parent
+        self.assertEqual(flags, [])
+
+    def test_rule6_absent_board_item_is_a_noop(self) -> None:
+        # The idempotent second run: after removal the item is gone, so no repair.
+        s = _issue(number=263, state="OPEN", stage="stub", parent_number=265,
+                   item_id=None)
+        repairs, flags = lb.plan_repairs([s], "main")
+        self.assertEqual((repairs, flags), ([], []))
+
+    def test_rule6_leaves_terminal_closed_subissues_untouched(self) -> None:
+        # A CLOSED (terminal) sub-issue is done; rule 6 never fires for it.
+        for stage in ("done", "in_review", "stub"):
+            with self.subTest(stage=stage):
+                s = _issue(number=263, state="CLOSED", state_reason="COMPLETED",
+                           stage=stage, parent_number=265, item_id="IT_9")
+                repairs, _ = lb.plan_repairs([s], "main")
+                self.assertNotIn("sub_issue_on_board", [r.rule for r in repairs])
+
+    def test_rule6_ignores_parentless_boarded_issue(self) -> None:
+        s = _issue(number=42, state="OPEN", stage="planned", parent_number=None,
+                   item_id="IT_1")
+        repairs, _ = lb.plan_repairs([s], "main")
+        self.assertNotIn("sub_issue_on_board", [r.rule for r in repairs])
+
+    def test_rule6_preempts_stage_regression_rules(self) -> None:
+        # An open parented sub at in_progress with an open assignee PR would match
+        # rule 5; de-boarding a parented open issue supersedes any Status repair.
+        s = _issue(number=263, state="OPEN", stage="in_progress", parent_number=265,
+                   item_id="IT_9", assignees=["me"],
+                   closing_prs=[_pr(state="OPEN", merged=False, author="me")])
+        repairs, _ = lb.plan_repairs([s], "main")
+        self.assertEqual([r.rule for r in repairs], ["sub_issue_on_board"])
 
 
 class ReadyWorkTest(unittest.TestCase):
@@ -1512,6 +1556,129 @@ def _ctx(root: str, slug=("o", "r")) -> "lb.RepoContext":
                           origin_repo=slug[1], default_branch="main")
 
 
+def _subissue_payload(item=True, stage="stub", state="OPEN"):
+    """An OPEN native sub-issue #263 of parent #265, optionally carrying its own
+    (invariant-violating) board item. Drives the rule-6 de-board path."""
+    node = {"number": 263, "state": state, "stateReason": None,
+            "authorAssociation": "OWNER", "url": "u", "parent": {"number": 265},
+            "assignees": {"nodes": []},
+            "closedByPullRequestsReferences": {"nodes": []},
+            "blockedBy": {"totalCount": 0, "nodes": []},
+            "subIssues": {"nodes": []}, "projectItems": {"nodes": []}}
+    if item:
+        node["projectItems"]["nodes"] = [{
+            "id": "IT_9", "project": {"number": 1, "owner": {"login": "o"}},
+            "fieldValueByName": {"name": stage}}]
+    return json.dumps({"data": {"repository": {"issue": node}}})
+
+
+class SubIssueDeboardReconcileTest(unittest.TestCase):
+    """Rule 6 end-to-end through verb_reconcile over a FakeRunner: an open
+    parented issue's board item is archived + audit comment; the second run
+    (item gone) is a no-op; and the CI-add-after-verify race converges here."""
+
+    BOARD = lb.BoardConfig(owner="o", number=1, source="committed")
+
+    def _reconcile(self, root, payload):
+        runner = FakeRunner(payload)
+        with mock.patch.object(lb, "read_board_config", return_value=self.BOARD), \
+                mock.patch.object(lb, "load_cache", return_value={}), \
+                mock.patch.object(lb, "save_cache", lambda *a, **k: None):
+            return runner, lb.verb_reconcile(_ctx(root), runner, issue=263, force=True)
+
+    def test_boarded_open_subissue_is_archived_with_audit_comment(self) -> None:
+        with tempfile.TemporaryDirectory() as d:
+            runner, out = self._reconcile(d, [
+                (["api", "graphql"], _ok(_subissue_payload(item=True))),
+                (["project", "item-archive", "1", "--owner", "o", "--id", "IT_9"],
+                 _ok("{}")),
+                (["issue", "comment", "263", "--repo", "o/r", "--body"], _ok("")),
+            ])
+            self.assertEqual([r["rule"] for r in out["repairs_applied"]],
+                             ["sub_issue_on_board"])
+            self.assertEqual(out["repairs_failed"], [])
+            # the audit comment names the parent
+            comment = runner.calls[-1][runner.calls[-1].index("--body") + 1]
+            self.assertIn("#265", comment)
+
+    def test_second_run_after_removal_is_a_noop(self) -> None:
+        # The item is gone (archived) -> no archive, no comment, no repair.
+        with tempfile.TemporaryDirectory() as d:
+            runner, out = self._reconcile(d, [
+                (["api", "graphql"], _ok(_subissue_payload(item=False))),
+            ])
+            self.assertEqual(out["repairs_applied"], [])
+            self.assertEqual(out["repairs_failed"], [])
+            self.assertEqual(runner.responses, [])  # only the read happened
+
+    def test_ci_add_after_verify_race_is_repaired_at_reconcile(self) -> None:
+        # groom-verify saw no board item (CI had not added it yet); the item
+        # appears only now, at reconcile time — the convergence guarantee fires.
+        with tempfile.TemporaryDirectory() as d:
+            _runner, out = self._reconcile(d, [
+                (["api", "graphql"], _ok(_subissue_payload(item=True, stage="stub"))),
+                (["project", "item-archive", "1", "--owner", "o", "--id", "IT_9"],
+                 _ok("{}")),
+                (["issue", "comment", "263", "--repo", "o/r", "--body"], _ok("")),
+            ])
+            self.assertEqual([r["rule"] for r in out["repairs_applied"]],
+                             ["sub_issue_on_board"])
+
+    def test_failed_archive_is_reported_not_fatal(self) -> None:
+        fail = subprocess.CompletedProcess(args=[], returncode=1, stdout="", stderr="nope")
+        with tempfile.TemporaryDirectory() as d:
+            _runner, out = self._reconcile(d, [
+                (["api", "graphql"], _ok(_subissue_payload(item=True))),
+                (["project", "item-archive", "1", "--owner", "o", "--id", "IT_9"], fail),
+            ])
+            self.assertEqual(out["repairs_applied"], [])
+            self.assertEqual([r["rule"] for r in out["repairs_failed"]],
+                             ["sub_issue_on_board"])
+            self.assertEqual(out["repairs_failed"][0]["error_code"], "deboard_failed")
+
+
+class DeboardSubissueHelperTest(unittest.TestCase):
+    """The best-effort `_deboard_subissue` seam used by decompose and
+    groom-verify: read the sub's board membership, archive it if present, and
+    never raise — every failure degrades to a reported result."""
+
+    BOARD = lb.BoardConfig(owner="o", number=1, source="committed")
+
+    def test_archives_when_the_sub_has_a_board_item(self) -> None:
+        runner = FakeRunner([
+            (["api", "graphql"], _ok(_subissue_payload(item=True))),
+            (["project", "item-archive", "1", "--owner", "o", "--id", "IT_9"], _ok("{}")),
+        ])
+        with mock.patch.object(lb, "read_board_config", return_value=self.BOARD):
+            out = lb._deboard_subissue(263, self.BOARD, _ctx("/tmp"), runner)
+        self.assertEqual(out, {"issue": 263, "deboarded": True})
+
+    def test_noop_when_the_sub_is_not_boarded(self) -> None:
+        runner = FakeRunner([(["api", "graphql"], _ok(_subissue_payload(item=False)))])
+        with mock.patch.object(lb, "read_board_config", return_value=self.BOARD):
+            out = lb._deboard_subissue(263, self.BOARD, _ctx("/tmp"), runner)
+        self.assertEqual(out, {"issue": 263, "deboarded": False})
+
+    def test_read_failure_is_reported_never_raised(self) -> None:
+        fail = subprocess.CompletedProcess(args=[], returncode=1, stdout="", stderr="net down")
+        runner = FakeRunner([(["api", "graphql"], fail)])
+        with mock.patch.object(lb, "read_board_config", return_value=self.BOARD):
+            out = lb._deboard_subissue(263, self.BOARD, _ctx("/tmp"), runner)
+        self.assertFalse(out["deboarded"])
+        self.assertIn("error", out)
+
+    def test_archive_failure_is_reported_never_raised(self) -> None:
+        fail = subprocess.CompletedProcess(args=[], returncode=1, stdout="", stderr="denied")
+        runner = FakeRunner([
+            (["api", "graphql"], _ok(_subissue_payload(item=True))),
+            (["project", "item-archive", "1", "--owner", "o", "--id", "IT_9"], fail),
+        ])
+        with mock.patch.object(lb, "read_board_config", return_value=self.BOARD):
+            out = lb._deboard_subissue(263, self.BOARD, _ctx("/tmp"), runner)
+        self.assertFalse(out["deboarded"])
+        self.assertIn("error", out)
+
+
 class DecomposeVerbTest(unittest.TestCase):
     """The effectful decompose verb, driven by an argv-recording FakeRunner and
     an injected set_status seam. Proves the create->wire->stamp sequence and that
@@ -1542,15 +1709,20 @@ class DecomposeVerbTest(unittest.TestCase):
                  _ok("")),
             ])
             seen = {}
+            deboarded = []
 
             def fake_set_status(parent, stage, ctx, run, force=False):
                 seen["call"] = (parent, stage)
                 return {"issue": parent, "stage": stage, "previous_stage": None}
 
+            def fake_deboard(number, board, ctx, run):
+                deboarded.append(number)
+                return {"issue": number, "deboarded": False}
+
             with mock.patch.object(lb, "read_board_config",
                                    return_value=lb.BoardConfig(owner="o", number=1, source="committed")):
                 out = lb.verb_decompose(182, str(spec_path), _ctx(str(root)), runner,
-                                        set_status=fake_set_status)
+                                        set_status=fake_set_status, deboard=fake_deboard)
 
             self.assertEqual(out["parent"], 182)
             self.assertEqual(out["sub_issue_count"], 2)
@@ -1558,10 +1730,42 @@ class DecomposeVerbTest(unittest.TestCase):
             self.assertEqual(out["sub_issues"][1]["blocked_by"], [183])
             self.assertEqual(out["dependencies_wired"], 1)
             self.assertEqual(seen["call"], (182, "planned"))
+            # every created sub-issue is best-effort de-boarded (the Project
+            # tracks the parent), and the results ride the verb output.
+            self.assertEqual(deboarded, [183, 184])
+            self.assertEqual([d["issue"] for d in out["deboarded"]], [183, 184])
             # GitHub is canonical; the transient body input is never modified.
             self.assertEqual(plan.read_text(encoding="utf-8"), "---\ntitle: t\n---\n\nbody\n")
             # every queued gh response was consumed in the exact expected order
             self.assertEqual(runner.responses, [])
+
+    def test_deboard_failure_is_reported_not_fatal(self) -> None:
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            (root / "p.md").write_text("body", encoding="utf-8")
+            (root / "s1.md").write_text("sub1", encoding="utf-8")
+            spec = {"body_file": "p.md", "sub_issues": [{"title": "core", "body_file": "s1.md"}]}
+            spec_path = root / "spec.json"
+            spec_path.write_text(json.dumps(spec), encoding="utf-8")
+            runner = FakeRunner([
+                (["issue", "edit", "182", "--repo", "o/r", "--body-file"],
+                 _ok("https://github.com/o/r/issues/182\n")),
+                (["issue", "create", "--repo", "o/r", "--parent", "182", "--title", "core"],
+                 _ok("https://github.com/o/r/issues/183\n")),
+            ])
+
+            def failing_deboard(number, board, ctx, run):
+                return {"issue": number, "deboarded": False, "error": "archive blew up"}
+
+            with mock.patch.object(lb, "read_board_config",
+                                   return_value=lb.BoardConfig(owner="o", number=1, source="committed")):
+                out = lb.verb_decompose(182, str(spec_path), _ctx(str(root)), runner,
+                                        set_status=lambda *a, **k: {"stage": "planned",
+                                                                    "previous_stage": None},
+                                        deboard=failing_deboard)
+            # non-fatal: the decomposition succeeds; the failure is reported.
+            self.assertEqual(out["sub_issue_count"], 1)
+            self.assertEqual(out["deboarded"][0]["error"], "archive blew up")
 
     def test_bad_spec_writes_nothing(self) -> None:
         with tempfile.TemporaryDirectory() as d:
@@ -1612,11 +1816,14 @@ class GroomVerifyVerbTest(unittest.TestCase):
                 "project": {"id": "PJ", "number": 1, "owner": {"login": "o"}},
                 "fieldValueByName": {"name": stage}}]}}}}})
 
-    def _run(self, root, stage, subs):
+    def _run(self, root, stage, subs, deboard=None):
         runner = FakeRunner([(["api", "graphql"], _ok(self._issue_payload(stage, subs)))])
+        # Default: every touched sub is NOT on the board (no warnings). Tests that
+        # exercise the still-boarded path inject their own deboard seam.
+        deboard = deboard or (lambda number, board, ctx, run: {"issue": number, "deboarded": False})
         with mock.patch.object(lb, "read_board_config",
                                return_value=lb.BoardConfig(owner="o", number=1, source="committed")):
-            return lb.verb_groom_verify(182, _ctx(str(root)), runner)
+            return lb.verb_groom_verify(182, _ctx(str(root)), runner, deboard=deboard)
 
     def _write_plan(self, root, number=182):
         (root / "docs" / "plans").mkdir(parents=True, exist_ok=True)
@@ -1649,6 +1856,41 @@ class GroomVerifyVerbTest(unittest.TestCase):
             out = self._run(root, "brainstormed", [])
             self.assertFalse(out["groomed"])
             self.assertTrue(any("expected >= planned" in f for f in out["failures"]))
+
+    def test_no_warnings_when_no_sub_is_boarded(self) -> None:
+        # The CI-add-after-verify race: at verify time the subs are not yet on
+        # the board, so no warning and — critically — groomed stays true.
+        with tempfile.TemporaryDirectory() as d:
+            out = self._run(Path(d), "planned", [
+                {"number": 183, "state": "OPEN", "blockedBy": {"totalCount": 0}}])
+            self.assertTrue(out["groomed"])
+            self.assertEqual(out["warnings"], [])
+
+    def test_still_boarded_sub_is_a_warning_not_a_failure(self) -> None:
+        # A sub is on the board at verify time: best-effort de-board it and record
+        # a warning. Warnings never flip `groomed` to false (exit stays 0).
+        def boarded(number, board, ctx, run):
+            return {"issue": number, "deboarded": True}
+        with tempfile.TemporaryDirectory() as d:
+            out = self._run(Path(d), "planned", [
+                {"number": 183, "state": "OPEN", "blockedBy": {"totalCount": 0}},
+                {"number": 184, "state": "CLOSED", "blockedBy": {"totalCount": 0}}],
+                deboard=boarded)
+            self.assertTrue(out["groomed"])
+            self.assertEqual(out["failures"], [])
+            # Only the OPEN sub is de-boarded/warned; the CLOSED one is skipped.
+            self.assertEqual([w["issue"] for w in out["warnings"]], [183])
+            self.assertEqual(out["warnings"][0]["warning"], "sub_issue_on_board")
+
+    def test_failed_deboard_at_verify_is_a_warning(self) -> None:
+        def failing(number, board, ctx, run):
+            return {"issue": number, "deboarded": False, "error": "boom"}
+        with tempfile.TemporaryDirectory() as d:
+            out = self._run(Path(d), "planned", [
+                {"number": 183, "state": "OPEN", "blockedBy": {"totalCount": 0}}],
+                deboard=failing)
+            self.assertTrue(out["groomed"])
+            self.assertEqual([w["issue"] for w in out["warnings"]], [183])
 
 
 class PacketVerbTest(unittest.TestCase):

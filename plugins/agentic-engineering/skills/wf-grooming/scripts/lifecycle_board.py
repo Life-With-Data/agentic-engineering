@@ -9,7 +9,7 @@ Design rules (enforced here, relied on everywhere):
     JSON with an injected runner/clock — unit-testable with zero network.
   - One writer per transition: commands invoke exactly one verb for their
     owned transition; nothing else mutates the board.
-  - The reconciler's repair set is CLOSED (five rules) plus report-only
+  - The reconciler's repair set is CLOSED (six rules) plus report-only
     flags; it never fights a human's manual drag.
   - Board reads are repo-scoped: items whose content lives in another repo
     are dropped before any decision or write (shared boards are
@@ -1037,9 +1037,11 @@ class Repair:
     issue: int
     rule: str
     from_stage: Optional[str]
-    to_stage: Optional[str]        # None => non-status action (sub-issue cascade)
+    to_stage: Optional[str]        # None => non-status action (sub-issue cascade / de-board)
     comment: str
     close_sub_issues: "list[int]" = field(default_factory=list)
+    # Rule 6: archive (de-board) this Project item id. None => no board action.
+    deboard_item_id: Optional[str] = None
 
 
 @dataclass
@@ -1050,7 +1052,7 @@ class Flag:
 
 
 def plan_repairs(states: "list[IssueState]", default_branch: str) -> "tuple[list[Repair], list[Flag]]":
-    """The CLOSED five-repair set + report-only flags. Anything not matched
+    """The CLOSED six-repair set + report-only flags. Anything not matched
     here is never auto-repaired — the reconciler must not fight human drags."""
     repairs: "list[Repair]" = []
     flags: "list[Flag]" = []
@@ -1070,6 +1072,27 @@ def plan_repairs(states: "list[IssueState]", default_branch: str) -> "tuple[list
             repairs.append(Repair(s.number, "not_planned_close", s.stage, "abandoned",
                                   "reconciler: issue closed as not-planned — Status → abandoned",
                                   close_sub_issues=list(s.open_sub_issues)))
+            continue
+
+        # Rule 6: an OPEN native sub-issue must not occupy the board — the
+        # Project tracks the PARENT. A board item on an open, parented issue is
+        # an invariant violation (a human drag, or an async auto-add that beat
+        # the de-board), so archive the item and link the parent in the audit
+        # comment. Evaluated before the stage-based rules (3/5): for a parented
+        # open issue, removing it from the board supersedes any Status repair on
+        # its (noise) board stage. Idempotent — an absent item_id matches
+        # nothing, so a second run after removal is a no-op. Terminal (CLOSED)
+        # sub-issues are never touched here: a closed sub is done, and the
+        # close/terminal rules above own its board membership. Board reads are
+        # already repo-scoped upstream, so a foreign-repo item never reaches this.
+        if s.state == "OPEN" and s.parent_number is not None and s.item_id:
+            repairs.append(Repair(
+                s.number, "sub_issue_on_board", s.stage, None,
+                f"reconciler: this is an open sub-issue of #{s.parent_number}, but the "
+                f"Project tracks the parent — removing (archiving) this child's board item. "
+                f"Drive the sub-issue with `--sub-status`; groom and gate the parent "
+                f"#{s.parent_number}.",
+                deboard_item_id=s.item_id))
             continue
 
         # Rule 3: assignee's PR closed without merge -> regress to in_progress
@@ -1392,19 +1415,46 @@ def verb_groom_entry(issue: Optional[int], ctx: RepoContext, runner: GhRunner) -
             "flags": reconcile.get("flags", [])}
 
 
+def _deboard_subissue(number: int, board: BoardConfig, ctx: RepoContext,
+                      runner: GhRunner) -> dict:
+    """Best-effort de-board of one sub-issue: read its board membership and, if
+    it carries a Project item, archive it (the Project tracks the parent). Never
+    raises — every failure degrades to a reported result — because de-boarding is
+    a convergence nicety, not a postcondition: the reconciler's rule 6 is the
+    guarantee. Returns {issue, deboarded, [error]}. An absent item is a no-op.
+
+    Race note (parent plan): `add-to-project.yml` fires asynchronously on issue
+    `opened`, so a freshly created sub often is not on the board yet at decompose
+    time (deboarded=False, no error), and a later CI add is reconciled instead."""
+    try:
+        state = fetch_issue_state(number, board, ctx, runner)
+    except BoardError as exc:
+        return {"issue": number, "deboarded": False, "error": str(exc)}
+    if state is None or not state.item_id:
+        return {"issue": number, "deboarded": False}
+    archive = _run_gh_retry(runner, ["project", "item-archive", str(board.number),
+                                     "--owner", board.owner, "--id", state.item_id])
+    if archive.returncode != 0:
+        return {"issue": number, "deboarded": False, "error": archive.stderr.strip()[:160]}
+    return {"issue": number, "deboarded": True}
+
+
 def verb_decompose(issue: Optional[int], spec_path: str, ctx: RepoContext, runner: GhRunner,
-                   set_status: "Optional[Callable]" = None) -> dict:
+                   set_status: "Optional[Callable]" = None,
+                   deboard: "Optional[Callable]" = None) -> dict:
     """the `wf-grooming` planning route Step 7 (`github-project` branch) as one atomic verb.
 
     Reads a model-authored JSON spec, then: creates or updates the canonical
     parent issue from a body file, creates
     each sub-issue under the parent, wires `--add-blocked-by` edges by the
-    numbers actually returned (never `tail -1`), and advances the parent to
-    `planned`. Sub-issue numbers are captured from gh's own returned URLs, so
-    the count is exact by construction. `set_status` is an injectable seam for
-    tests; production uses `verb_set_status`."""
+    numbers actually returned (never `tail -1`), advances the parent to
+    `planned`, and best-effort de-boards each created sub (the Project tracks the
+    parent). Sub-issue numbers are captured from gh's own returned URLs, so the
+    count is exact by construction. `set_status`/`deboard` are injectable seams
+    for tests; production uses `verb_set_status`/`_deboard_subissue`."""
     set_status = set_status or verb_set_status
-    _require_board(ctx)
+    deboard = deboard or _deboard_subissue
+    board = _require_board(ctx)
     try:
         spec = json.loads(pathlib.Path(spec_path).read_text(encoding="utf-8"))
     except (OSError, ValueError) as exc:
@@ -1479,20 +1529,36 @@ def verb_decompose(issue: Optional[int], spec_path: str, ctx: RepoContext, runne
 
     # 4. Advance the parent to planned (board-adds if needed) — the transition.
     st = set_status(parent, "planned", ctx, runner)
+
+    # 5. Best-effort de-board each created sub — the Project tracks the parent,
+    #    not its task units. Non-fatal by construction (see _deboard_subissue):
+    #    the async auto-add usually has not fired yet, and the reconciler's
+    #    rule 6 is the convergence guarantee for any board item that lands later.
+    deboarded = [deboard(number, board, ctx, runner) for number in created]
     return {"parent": parent, "body_file": spec[body_key], "stage": st.get("stage"),
             "previous_stage": st.get("previous_stage"),
             "sub_issues": [{"number": created[i], "title": subs[i]["title"],
                             "blocked_by": [created[d] for d in subs[i].get("blocked_by", [])]}
                            for i in range(len(subs))],
-            "sub_issue_count": len(created), "dependencies_wired": len(wired)}
+            "sub_issue_count": len(created), "dependencies_wired": len(wired),
+            "deboarded": deboarded}
 
 
-def verb_groom_verify(issue: int, ctx: RepoContext, runner: GhRunner) -> dict:
+def verb_groom_verify(issue: int, ctx: RepoContext, runner: GhRunner,
+                      deboard: "Optional[Callable]" = None) -> dict:
     """The groom postcondition as one call. Asserts Status >= planned and
     reports the EXACT sub-issue and
     with-dependency counts (from the parent's own sub-issue nodes — the
     `.subIssues | length`-style miscount is structurally impossible here).
-    `groomed` is false, and the CLI exits 1, if either assertion fails."""
+    `groomed` is false, and the CLI exits 1, if either assertion fails.
+
+    Also best-effort de-boards each OPEN sub-issue (the Project tracks the
+    parent) and surfaces any that were on the board as `warnings`. Board
+    membership is auto-repaired by the reconciler's rule 6, so a still-boarded
+    sub is a WARNING, never a failure — a hard failure here would fight the
+    async `add-to-project.yml` CI add (the item may appear only after verify,
+    at reconcile time). `deboard` is an injectable seam for tests."""
+    deboard = deboard or _deboard_subissue
     board = _require_board(ctx)
     state = fetch_issue_state(issue, board, ctx, runner)
     if state is None:
@@ -1503,9 +1569,23 @@ def verb_groom_verify(issue: int, ctx: RepoContext, runner: GhRunner) -> dict:
     failures: "list[str]" = []
     if not stage_at_least(state.stage, "planned"):
         failures.append(f"stage is {state.stage!r}, expected >= planned")
+
+    warnings: "list[dict]" = []
+    for sub in subs:
+        if sub.get("state") != "OPEN":
+            continue  # closed sub-issues are terminal; the board no longer tracks them
+        result = deboard(sub["number"], board, ctx, runner)
+        if result.get("deboarded") or result.get("error"):
+            detail = ("de-boarded (archived)" if result.get("deboarded")
+                      else f"de-board attempt failed: {result.get('error')}")
+            warnings.append({
+                "issue": sub["number"], "warning": "sub_issue_on_board",
+                "comment": f"sub-issue #{sub['number']} was on the board, but the Project "
+                           f"tracks the parent #{issue} — {detail}; the reconciler's rule 6 "
+                           "converges either way"})
     return {"issue": issue, "groomed": not failures, "stage": state.stage,
             "sub_issue_count": len(subs), "sub_issues_with_dependencies": blocked,
-            "failures": failures}
+            "failures": failures, "warnings": warnings}
 
 
 def _render_packet(state: IssueState, ctx: RepoContext) -> str:
@@ -1800,6 +1880,19 @@ def verb_reconcile(ctx: RepoContext, runner: GhRunner, issue: Optional[int] = No
     applied, failed = [], []
     for repair in repairs:
         try:
+            if repair.deboard_item_id:
+                # Rule 6: archive the open sub-issue's board item. Archive (not
+                # delete) is reversible (`gh project item-archive --undo`) and
+                # hides the item from every board view, which satisfies the
+                # "the board tracks the parent" invariant without destroying data.
+                archive = _run_gh_retry(runner, [
+                    "project", "item-archive", str(board.number),
+                    "--owner", board.owner, "--id", repair.deboard_item_id])
+                if archive.returncode != 0:
+                    failed.append({**dataclasses.asdict(repair),
+                                   "error_code": "deboard_failed",
+                                   "error": f"item-archive failed: {archive.stderr.strip()[:160]}"})
+                    continue
             if repair.to_stage:
                 # A repair is a deliberate reality-sync (e.g. rule 5: a PR is
                 # open → in_review); bypass the open-sub-issues seam gate.

@@ -80,6 +80,7 @@ Run these in order, once, at entry:
    | `route_to_plan` | Not yet attested `planned` | Tell the user to run **the `wf-grooming` planning route** first. Hotfixes bypass the board entirely (plain PR flow, no gate, no board exception). **STOP.** |
    | `already_done` | Parent Status is terminal `done` or `abandoned` | Report the stage to the user and that the work is already at/past this command's scope. **STOP.** |
    | `repair_needed` | Required Project or issue state is incomplete/inconsistent | Report the structured flag/reason and return to the workflow that owns the state. **STOP.** |
+   | `sub_issue` | The issue is an OPEN native sub-issue (`parent: N` is set) | The Project tracks the parent, not this task unit. Re-gate the parent (`--gate work --issue N`) and drive this sub-issue with `--sub-status`; its own board stage never gates. **STOP.** |
    | `no_board` | The repository is unconfigured (no Project board yet) | Direct the user to the `wf-setup` lifecycle bootstrap first; if the user chooses to proceed before configuring a board, fall through to **No board (unconfigured)** below — no stage machinery, no tracker writes. |
 
    `claim_conflict` and `blocked` are **not** gate verdicts — they are returned by `--claim` in Phase 1, not here. Only `proceed` (with a board) and `no_board` (unconfigured) continue past this gate; every other verdict **STOPs**.
