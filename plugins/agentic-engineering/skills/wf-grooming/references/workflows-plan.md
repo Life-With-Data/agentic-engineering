@@ -121,3 +121,11 @@ Hand off to `wf-development` only when the issue has an unambiguous scope,
 complete acceptance and validation criteria, resolved dependencies, verified
 security/provenance handling, and `Status = planned` in Project mode. Planning
 never claims implementation work.
+
+The completion report must name the **parent** issue number as the sole
+`/wf-development` entry point. Never recommend a sub-issue as where development
+begins: sub-issues have no independent lifecycle, and `wf-development` on a
+sub-issue is redirected back to its parent by the gate. Express sub-issue
+ordering only as `blocked-by` structure inside the parent — the parent's
+execution loop drives each sub-issue in dependency order — never as a
+"start here" pointer at any individual sub-issue.
