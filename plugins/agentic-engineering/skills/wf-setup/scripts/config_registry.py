@@ -39,7 +39,7 @@ _LB_SPEC.loader.exec_module(lifecycle_board)
 @dataclass(frozen=True)
 class ConfigFlag:
     key: str
-    kind: str            # "boolean" | "enum" | "list" | "identity"
+    kind: str            # "boolean" | "enum" | "list" | "identity" | "duration"
     default: str          # effective value when unset ("auto-detect" is a valid sentinel)
     description: str
     owner: str            # plugin-relative path of the script that READS this key
@@ -75,6 +75,30 @@ CONFIG_FLAGS = [
             "leaving it in TodoWrite's ephemeral in-session list."
         ),
         owner="scripts/nudge-todowrite-to-tracker.py",
+        file="local",
+    ),
+    ConfigFlag(
+        key="plugin_health_enabled",
+        kind="boolean",
+        default="true",
+        description="Enable the advisory SessionStart plugin asset health check.",
+        owner="scripts/plugin-health-check.py",
+        file="local",
+    ),
+    ConfigFlag(
+        key="plugin_health_ttl",
+        kind="duration",
+        default="15m",
+        description="Machine-global cache lifetime for plugin health probes (positive seconds, or s/m/h/d duration).",
+        owner="scripts/plugin-health-check.py",
+        file="local",
+    ),
+    ConfigFlag(
+        key="plugin_health_assets",
+        kind="list",
+        default="claude-mem",
+        description="Comma-separated plugin assets enabled for health probes (currently claude-mem only).",
+        owner="scripts/plugin-health-check.py",
         file="local",
     ),
     ConfigFlag(
@@ -144,6 +168,9 @@ def _validate(flag: ConfigFlag, value: str) -> bool:
         return value.strip().lower() in {"true", "false"}
     if flag.kind == "enum":
         return value.strip().lower() in flag.choices
+    if flag.kind == "duration":
+        import re
+        return re.fullmatch(r"[1-9][0-9]*(?:[smhd])?", value.strip().lower()) is not None
     if flag.kind in ("list", "identity"):
         return True  # list values are free-form; identity values are never validated here (never written via --set)
     return False
