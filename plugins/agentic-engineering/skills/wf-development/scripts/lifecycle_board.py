@@ -86,12 +86,16 @@ PRIORITY_ORDER = {"p1": 0, "p2": 1, "p3": 2}
 
 # Gate verdicts emitted by evaluate_gate. `route_to_work`/`route_to_plan` are
 # routes, not verdicts; claim_conflict/blocked are claim-only outcomes.
+# `sub_issue` fires when the gated issue is an OPEN native sub-issue: the board
+# tracks the PARENT, so every gate reroutes the child to the parent (carrying
+# `parent: N`) instead of consulting the child's own — noise — board stage.
 VERDICTS = (
     "proceed",
     "already_done",
     "route_to_plan",
     "repair_needed",
     "no_board",
+    "sub_issue",
 )
 # Claim protocol outcomes (verb_claim), disjoint from the gate VERDICTS.
 CLAIM_VERDICTS = ("proceed", "claim_conflict", "blocked")
@@ -652,6 +656,7 @@ query($owner: String!, $repo: String!, $number: Int!) {
     issue(number: $number) {
       number title body updatedAt state stateReason url
       authorAssociation
+      parent { number }
       blockedBy(first: 100) { totalCount nodes { number title url state } }
       assignees(first: 10) { nodes { login } }
       closedByPullRequestsReferences(first: 5) {
@@ -690,6 +695,11 @@ class IssueState:
     closing_prs: "list[dict]"       # {number,state,merged,baseRefName,author}
     open_sub_issues: "list[int]"
     blocked_by_count: int
+    # The native GitHub sub-issue parent (the issue this one is a sub-issue OF).
+    # None for parents and standalone issues. When set on an OPEN issue, every
+    # gate reroutes to the parent — the Project tracks the parent, and the
+    # child's own board stage is noise for routing.
+    parent_number: Optional[int] = None
     url: str = ""
     title: str = ""
     body: str = ""
@@ -727,6 +737,7 @@ def parse_issue_state(data: dict, board: BoardConfig) -> Optional[IssueState]:
         open_sub_issues=[n["number"] for n in issue.get("subIssues", {}).get("nodes", [])
                          if n.get("state") == "OPEN"],
         blocked_by_count=(issue.get("blockedBy") or {}).get("totalCount", 0),
+        parent_number=(issue.get("parent") or {}).get("number"),
         url=issue.get("url", ""),
         title=issue.get("title", ""),
         body=issue.get("body", ""),
@@ -785,22 +796,41 @@ class GateResult:
     reason: str
     stage: Optional[str]
     provenance: str = "trusted"
+    parent: Optional[int] = None    # set only on the `sub_issue` verdict
+    next: Optional[str] = None      # the caller's one remaining action, if any
 
 
 def evaluate_gate(command: str, stage: Optional[str], has_issue: bool,
                   plan_doc: Optional[str], brainstorm_doc: Optional[str],
-                  author_association: str = "OWNER") -> GateResult:
+                  author_association: str = "OWNER",
+                  parent_number: Optional[int] = None,
+                  issue_state: Optional[str] = None) -> GateResult:
     """The idempotent entry-gate decision table.
 
     ``plan_doc`` and ``brainstorm_doc`` remain positional compatibility
     parameters for callers during rollout, but are deliberately non-
     authoritative. Project Status is permission-gated structured state;
     repository files and issue prose never drive lifecycle control flow.
+
+    ``parent_number``/``issue_state`` carry the native sub-issue link. An OPEN
+    sub-issue never earns its own board stage — the Project tracks the parent —
+    so every command reroutes it to the parent (`sub_issue`) before consulting
+    the child's stage. Terminal (CLOSED) sub-issues fall through to the normal
+    already_done paths.
     """
     provenance = "trusted" if author_association in TRUSTED_ASSOCIATIONS else "untrusted"
 
     def gr(verdict: str, route: str, reason: str) -> GateResult:
         return GateResult(verdict=verdict, route=route, reason=reason, stage=stage, provenance=provenance)
+
+    if parent_number is not None and issue_state == "OPEN":
+        return GateResult(
+            verdict="sub_issue", route="parent",
+            reason=f"open sub-issue of #{parent_number} — the board tracks the parent; "
+                   "the child's own stage does not gate",
+            stage=stage, provenance=provenance, parent=parent_number,
+            next=f"run --gate {command} --issue {parent_number}; drive this sub-issue "
+                 "with --sub-status")
 
     if command == "brainstorm":
         if not has_issue or stage in (None, "stub"):
@@ -862,6 +892,7 @@ GROOM_ROUTES = (
     "abandoned",        # off-ramp: report -> STOP
     "blocked",          # cannot groom yet (see `blocker`) -> STOP and surface
     "no_board",         # unconfigured repo (no board): direct to the wf-setup lifecycle bootstrap
+    "sub_issue",        # OPEN native sub-issue: the parent carries the lifecycle -> groom the parent
 )
 
 
@@ -871,17 +902,32 @@ class GroomRoute:
     reason: str
     blocker: Optional[str] = None      # untrusted_provenance | issue_not_found | None
     next: Optional[str] = None         # the model's one remaining decision, if any
+    parent: Optional[int] = None       # set only on the `sub_issue` route
 
 
 def route_for_groom(has_issue: bool, stage: Optional[str], plan_doc: Optional[str],
                     brainstorm_doc: Optional[str], provenance: str,
-                    stale_issue: bool = False) -> GroomRoute:
+                    stale_issue: bool = False,
+                    parent_number: Optional[int] = None,
+                    issue_state: Optional[str] = None) -> GroomRoute:
     """The whole groom Routing Ladder as a pure function. `intake` is the only
     route that hands a decision back to the model (which brainstorm-or-plan to
-    take by clarity); every other route is terminal guidance."""
+    take by clarity); every other route is terminal guidance.
+
+    An OPEN native sub-issue routes to `sub_issue`: the Project tracks the
+    parent, so grooming happens against the parent and the child's own board
+    stage is noise. Terminal (CLOSED) sub-issues fall through to the normal
+    ladder."""
     if stale_issue:
         return GroomRoute("blocked", "selected GitHub issue does not resolve in this repository",
                           blocker="issue_not_found")
+    if parent_number is not None and issue_state == "OPEN":
+        return GroomRoute("sub_issue",
+                          f"open sub-issue of #{parent_number} — the board tracks the parent; "
+                          "groom the parent, not this task unit",
+                          parent=parent_number,
+                          next=f"run --groom-entry --issue {parent_number}; drive this "
+                               "sub-issue with --sub-status")
     if provenance == "untrusted":
         return GroomRoute("blocked",
                           "issue author is outside OWNER/MEMBER/COLLABORATOR — confirm with the user "
@@ -1155,6 +1201,8 @@ def verb_gate(command: str, issue: Optional[int], ctx: RepoContext, runner: GhRu
     has_issue = issue is not None
     plan_doc = brainstorm_doc = None  # pure-function compatibility parameters
     author_association = "OWNER"
+    parent_number = None
+    issue_state = None
     packet_cleanup = None
     if issue is not None:
         state = fetch_issue_state(issue, board, ctx, runner)  # type: ignore[arg-type]
@@ -1167,11 +1215,15 @@ def verb_gate(command: str, issue: Optional[int], ctx: RepoContext, runner: GhRu
                     "issue": issue, "flags": flags}
         stage = state.stage
         author_association = state.author_association
+        parent_number = state.parent_number
+        issue_state = state.state
         packet_cleanup = _cleanup_packet_for_terminal_state(state, ctx)
-    result = evaluate_gate(command, stage, has_issue, plan_doc, brainstorm_doc, author_association)
+    result = evaluate_gate(command, stage, has_issue, plan_doc, brainstorm_doc,
+                           author_association, parent_number, issue_state)
     return {"mode": mode, "verdict": result.verdict, "route": result.route,
             "reason": result.reason, "stage": result.stage, "issue": issue,
             "author_association": author_association, "provenance": result.provenance,
+            "parent": result.parent, "next": result.next,
             "packet_cleanup": packet_cleanup,
             "flags": flags}
 
@@ -1315,6 +1367,8 @@ def verb_groom_entry(issue: Optional[int], ctx: RepoContext, runner: GhRunner) -
     reconcile = verb_reconcile(ctx, runner)  # issue=None => TTL-gated global sweep
     stage = plan_doc = brainstorm_doc = None  # pure-function compatibility parameters
     author_association = "OWNER"
+    parent_number = None
+    issue_state = None
     stale = False
     if issue is not None:
         state = fetch_issue_state(issue, board, ctx, runner)
@@ -1323,11 +1377,14 @@ def verb_groom_entry(issue: Optional[int], ctx: RepoContext, runner: GhRunner) -
         else:
             stage = state.stage
             author_association = state.author_association
+            parent_number = state.parent_number
+            issue_state = state.state
             _cleanup_packet_for_terminal_state(state, ctx)
     provenance = "trusted" if author_association in TRUSTED_ASSOCIATIONS else "untrusted"
-    gr = route_for_groom(issue is not None, stage, plan_doc, brainstorm_doc, provenance, stale)
+    gr = route_for_groom(issue is not None, stage, plan_doc, brainstorm_doc, provenance, stale,
+                         parent_number, issue_state)
     return {"mode": mode, "route": gr.route, "reason": gr.reason, "blocker": gr.blocker,
-            "next": gr.next, "issue": issue, "stage": stage,
+            "next": gr.next, "parent": gr.parent, "issue": issue, "stage": stage,
             "author_association": author_association,
             "provenance": provenance,
             "reconcile": {k: reconcile.get(k) for k in ("skipped_ttl", "repairs_applied",

@@ -1424,6 +1424,89 @@ class SubIssueParsingTest(unittest.TestCase):
         self.assertEqual(st.open_sub_issues, [183, 184])  # unchanged contract
 
 
+def _parented_payload(number=263, parent=265, stage="stub", state="OPEN",
+                      author="OWNER"):
+    """A sub-issue #263 whose native parent link points at the already-planned
+    parent #265, carrying its own (noise) board stage. Reproduces the misroute
+    that #266 fixes: the child's stub stage must NOT drive a groom/plan route."""
+    node = {"number": number, "state": state, "authorAssociation": author,
+            "url": "u", "parent": {"number": parent},
+            "subIssues": {"nodes": []},
+            "projectItems": {"nodes": []}}
+    if stage is not None:
+        node["projectItems"]["nodes"] = [{
+            "id": "item",
+            "project": {"number": 1, "owner": {"login": "o"}},
+            "fieldValueByName": {"name": stage}}]
+    return {"data": {"repository": {"issue": node}}}
+
+
+class ParentAwareSubIssueGateTest(unittest.TestCase):
+    """#266 regression: an OPEN sub-issue with a native parent link must route
+    to the parent (verdict/route `sub_issue` + `parent: N`) from every gate,
+    never to an intake/grooming route driven by the child's own board stage.
+    Reproduces the observed #263 misroute (parent #265, child board stage
+    `stub`) purely from fixture JSON parsed by parse_issue_state."""
+
+    BOARD = lb.BoardConfig(owner="o", number=1, source="committed")
+
+    def _state(self, **kw):
+        return lb.parse_issue_state(_parented_payload(**kw), self.BOARD)
+
+    def test_parent_number_parsed_from_native_link(self) -> None:
+        self.assertEqual(self._state().parent_number, 265)
+
+    def test_standalone_issue_has_no_parent_number(self) -> None:
+        payload = {"data": {"repository": {"issue": {
+            "number": 42, "state": "OPEN", "authorAssociation": "OWNER", "url": "u",
+            "subIssues": {"nodes": []}, "projectItems": {"nodes": []}}}}}
+        self.assertIsNone(lb.parse_issue_state(payload, self.BOARD).parent_number)
+
+    def test_work_gate_reroutes_open_subissue_to_parent(self) -> None:
+        st = self._state(stage="stub")  # the exact #263 shape
+        g = lb.evaluate_gate("work", st.stage, True, None, None,
+                             parent_number=st.parent_number, issue_state=st.state)
+        self.assertEqual(g.verdict, "sub_issue")
+        self.assertEqual(g.parent, 265)
+        self.assertNotEqual(g.verdict, "route_to_plan")  # the reproduced misroute
+
+    def test_every_gate_command_reroutes_open_subissue(self) -> None:
+        st = self._state(stage="stub")
+        for command in ("brainstorm", "plan", "work", "compound", "orchestrate"):
+            with self.subTest(command=command):
+                g = lb.evaluate_gate(command, st.stage, True, None, None,
+                                     parent_number=st.parent_number, issue_state=st.state)
+                self.assertEqual(g.verdict, "sub_issue")
+                self.assertEqual(g.parent, 265)
+                self.assertIsNotNone(g.next)
+
+    def test_groom_entry_reroutes_open_subissue_to_parent(self) -> None:
+        st = self._state(stage="stub")  # the exact #263 shape
+        r = lb.route_for_groom(True, st.stage, None, None, "trusted",
+                               parent_number=st.parent_number, issue_state=st.state)
+        self.assertEqual(r.route, "sub_issue")
+        self.assertEqual(r.parent, 265)
+        self.assertIsNotNone(r.next)
+
+    def test_closed_subissue_keeps_current_behavior(self) -> None:
+        # Terminal (CLOSED) sub-issues do not reroute — only OPEN ones do.
+        st = self._state(stage="stub", state="CLOSED")
+        g = lb.evaluate_gate("work", st.stage, True, None, None,
+                             parent_number=st.parent_number, issue_state=st.state)
+        self.assertNotEqual(g.verdict, "sub_issue")
+
+    def test_parentless_issue_uses_normal_gate(self) -> None:
+        # Regression guard: absent a parent, behavior is unchanged.
+        g = lb.evaluate_gate("work", "stub", True, None, None,
+                             parent_number=None, issue_state="OPEN")
+        self.assertEqual((g.verdict, g.route), ("route_to_plan", "plan"))
+
+    def test_sub_issue_in_verdict_and_route_vocabularies(self) -> None:
+        # Freeze the closed-set contract by category, not by scattering literals.
+        self.assertIn("sub_issue", lb.VERDICTS)
+        self.assertIn("sub_issue", lb.GROOM_ROUTES)
+
+
 def _ctx(root: str, slug=("o", "r")) -> "lb.RepoContext":
     return lb.RepoContext(root=root, main_root=root, origin_owner=slug[0],
                           origin_repo=slug[1], default_branch="main")
