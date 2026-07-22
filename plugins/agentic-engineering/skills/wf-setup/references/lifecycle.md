@@ -79,6 +79,11 @@ The reconciler's closed repair set is:
    them as not planned.
 5. `pr_reopened` — assignee's PR is open while the item is `in_progress` ->
    `in_review`.
+6. `sub_issue_on_board` — an OPEN native sub-issue carries its own board item ->
+   archive (de-board) it. The Project tracks the parent, so a sub-issue's board
+   item is an invariant violation (a human drag, or an async auto-add that beat
+   the de-board). Archiving is reversible (`gh project item-archive --undo`) and
+   hides the item from every view. Terminal (CLOSED) sub-issues are untouched.
 
 Every repair posts a one-line issue comment. Report-only flags surface unsafe
 or ambiguous state without fighting a human's deliberate Project edit.
@@ -102,6 +107,7 @@ the workflow ladder.
 | `already_done` | This stage or a later one is already reached | Stop and follow `route`. |
 | `route_to_plan` | The item is not attested `planned` for work | Stop and hand off to planning. |
 | `repair_needed` | Required Project/issue state is incomplete or inconsistent | Report the structured reason and repair through the owning workflow. |
+| `sub_issue` | The gated issue is an OPEN native sub-issue | Re-gate the parent carried in `parent`; the Project tracks the parent, so the child's own board stage never gates. Drive the sub-issue with `--sub-status`. |
 | `no_board` | The repository is unconfigured (no Project board yet) | Direct the user to this skill's lifecycle bootstrap to configure a board. Work may still proceed without one, but with no lifecycle claims, no Status writes, and no tracker writes. |
 
 `route_to_work` is a route carried by `already_done`, not a verdict.
@@ -167,6 +173,14 @@ an accepted task before the parent PR opens.
 At most one `status:*` label may exist. The owning agent writes it at dispatch,
 hand-back, verification, and blocking boundaries; dispatched sub-agents never
 mutate shared GitHub state.
+
+A sub-issue is never on the Project board — the board tracks the parent. Board
+membership is auto-repaired: `--decompose` and `--groom-verify` best-effort
+de-board (archive) each sub they touch, `--groom-verify` reports any that were
+still boarded as a `warnings` entry (never a failure), and the reconciler's
+rule 6 (`sub_issue_on_board`) is the convergence guarantee for any item a later
+asynchronous auto-add lands on an open sub. No workflow step must hard-fail on a
+still-boarded sub; the reconciler catches up at the next gate touch.
 
 ## Generated work packet
 

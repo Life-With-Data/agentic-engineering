@@ -25,6 +25,9 @@ Branch only on its closed verdicts:
   `planned` or later Status already owns the handoff). Never regress it.
 - `repair_needed` — STOP and report the missing/stale issue identity; repair
   that identity before planning.
+- `sub_issue` — the issue is an OPEN native sub-issue (`parent: N`). STOP and
+  plan the parent instead; the Project tracks the parent, so the child's own
+  board stage never gates. Drive the sub-issue with `--sub-status`.
 - `no_board` — the repository is unconfigured (no Project board yet). Direct
   the user to the `wf-setup` lifecycle bootstrap first; if planning continues
   without one, make no lifecycle claims and no tracker writes.
