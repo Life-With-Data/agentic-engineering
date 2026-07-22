@@ -132,8 +132,7 @@ vocabulary exactly — use these spellings):
 | `high`       | Cross-cutting, ambiguous, or high-blast-radius; needs strong synthesis and verification. |
 
 The engine applies the sub-issue's own tier to each dispatch unit and rolls the
-parent's label up to the **highest child tier** (or, for a single-task item with
-empty `sub_issues`, the parent's own value).
+parent's label up to the **highest child tier**.
 
 In Project mode, after a successful GitHub update, run:
 
