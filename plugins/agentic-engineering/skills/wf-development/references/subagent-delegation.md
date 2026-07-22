@@ -73,7 +73,8 @@ Every brief is self-contained and includes:
 2. **Context** — relevant files, patterns to mirror, conventions to match.
 3. **Exit checks** — the acceptance criteria and quality gates that must pass.
 4. **Exclusions** — no tracker/board/PR writes, no scope growth, no
-   speculative extras.
+   speculative extras, no adopting the orchestrator role: the recipient must
+   not load workflow routers to re-route its unit or delegate further.
 5. **Report format** — files touched, criterion-by-criterion evidence, exact
    gate results, assumptions made, and blockers stated explicitly.
 

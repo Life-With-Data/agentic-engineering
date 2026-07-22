@@ -165,7 +165,7 @@ When `verdict == no_board`, the repo has no configured Projects board — lifecy
 
 | Model | Use when | How it runs |
 |-------|----------|-------------|
-| **Orchestrated** (default, [section](#orchestrated-execution-board-driven)) | Any work the host can delegate to subagents — one tracked sub-issue or many | You own the board/sub-issue state and drive one subagent per sub-issue, looping each to a terminal state before returning. You validate; subagents implement. |
+| **Orchestrated** (default, [section](#orchestrated-execution-board-driven)) | Any work the host can delegate to subagents — one tracked sub-issue or many | You own the board/sub-issue state and drive one subagent per sub-issue, looping each to a terminal state before returning. |
 | **Inline** (fallback, below) | The host has no subagent mechanism, or the change is a trivial single edit | You implement each sub-issue directly in this session, closing each as its criteria pass. |
 | **Swarm** ([section](#swarm-mode-optional)) | 5+ independent workstreams needing maximum parallelism | Long-lived teammates self-claim from a shared queue. |
 
@@ -563,6 +563,9 @@ DO:
 2. Implement the acceptance criteria — nothing more.
 3. Run the repository's mapped quality gates. They must be clean.
 4. Do NOT touch shared tracker state — the orchestrator owns it.
+5. You are the worker for this sub-issue, not an orchestrator: do NOT load
+   workflow routers to re-route this work, and do NOT delegate to further
+   sub-agents.
 
 REPORT BACK (your final message = structured result, not prose to a human):
 - Files created/modified (absolute paths)
@@ -705,6 +708,10 @@ Before creating PR, verify:
 - [ ] PR description includes Compound Engineered badge
 
 ## When to Use Reviewer Agents
+
+This section governs optional in-loop review *during implementation* — it is
+distinct from the mandated downstream `wf-review` stage, which always runs and
+dispatches its own reviewer sub-agents per selected lens.
 
 **Don't use by default.** Use reviewer agents only when:
 

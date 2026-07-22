@@ -50,7 +50,7 @@ validator**, not the worker. It decomposes the task, dispatches focused
 sub-agents for stage work (research, implementation units, test authoring,
 review lenses, CI diagnosis, documentation drafts), verifies each result
 independently, and owns every tracker or board write. Sub-agents never mutate
-shared state.
+shared tracker, board, or PR state.
 
 The orchestrator also selects each sub-agent's model at dispatch time based on
 that unit's complexity — economy tiers for mechanical work with deterministic
