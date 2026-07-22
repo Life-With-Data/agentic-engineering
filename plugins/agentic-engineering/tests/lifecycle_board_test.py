@@ -465,7 +465,7 @@ class CallBudgetTest(unittest.TestCase):
         items = [{"content": {"type": "Issue", "number": i, "repository": "o/r", "title": f"i{i}"}}
                  for i in range(1, 41)]
         blocked_body = {"data": {"repository": {
-            f"i{i}": {"blockedBy": {"totalCount": 1 if i % 2 else 0}} for i in range(1, 41)}}}
+            f"i{i}": {"blockedBy": {"nodes": [{"state": "OPEN" if i % 2 else "CLOSED"}]}} for i in range(1, 41)}}}
         runner = FakeRunner([
             (["project", "item-list", "1", "--owner", "o"], _ok(json.dumps({"items": items}))),
             (["api", "graphql"], _ok(json.dumps(blocked_body))),
@@ -494,23 +494,24 @@ class CallBudgetTest(unittest.TestCase):
 
 def _issue_query_response(*, number=5, assignees=(), stage="planned", blocked=0,
                           item_id="item5", url="u", open_subs=(), parent=None):
-    """Build an ISSUE_QUERY graphql response with the dict-shaped blockedBy the
-    new parser reads (blockedBy(first:1){totalCount}). `parent` is an int parent
-    issue number (None => no parent node, i.e. a top-level item)."""
+    """Build an ISSUE_QUERY response with bounded blocker node states.
+
+    `parent` is an int parent issue number; None leaves the issue top-level.
+    """
     issue = {
         "number": number, "state": "OPEN", "stateReason": None, "url": url,
         "authorAssociation": "OWNER",
-        "blockedBy": {"totalCount": blocked},
+        "blockedBy": {"nodes": [{"state": "OPEN"} for _ in range(blocked)]},
         "assignees": {"nodes": [{"login": a} for a in assignees]},
         "closedByPullRequestsReferences": {"nodes": []},
         "subIssues": {"nodes": [{"number": n, "state": "OPEN"} for n in open_subs]},
         "projectItems": {"nodes": [{"id": item_id,
             "project": {"id": "P", "number": 1, "owner": {"login": "acme"}},
-            "fieldValueByName": {"name": stage}}]}}
+            "fieldValueByName": {"name": stage}}]},
+    }
     if parent is not None:
         issue["parent"] = {"number": parent}
     return {"data": {"repository": {"issue": issue}}}
-
 
 class SetStatusGateTest(unittest.TestCase):
     """The in_review seam gate: verb_set_status refuses to advance a parent to
@@ -582,7 +583,7 @@ class SetStatusGateTest(unittest.TestCase):
 
 class ClaimVerbTest(unittest.TestCase):
     """End-to-end verb_claim over a FakeRunner: win, two-winner conflict, and
-    blocked-refusal. blockedBy rides the new dict-with-totalCount shape."""
+    blocked-refusal. blockedBy rides the bounded node-state shape."""
 
     def setUp(self) -> None:
         import tempfile
@@ -1566,17 +1567,16 @@ class FixtureReplayTest(unittest.TestCase):
             self.assertIn(stage, options, f"{stage} not resolvable from recorded field-list")
         self.assertIsNotNone(priority)  # Priority field is present in the recording
 
-    def test_issue_list_deps_blocked_by_is_dict_with_total_count(self) -> None:
-        # The new parser reads blockedBy as {nodes, totalCount}; assert the
-        # recorded shape matches (a plain-list re-record would break here).
+    def test_issue_list_deps_blocked_by_has_bounded_node_states(self) -> None:
+        # Lifecycle reads blocker node states, never totalCount: this pins the
+        # fixture shape a re-record must preserve.
         items = self._load("issue_list_deps.json")
         self.assertIsInstance(items, list)
         for item in items:
-            self.assertIn("blockedBy", item)
             self.assertIsInstance(item["blockedBy"], dict)
-            self.assertIn("totalCount", item["blockedBy"])
-            self.assertEqual((item["blockedBy"] or {}).get("totalCount", 0),
-                             item["blockedBy"]["totalCount"])
+            self.assertIsInstance(item["blockedBy"].get("nodes"), list)
+            for node in item["blockedBy"]["nodes"]:
+                self.assertIn(node.get("state"), {"OPEN", "CLOSED"})
 
     def test_issue_view_closed_has_keys_engine_switches_on(self) -> None:
         data = self._load("issue_view_closed.json")
@@ -1727,9 +1727,9 @@ class SubIssueParsingTest(unittest.TestCase):
         payload = {"data": {"repository": {"issue": {
             "number": 182, "state": "OPEN", "authorAssociation": "MEMBER", "url": "u",
             "subIssues": {"nodes": [
-                {"number": 183, "state": "OPEN", "blockedBy": {"totalCount": 0}},
-                {"number": 184, "state": "OPEN", "blockedBy": {"totalCount": 1}},
-                {"number": 185, "state": "CLOSED", "blockedBy": {"totalCount": 1}}]},
+                {"number": 183, "state": "OPEN", "blockedBy": {"nodes": []}},
+                {"number": 184, "state": "OPEN", "blockedBy": {"nodes": [{"state": "OPEN"}]}},
+                {"number": 185, "state": "CLOSED", "blockedBy": {"nodes": [{"state": "OPEN"}]}}]},
             "projectItems": {"nodes": []}}}}}
         st = lb.parse_issue_state(payload, lb.BoardConfig(owner="o", number=1, source="committed"))
         self.assertEqual(len(st.all_sub_issues), 3)  # closed ones counted too
@@ -1851,6 +1851,44 @@ class ParentAwareSubIssueGateTest(unittest.TestCase):
         self.assertEqual(r.route, "sub_issue")
         self.assertEqual(r.parent, 265)
         self.assertIsNone(r.blocker)
+
+
+class BlockerStateRegressionTest(unittest.TestCase):
+    """Closed dependencies are satisfied; only OPEN ones gate lifecycle work."""
+
+    def test_parser_and_ready_work_count_only_open_blockers(self) -> None:
+        board = lb.BoardConfig(owner="o", number=1, source="committed")
+        closed = _issue_query_response(number=11, blocked=0)
+        closed["data"]["repository"]["issue"]["blockedBy"] = {"nodes": [
+            {"number": 10, "state": "CLOSED"}
+        ]}
+        open_blocker = _issue_query_response(number=12, blocked=1)
+        self.assertEqual(lb.parse_issue_state(closed, board).blocked_by_count, 0)
+        self.assertEqual(lb.decide_claim(["me"], "me",
+                         lb.parse_issue_state(closed, board).blocked_by_count).action, "proceed")
+        self.assertEqual(lb.parse_issue_state(open_blocker, board).blocked_by_count, 1)
+        self.assertEqual(lb.decide_claim(["me"], "me",
+                         lb.parse_issue_state(open_blocker, board).blocked_by_count).action, "blocked")
+
+        ctx = lb.RepoContext(root=".", main_root=".", origin_owner="o",
+                             origin_repo="r", default_branch="main")
+        payload = {"data": {"repository": {
+            "i11": {"blockedBy": {"nodes": [{"state": "CLOSED"}]}},
+            "i12": {"blockedBy": {"nodes": [{"state": "OPEN"}]}},
+        }}}
+        runner = FakeRunner([(["api", "graphql"], _ok(json.dumps(payload)))])
+        counts = lb._batched_blocked_counts([11, 12], ctx, runner)
+        items = [
+            {"content": {"type": "Issue", "number": 11, "repository": "o/r", "title": "closed"}},
+            {"content": {"type": "Issue", "number": 12, "repository": "o/r", "title": "open"}},
+        ]
+        ready, truncated = lb.merge_ready_legs(items, counts, "o/r")
+        self.assertEqual(counts, {11: 0, 12: 1})
+        self.assertEqual([item.number for item in ready], [11])
+        self.assertFalse(truncated)
+        query = runner.calls[0][runner.calls[0].index("-f") + 1]
+        self.assertIn("nodes { state }", query)
+        self.assertNotIn("totalCount", query)
 
 
 def _ctx(root: str, slug=("o", "r")) -> "lb.RepoContext":
@@ -2345,9 +2383,9 @@ class GroomVerifyVerbTest(unittest.TestCase):
             root = Path(d)
             self._write_plan(root)
             out = self._run(root, "planned", [
-                {"number": 183, "state": "OPEN", "blockedBy": {"totalCount": 0}},
-                {"number": 184, "state": "OPEN", "blockedBy": {"totalCount": 1}},
-                {"number": 185, "state": "OPEN", "blockedBy": {"totalCount": 1}}])
+                {"number": 183, "state": "OPEN", "blockedBy": {"nodes": []}},
+                {"number": 184, "state": "OPEN", "blockedBy": {"nodes": [{"state": "OPEN"}]}},
+                {"number": 185, "state": "OPEN", "blockedBy": {"nodes": [{"state": "OPEN"}]}}])
             self.assertTrue(out["groomed"])
             self.assertEqual(out["sub_issue_count"], 3)
             self.assertEqual(out["sub_issues_with_dependencies"], 2)
@@ -2430,12 +2468,12 @@ class PacketVerbTest(unittest.TestCase):
             "updatedAt": "2026-07-20T12:00:00Z", "state": state,
             "stateReason": "COMPLETED" if state == "CLOSED" else None,
             "url": "https://github.com/o/r/issues/182", "authorAssociation": "MEMBER",
-            "blockedBy": {"totalCount": 1, "nodes": [{"number": 9, "title": "Foundation",
+            "blockedBy": {"nodes": [{"number": 9, "title": "Foundation",
                 "url": "https://github.com/o/r/issues/9", "state": "OPEN"}]},
             "assignees": {"nodes": []}, "closedByPullRequestsReferences": {"nodes": []},
             "subIssues": {"nodes": [{"number": 183, "title": "Child", "body": "Child body",
                 "url": "https://github.com/o/r/issues/183", "state": "OPEN",
-                "blockedBy": {"totalCount": 1, "nodes": [{"number": 9,
+                "blockedBy": {"nodes": [{"number": 9,
                     "title": "Foundation", "url": "https://github.com/o/r/issues/9",
                     "state": "OPEN"}]}}]},
             "projectItems": {"nodes": [{"id": "IT_1",
