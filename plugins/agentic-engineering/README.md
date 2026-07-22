@@ -6,7 +6,7 @@ Workflow-guided development tools that get smarter with every use. Make each uni
 
 | Component | Count |
 |-----------|-------|
-| Agents | 31 |
+| Agents | 32 |
 | Skills | 7 |
 | MCP Servers | 1 |
 
@@ -48,11 +48,12 @@ Agents are organized into categories for easier discovery.
 | `learnings-researcher` | Search institutional learnings for relevant past solutions |
 | `repo-research-analyst` | Research repository structure and conventions |
 
-### Design (3)
+### Design (4)
 
 | Agent | Description |
 |-------|-------------|
 | `design-implementation-reviewer` | Verify UI implementations match Figma designs |
+| `design-inspiration-researcher` | Research design inspiration for greenfield UI surfaces during grooming |
 | `design-iterator` | Iteratively refine UI through systematic design iterations |
 | `figma-design-sync` | Synchronize web implementations with Figma designs |
 

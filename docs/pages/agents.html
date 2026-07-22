@@ -50,7 +50,7 @@
             <li><a href="#review-agents">Review (17)</a></li>
             <li><a href="#research-agents">Research (5)</a></li>
             <li><a href="#workflow-agents">Workflow (5)</a></li>
-            <li><a href="#design-agents">Design (3)</a></li>
+            <li><a href="#design-agents">Design (4)</a></li>
             <li><a href="#docs-agents">Docs (1)</a></li>
           </ul>
         </div>
@@ -376,7 +376,7 @@ claude agent security-sentinel "Audit the payment flow"</code></pre>
         </section>
 
         <section id="design-agents">
-          <h2><i class="fa-solid fa-palette"></i> Design Agents (3)</h2>
+          <h2><i class="fa-solid fa-palette"></i> Design Agents (4)</h2>
           <div class="agent-detail" id="design-implementation-reviewer">
             <div class="agent-detail-header">
               <h3>design-implementation-reviewer</h3>
@@ -385,6 +385,16 @@ claude agent security-sentinel "Audit the payment flow"</code></pre>
             <p class="agent-detail-description">Visually compares live UI implementation against Figma designs and provides detailed feedback on discrepancies. Use after writing or modifying HTML/CSS/React components to verify design fidelity.</p>
             <div class="card-code-block">
               <pre><code>claude agent design-implementation-reviewer "..."</code></pre>
+            </div>
+          </div>
+          <div class="agent-detail" id="design-inspiration-researcher">
+            <div class="agent-detail-header">
+              <h3>design-inspiration-researcher</h3>
+              <span class="agent-badge">Design</span>
+            </div>
+            <p class="agent-detail-description">Researches design inspiration for greenfield UI surfaces during grooming and returns a short, linked inspiration digest ready to embed in an issue body. Use when grooming a new screen or flow that does not exist yet and needs visual direction before implementation.</p>
+            <div class="card-code-block">
+              <pre><code>claude agent design-inspiration-researcher "..."</code></pre>
             </div>
           </div>
           <div class="agent-detail" id="design-iterator">
