@@ -1,7 +1,7 @@
 {
   "name": "agentic-engineering",
-  "version": "5.1.0",
-  "description": "AI-powered development tools. 31 agents, 7 workflow skills, 1 MCP server for code review, research, design, and workflow automation.",
+  "version": "5.2.0",
+  "description": "AI-powered development tools. 32 agents, 7 workflow skills, 1 MCP server for code review, research, design, and workflow automation.",
   "author": {
     "name": "Anthony Agnone",
     "url": "https://github.com/aagnone3"
@@ -122,6 +122,10 @@
           {
             "type": "command",
             "command": "python3 ${CLAUDE_PLUGIN_ROOT}/scripts/worktree-session.py"
+          },
+          {
+            "type": "command",
+            "command": "python3 ${CLAUDE_PLUGIN_ROOT}/scripts/plugin-health-check.py"
           }
         ]
       }

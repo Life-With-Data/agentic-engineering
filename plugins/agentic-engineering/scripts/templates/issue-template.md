@@ -20,6 +20,18 @@ the outcome when it ships. Lead with the "what" and the "why now", not the "how"
 The concrete pain, gap, or opportunity. Who is affected and how you know it
 matters (metric, bug report, user quote, failing scenario).
 
+## Visual Context
+
+<!--
+Include for work with a UI/design aspect; otherwise write "No visual context:
+no UI/design aspect." under this heading (per the deletion rule above).
+Externally hosted references (catalog links, Figma frames, hosted screen images)
+embed as markdown images/links. Locally captured current-state screenshots attach
+via the repository's mapped screenshot/attachment mechanism; when no such
+mechanism exists, record the links/paths here and note the gap. Cover inspiration
+references, relevant current-state visuals, and any potential future-state visuals.
+-->
+
 ## Proposed Solution
 
 The high-level approach. Enough for a reviewer to agree with the direction

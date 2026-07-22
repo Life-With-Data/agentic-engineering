@@ -51,6 +51,14 @@ Use these levels:
 Deduplicate findings by root cause. Do not elevate style preferences into
 blocking findings without repository evidence.
 
+For a UI-affecting change, absent visual evidence is itself a reviewable
+finding: request the evidence rather than passing silently. Raise it at P3 as a
+"request before/after or expected-state screenshots" finding, and escalate when
+the acceptance criteria demand visual proof — to P2 when a criterion is not
+verifiable without it, or P1 when it materially under-delivers required
+behavior. This applies only to changes that touch a user-visible surface; do not
+raise it against non-UI changes.
+
 ## Record and resolve
 
 Record findings through the repository's configured tracker or review system.
