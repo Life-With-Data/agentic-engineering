@@ -392,17 +392,26 @@ refresh_base() {
 #
 #   patch          `git cherry <base> <branch>` lists >=1 commit and none is
 #                  marked '+': every branch commit's patch is present in the
-#                  base under a different sha. Squash/rebase merges. Unambiguous.
+#                  base under a different sha. Single-commit squash and rebase
+#                  merges. Unambiguous.
+#   squash         the branch's WHOLE diff (merge-base..branch, combined) has a
+#                  patch-id equal to that of one of the base's recent non-merge
+#                  commits. A GitHub squash of a MULTI-commit branch lands as one
+#                  commit whose patch equals the combined diff, not any single
+#                  branch commit's — so `git cherry` marks every commit '+' and
+#                  the squash also discards branch history (the tip is NOT an
+#                  ancestor of the base). This is the only evidence tier for that
+#                  extremely common shape. Unambiguous.
 #   merge-commit   the branch tip is a NON-first parent of a merge commit
 #                  reachable from the base (bounded scan of the base's last 500
 #                  merges). GitHub's default "Merge pull request" button, where
 #                  `base..branch` is empty and `git cherry` says nothing.
 #                  Unambiguous.
 #   ancestor-only  `git merge-base --is-ancestor <branch> <base>` holds but
-#                  neither of the above matched: EITHER a fast-forward merge OR
-#                  a brand-new branch with no commits yet. Ambiguous — callers
-#                  must apply a minimum-age (grace) gate before destroying
-#                  anything on this tier alone.
+#                  neither merge-commit nor patch matched: EITHER a fast-forward
+#                  merge OR a brand-new branch with no commits yet. Ambiguous —
+#                  callers must apply a minimum-age (grace) gate before
+#                  destroying anything on this tier alone.
 #   none           anything else (unique unmerged commits, bad refs, git
 #                  errors). Conservative: not merged.
 #
@@ -414,29 +423,50 @@ branch_merge_tier() {
     printf 'patch\n'
     return 0
   fi
-  if ! git -C "$GIT_ROOT" merge-base --is-ancestor "$br" "$base" 2>/dev/null; then
-    printf 'none\n'
+  # A merged branch reachable from the base (its history preserved): merge-commit
+  # button or fast-forward/fresh. A SQUASH-merged branch is NOT reachable (the
+  # squash rewrote history), so it falls to the squash-detection block below.
+  if git -C "$GIT_ROOT" merge-base --is-ancestor "$br" "$base" 2>/dev/null; then
+    local tip; tip=$(git -C "$GIT_ROOT" rev-parse --verify -q "$br^{commit}" 2>/dev/null || true)
+    if [ -n "$tip" ]; then
+      # Bounded merge-record scan: for each of the base's most recent 500 merge
+      # commits, `%P` prints the parent shas space-separated with the mainline
+      # first; the tip being among the NON-first parents means this branch is the
+      # merged-in side of a real merge commit.
+      local parents rest
+      while IFS= read -r parents; do
+        rest="${parents#* }"                   # drop the first (mainline) parent
+        case " $rest " in
+          *" $tip "*) printf 'merge-commit\n'; return 0 ;;
+        esac
+      done < <(git -C "$GIT_ROOT" log --merges -n 500 --format='%P' "$base" 2>/dev/null)
+    fi
+    printf 'ancestor-only\n'
     return 0
   fi
-  local tip; tip=$(git -C "$GIT_ROOT" rev-parse --verify -q "$br^{commit}" 2>/dev/null || true)
-  if [ -n "$tip" ]; then
-    # Bounded merge-record scan: for each of the base's most recent 500 merge
-    # commits, `%P` prints the parent shas space-separated with the mainline
-    # first; the tip being among the NON-first parents means this branch is the
-    # merged-in side of a real merge commit.
-    local parents rest
-    while IFS= read -r parents; do
-      rest="${parents#* }"                     # drop the first (mainline) parent
-      case " $rest " in
-        *" $tip "*) printf 'merge-commit\n'; return 0 ;;
-      esac
-    done < <(git -C "$GIT_ROOT" log --merges -n 500 --format='%P' "$base" 2>/dev/null)
+  # Not an ancestor of the base and no per-commit patch match: the branch is
+  # either genuinely unmerged OR was squash-merged into a single commit whose
+  # patch-id equals the branch's COMBINED diff. Compare that whole-branch
+  # patch-id against the base's recent non-merge commits (bounded to 500) in a
+  # single `git log -p | git patch-id` pipe — two processes, not one per commit.
+  local mb; mb=$(git -C "$GIT_ROOT" merge-base "$base" "$br" 2>/dev/null || true)
+  if [ -n "$mb" ]; then
+    local branch_pid
+    branch_pid=$(git -C "$GIT_ROOT" diff "$mb".."$br" 2>/dev/null \
+                 | git -C "$GIT_ROOT" patch-id --stable 2>/dev/null | awk '{print $1}')
+    # A non-empty combined diff yields a patch-id; an empty one (no unique
+    # content vs the merge base) does not — nothing to match, so skip.
+    if [ -n "$branch_pid" ] && git -C "$GIT_ROOT" log -p --no-merges -n 500 "$base" 2>/dev/null \
+         | git -C "$GIT_ROOT" patch-id --stable 2>/dev/null | grep -q "^$branch_pid "; then
+      printf 'squash\n'
+      return 0
+    fi
   fi
-  printf 'ancestor-only\n'
+  printf 'none\n'
   return 0
 }
 
-# True when there is ANY merge evidence (patch, merge-commit, or ancestor-only).
+# True when there is ANY merge evidence (patch, squash, merge-commit, or ancestor-only).
 # On its own, ancestor-only also matches a fresh branch — so only gate
 # destruction on this when paired with independent evidence (e.g. sync's
 # [gone]-upstream pruning) or an age gate.
@@ -488,7 +518,7 @@ reap_merged_worktrees() {
       continue
     fi
 
-    # Effective idle window: unambiguous merge evidence (patch/merge-commit)
+    # Effective idle window: unambiguous merge evidence (patch/squash/merge-commit)
     # uses <grace>; ancestor-only cannot be told apart from a freshly created
     # worktree, so it must wait out <ancestor_grace> of inactivity first.
     local eff_grace="$grace"
@@ -645,13 +675,13 @@ finish_worktree() {
   fi
 
   # Tiered merge check (see branch_merge_tier): unambiguous evidence
-  # (patch/merge-commit) proceeds; ancestor-only is indistinguishable from a
-  # brand-new branch, so it is refused without --force rather than silently
-  # destroying what may be someone's freshly created worktree.
+  # (patch/squash/merge-commit) proceeds; ancestor-only is indistinguishable
+  # from a brand-new branch, so it is refused without --force rather than
+  # silently destroying what may be someone's freshly created worktree.
   if [[ "$force" -eq 0 ]]; then
     local tier; tier=$(branch_merge_tier "$base" "$br")
     case "$tier" in
-      patch|merge-commit) ;;
+      patch|squash|merge-commit) ;;
       ancestor-only)
         echo -e "${RED}Error: branch $br has no unique commits and no merge record in $base — indistinguishable from a fresh branch. If it truly landed via fast-forward, re-run with --force.${NC}"
         exit 1
@@ -695,8 +725,8 @@ finish_worktree() {
 # Post-merge sweep — the one-liner to run after a PR merges in the browser.
 # Fetches with --prune (tolerates offline), then reaps merged worktrees in BOTH
 # managed roots (.worktrees/ AND .claude/worktrees/):
-#   - tiers patch/merge-commit (unambiguous merge evidence): ZERO grace — an
-#     explicit invocation is explicit intent, so the idle gate is skipped while
+#   - tiers patch/squash/merge-commit (unambiguous merge evidence): ZERO grace —
+#     an explicit invocation is explicit intent, so the idle gate is skipped while
 #     every other safety gate (clean tree, not the current worktree) still holds
 #   - tier ancestor-only (fast-forward OR fresh — git cannot tell): reaped only
 #     after WORKTREE_GC_GRACE_MIN minutes (default 30) of inactivity, so a
@@ -828,8 +858,10 @@ Commands:
   finish <name-or-path> [base] [--force]
                                       Tear down ONE worktree you are done with: verify its
                                       branch landed in base with unambiguous evidence (git
-                                      cherry patch-equivalence for squash/rebase merges, or a
-                                      merge-commit record for GitHub's default merge button),
+                                      cherry patch-equivalence for single-commit squash/rebase
+                                      merges, a whole-branch patch-id match for multi-commit
+                                      squash merges, or a merge-commit record for GitHub's
+                                      default merge button),
                                       remove the worktree, delete the local branch, and leave
                                       the primary tree on an updated base. A branch with no
                                       unique commits and no merge record (fast-forwarded OR
@@ -840,7 +872,8 @@ Commands:
                                       --force discards uncommitted/unmerged work.
   sync [base-branch]                  Post-merge sweep: fetch --prune, then reap merged
                                       worktrees in .worktrees/ AND .claude/worktrees/ —
-                                      squash/rebase- and merge-commit-merged trees immediately
+                                      squash- (single- and multi-commit), rebase- and
+                                      merge-commit-merged trees immediately
                                       (zero grace); trees indistinguishable from fresh
                                       (fast-forward or no commits) only after
                                       WORKTREE_GC_GRACE_MIN minutes (default 30) of
@@ -851,7 +884,11 @@ Commands:
 
 Merge-evidence tiers (used by gc/finish/sync):
   patch          git cherry shows every branch commit's patch already in base
-                 (squash/rebase merges) — unambiguous
+                 (single-commit squash / rebase merges) — unambiguous
+  squash         the branch's WHOLE diff (merge-base..branch) has the patch-id
+                 of one of base's recent non-merge commits: a GitHub squash of a
+                 MULTI-commit branch, which git cherry misses and whose history
+                 the squash discarded — unambiguous
   merge-commit   the branch tip is recorded as the merged-in parent of a merge
                  commit reachable from base — unambiguous
   ancestor-only  the tip is an ancestor of base with no unique commits and no
@@ -885,8 +922,8 @@ Cleanup commands compared (all cover BOTH roots — .worktrees/ and .claude/work
              orphaned local branch. Skips with WORKTREE_GC=0. Safe to wire into a git
              post-merge hook or run at the end of a parallel/swarm agentic session.
   - finish:  explicit single-target teardown requiring unambiguous merge evidence
-             (patch or merge-commit tier; ancestor-only refuses without --force); runs
-             teardown from the primary tree and leaves the primary tree on an updated base.
+             (patch, squash, or merge-commit tier; ancestor-only refuses without --force);
+             runs teardown from the primary tree and leaves the primary tree on an updated base.
   - sync:    gc with zero grace for unambiguously merged trees, WORKTREE_GC_GRACE_MIN grace
              for ancestor-only (fast-forward-or-fresh) trees — plus deletion of leftover
              merged local branches whose upstream is gone. The post-merge one-liner.
