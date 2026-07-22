@@ -7,16 +7,21 @@ subprocess ``git`` and drive the script end-to-end. Each fixture uses a bare
 file:// "origin" plus a "browser" clone that merges branches into main and
 deletes the remote branch — the browser-merge shape whose local leftovers
 `finish` and `sync` exist to clean up. Merge detection is TIERED by evidence
-strength: squash merges (new sha) are tier "patch" via `git cherry`
-patch-equivalence; merge commits (GitHub's default button — empty
-`base..branch` range) are tier "merge-commit" via the merge-record scan;
-fast-forward merges and brand-new commit-less branches are both tier
-"ancestor-only" — genuinely indistinguishable in git, so that tier is gated
-by the WORKTREE_GC_GRACE_MIN idle window (default 30m). Pinned invariants:
+strength: single-commit squash/rebase merges (new sha) are tier "patch" via
+`git cherry` patch-equivalence; a MULTI-commit branch squash-merged into one
+commit is tier "squash" via a whole-branch patch-id match (issue #257 — `git
+cherry` misses it and the squash discards history); merge commits (GitHub's
+default button — empty `base..branch` range) are tier "merge-commit" via the
+merge-record scan; fast-forward merges and brand-new commit-less branches are
+both tier "ancestor-only" — genuinely indistinguishable in git, so that tier is
+gated by the WORKTREE_GC_GRACE_MIN idle window (default 30m). Pinned invariants:
 
-  - `finish` on an unambiguously merged branch (squash or merge-commit)
-    removes the worktree, deletes the branch, and leaves the primary tree
-    fast-forwarded on base, all without --force,
+  - `finish` on an unambiguously merged branch (single-commit squash,
+    multi-commit squash, or merge-commit) removes the worktree, deletes the
+    branch, and leaves the primary tree fast-forwarded on base, without --force,
+  - `sync` reaps a MULTI-commit squash-merged worktree immediately (tier
+    "squash", zero grace) — the exact PR #255 shape that was skipped as "not
+    fully merged" — including when base advanced since the branch point,
   - `finish` refuses an unmerged branch without --force and obeys --force,
   - `finish` refuses an ancestor-only branch (fast-forwarded OR fresh — it
     cannot tell which) without --force, with a message saying so,
@@ -135,6 +140,39 @@ class WorktreeManagerTest(unittest.TestCase):
             _git(wt, "push", "-qu", "origin", branch)
         return wt
 
+    def _add_multi_commit_worktree(self, rel, branch, ncommits=2, push=True):
+        """Linked worktree whose branch carries >1 pushed commits — the PR #255
+        shape that a GitHub squash merge collapses into ONE commit. `git cherry`
+        never matches the collapsed commit against any individual branch commit,
+        and the squash discards branch history, so only the whole-branch
+        patch-id tier detects it."""
+        wt = self.primary / rel
+        wt.parent.mkdir(parents=True, exist_ok=True)
+        _git(self.primary, "worktree", "add", "-q", "-b", branch, str(wt), "main")
+        stem = branch.replace("/", "-")
+        for i in range(ncommits):
+            fname = f"{stem}-{i}.txt"
+            (wt / fname).write_text(f"work {i}\n")
+            _git(wt, "add", fname)
+            _git(wt, "commit", "-qm", f"{branch} commit {i + 1}/{ncommits}")
+        if push:
+            _git(wt, "push", "-qu", "origin", branch)
+        return wt
+
+    def _advance_base(self, msg="unrelated main commit"):
+        """Land an UNRELATED commit on origin/main via a throwaway clone, so a
+        subsequent squash merge happens against a base that moved since the
+        branch point (issue #257 scenario B). Touches a distinct file, so it
+        never collides with the branch's diff."""
+        mover = self.tmp / ("mover-" + msg.replace(" ", "-"))
+        _git(self.tmp, "clone", "-q", str(self.origin), str(mover))
+        _git(mover, "config", "user.email", "m@m")
+        _git(mover, "config", "user.name", "m")
+        (mover / "unrelated.txt").write_text("unrelated\n")
+        _git(mover, "add", "unrelated.txt")
+        _git(mover, "commit", "-qm", msg)
+        _git(mover, "push", "-q", "origin", "main")
+
     def _browser_squash_merge(self, branch, delete_remote=True):
         """Simulate merging the PR in the browser: a separate clone
         squash-merges <branch> into main (new sha), pushes, and deletes the
@@ -197,6 +235,58 @@ class WorktreeManagerTest(unittest.TestCase):
         # `git pull --ff-only` brought the squash commit into the primary tree.
         subject = _git(self.primary, "log", "-1", "--format=%s").stdout.strip()
         self.assertEqual(subject, "squash feat/login")
+
+    def test_finish_accepts_multi_commit_squash_without_force(self):
+        """Issue #257: a branch with >1 commits squash-merged into ONE commit is
+        tier `squash` — `git cherry` marks every commit '+' (no single patch-id
+        matches the collapsed diff) and the squash discards branch history, so
+        the whole-branch patch-id is the only evidence. finish must accept it
+        without --force, exactly as it does a single-commit squash."""
+        self._make_repo()
+        wt = self._add_multi_commit_worktree(".worktrees/multi", "feat/multi", ncommits=2)
+        self._browser_squash_merge("feat/multi")
+        r = self._run(self.primary, "finish", "multi")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertFalse(wt.exists())
+        self.assertNotIn("feat/multi", self._branches())
+        # The squash commit was fast-forwarded into the primary tree.
+        subject = _git(self.primary, "log", "-1", "--format=%s").stdout.strip()
+        self.assertEqual(subject, "squash feat/multi")
+
+    def test_sync_reaps_multi_commit_squash_and_keeps_unmerged(self):
+        """The exact PR #255 failure: `bun run worktrees:sync` skipped a
+        multi-commit squash-merged worktree as "not fully merged". With the
+        whole-branch patch-id tier it is reaped immediately (zero grace), while a
+        genuinely unmerged sibling is still kept."""
+        self._make_repo()
+        merged = self._add_multi_commit_worktree(
+            ".claude/worktrees/multi", "feat/multi", ncommits=2
+        )
+        wip = self._add_worktree(".claude/worktrees/wip", "feat/wip", push=False)
+        self._browser_squash_merge("feat/multi")
+        r = self._run(self.primary, "sync")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertFalse(merged.exists())
+        self.assertNotIn("feat/multi", self._branches())
+        self.assertTrue(wip.exists())
+        self.assertIn("feat/wip", self._branches())
+        self.assertIn("not fully merged", r.stdout)
+
+    def test_sync_reaps_multi_commit_squash_after_base_advanced(self):
+        """Issue #257 scenario B: an unrelated commit lands on main between the
+        branch point and the squash merge. The branch's whole-diff patch-id
+        still equals the squash commit's (the intervening commit touches a
+        different file), so tier `squash` still fires and sync reaps."""
+        self._make_repo()
+        merged = self._add_multi_commit_worktree(
+            ".claude/worktrees/adv", "feat/adv", ncommits=2
+        )
+        self._advance_base()
+        self._browser_squash_merge("feat/adv")
+        r = self._run(self.primary, "sync")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertFalse(merged.exists())
+        self.assertNotIn("feat/adv", self._branches())
 
     def test_finish_refuses_unmerged_without_force(self):
         self._make_repo()

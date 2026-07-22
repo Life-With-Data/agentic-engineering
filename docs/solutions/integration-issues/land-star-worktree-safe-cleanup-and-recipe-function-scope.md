@@ -114,8 +114,10 @@ reads to choose a branch — it is not a callable that survives from one code bl
 ## 3. Teardown under worktrees is *deferred*, not done — and `gc` does not cover every worktree
 
 Local worktree + branch teardown is handed to the worktree-safe reaper
-`git-worktree/scripts/worktree-manager.sh gc` (it uses `git cherry` to catch squash/rebase merges,
-removes the worktree from *outside* it, and deletes the orphaned branch). Two coverage limits mean the
+`git-worktree/scripts/worktree-manager.sh gc` (it uses tiered merge-evidence detection — `git cherry`
+for single-commit squash/rebase merges, a whole-branch patch-id match for multi-commit squash merges
+(see [[worktree-manager-multi-commit-squash-detection]]), and a merge-commit-record scan — removes the
+worktree from *outside* it, and deletes the orphaned branch). Two coverage limits mean the
 land-* skills must **report teardown as deferred, never claim it done**:
 
 - **`gc` cannot self-reap the active worktree.** It skips the worktree it runs from and any worktree
