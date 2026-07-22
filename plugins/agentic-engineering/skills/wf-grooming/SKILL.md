@@ -71,6 +71,8 @@ mechanism run the same steps inline.
 
 Grooming is complete only when the request is unambiguous, acceptance and validation criteria are explicit, repository capabilities have been consulted, and the work item is ready for `wf-development`. For bugs, the reproduction evidence is mandatory. Grooming never claims implementation work or edits product code.
 
+In Project mode, grooming is complete only when `--groom-verify <N>` passes — `Status >= planned` on read-back, where the `--decompose` write is the attestation, not the prose judgment; the [plan route](references/workflows-plan.md) owns that mechanics. In an unconfigured repository (`no_board`), make no tracker claim. The groomed PARENT is what becomes ready and claimable for `wf-development`; its sub-issues are task units and must never be described individually as ready for development, and a sub-issue's board Status is never a readiness signal.
+
 ## Wrong-layer recovery
 
 If repository mechanics are needed, return to the capability targets from the validator. If a repository operational asset was opened before this workflow, use it only for mechanics and return here for gates and completion criteria.
