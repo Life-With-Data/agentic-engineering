@@ -5,6 +5,13 @@ All notable changes to the agentic-engineering plugin will be documented in this
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.1.0](https://github.com/Life-With-Data/agentic-engineering/compare/agentic-engineering-v5.0.0...agentic-engineering-v5.1.0) (2026-07-22)
+
+
+### Features
+
+* prescribe sub-agent delegation and model tiering across the workflow lifecycle ([#259](https://github.com/Life-With-Data/agentic-engineering/issues/259)) ([e956f65](https://github.com/Life-With-Data/agentic-engineering/commit/e956f654f0f96ceff0c530e47c82cb87bdf76bd0))
+
 ## [5.0.0](https://github.com/Life-With-Data/agentic-engineering/compare/agentic-engineering-v4.5.0...agentic-engineering-v5.0.0) (2026-07-22)
 
 
