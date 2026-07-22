@@ -23,7 +23,8 @@ matters (metric, bug report, user quote, failing scenario).
 ## Visual Context
 
 <!--
-Optional. Include only for work with a UI/design aspect; omit otherwise.
+Include for work with a UI/design aspect; otherwise write "No visual context:
+no UI/design aspect." under this heading (per the deletion rule above).
 Externally hosted references (catalog links, Figma frames, hosted screen images)
 embed as markdown images/links. Locally captured current-state screenshots attach
 via the repository's mapped screenshot/attachment mechanism; when no such
