@@ -149,6 +149,10 @@ COMPLEXITY_LABEL_META = {
 }
 
 READY_WORK_LIMIT = 50
+# Blocker reads deliberately inspect bounded node states instead of totalCount:
+# closed blockers must not keep work blocked. A full result is conservative
+# because GitHub may have additional, unseen blockers after it.
+BLOCKED_BY_NODE_LIMIT = 100
 RECONCILE_ITEM_LIMIT = 10000
 RECONCILE_TTL_SECONDS = 600
 GH_TIMEOUT_SECONDS = 30
@@ -677,8 +681,8 @@ query($owner: String!, $repo: String!, $number: Int!) {
     issue(number: $number) {
       number title body updatedAt state stateReason url
       authorAssociation
-      parent { number }
-      blockedBy(first: 100) { totalCount nodes { number title url state } }
+parent { number }
+      blockedBy(first: 100) { nodes { number title url state } }
       assignees(first: 10) { nodes { login } }
       closedByPullRequestsReferences(first: 5) {
         nodes { number state merged baseRefName author { login } }
@@ -686,7 +690,7 @@ query($owner: String!, $repo: String!, $number: Int!) {
       subIssues(first: 100) {
         nodes {
           number title body url state
-          blockedBy(first: 100) { totalCount nodes { number title url state } }
+          blockedBy(first: 100) { nodes { number title url state } }
         }
       }
       projectItems(first: 10) {
@@ -732,6 +736,21 @@ class IssueState:
     all_sub_issues: "list[dict]" = field(default_factory=list)  # {number,state,blocked_by}
 
 
+def open_blocker_count(blocked_by: object) -> int:
+    """Return observed OPEN blockers, conservatively treating a full bounded
+    response as blocked even when every returned node is closed.
+
+    blockedBy has no reliable active-only count. We intentionally request only
+    BLOCKED_BY_NODE_LIMIT node states so one issue read remains bounded; when
+    exactly that many nodes arrive, unseen nodes could include an OPEN blocker.
+    The positive sentinel preserves the fail-closed lifecycle rule without
+    claiming an exact count beyond the response cap.
+    """
+    nodes = (blocked_by or {}).get("nodes", []) if isinstance(blocked_by, dict) else []
+    open_count = sum(1 for node in nodes if node.get("state") == "OPEN")
+    return max(open_count, 1) if len(nodes) >= BLOCKED_BY_NODE_LIMIT else open_count
+
+
 def parse_issue_state(data: dict, board: BoardConfig) -> Optional[IssueState]:
     issue = (data.get("data") or {}).get("repository", {}).get("issue")
     if not issue:
@@ -765,7 +784,7 @@ def parse_issue_state(data: dict, board: BoardConfig) -> Optional[IssueState]:
         ],
         open_sub_issues=[n["number"] for n in issue.get("subIssues", {}).get("nodes", [])
                          if n.get("state") == "OPEN"],
-        blocked_by_count=(issue.get("blockedBy") or {}).get("totalCount", 0),
+blocked_by_count=open_blocker_count(issue.get("blockedBy")),
         parent_number=(issue.get("parent") or {}).get("number"),
         url=issue.get("url", ""),
         title=issue.get("title", ""),
@@ -780,7 +799,7 @@ def parse_issue_state(data: dict, board: BoardConfig) -> Optional[IssueState]:
             {"number": n["number"], "title": n.get("title", ""),
              "body": n.get("body", ""), "url": n.get("url", ""),
              "state": n.get("state"),
-             "blocked_by": (n.get("blockedBy") or {}).get("totalCount", 0),
+             "blocked_by": open_blocker_count(n.get("blockedBy")),
              "blocked_by_issues": [
                  {"number": b.get("number"), "title": b.get("title", ""),
                   "url": b.get("url", ""), "state": b.get("state", "")}
@@ -1913,7 +1932,8 @@ def _batched_blocked_counts(numbers: "list[int]", ctx: RepoContext, runner: GhRu
     if not numbers:
         return {}
     body = "".join(
-        f"    i{n}: issue(number: {n}) {{ blockedBy(first: 1) {{ totalCount }} }}\n" for n in numbers
+        f"    i{n}: issue(number: {n}) {{ blockedBy(first: {BLOCKED_BY_NODE_LIMIT}) {{ nodes {{ state }} }} }}\n"
+        for n in numbers
     )
     query = BLOCKED_QUERY_HEADER + body + "  }\n}"
     result = _run_gh_retry(runner, ["api", "graphql", "-f", f"query={query}",
@@ -1924,7 +1944,7 @@ def _batched_blocked_counts(numbers: "list[int]", ctx: RepoContext, runner: GhRu
                          "Retry; if persistent, check GraphQL availability — "
                          "never treat a failed query as an empty work list")
     repo_data = (json.loads(result.stdout or "{}").get("data") or {}).get("repository") or {}
-    return {n: ((repo_data.get(f"i{n}") or {}).get("blockedBy") or {}).get("totalCount", 0)
+    return {n: open_blocker_count((repo_data.get(f"i{n}") or {}).get("blockedBy"))
             for n in numbers}
 
 
