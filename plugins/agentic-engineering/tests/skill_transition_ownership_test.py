@@ -16,7 +16,8 @@ line-position-level: repo guardrail policy is to freeze the surface by category
 so wording and file layout can evolve freely (see
 `docs/solutions/testing-patterns/grep-acceptance-checks-and-subset-fixtures-give-false-confidence.md`).
 
-Run with: ``python3 -m unittest tests.skill_transition_ownership_test``.
+Run with: ``python3 -m unittest discover -s plugins/agentic-engineering/tests -p
+'skill_transition_ownership_test.py'`` from the repository root.
 """
 
 from __future__ import annotations
