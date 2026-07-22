@@ -39,6 +39,19 @@ Require `infrastructure-operations` and `security-and-access` before any deploym
 Documentation-only delivery is routed through `wf-documentation`.
 Artifact transports and release-media tooling come from repository capability targets.
 
+## Sub-agent delegation
+
+The session's default agent orchestrates and validates delivery; it delegates
+the diagnosis and drafting. Dispatch focused sub-agents for per-job CI-failure
+diagnosis and for release-note and PR-body drafting. The orchestrator retains
+merge decisions, every PR and tracker state write, and release evidence, and
+verifies each delegated result against the actual CI and repository state.
+Choose each sub-agent's model by task complexity: an economy tier for
+mechanical log collection and drafting from templates, a standard tier for
+single-job failure diagnosis, the strongest available tier for cross-job or
+flaky-infrastructure analysis. Hosts without a sub-agent mechanism run the
+same steps inline.
+
 ## Delivery gates
 
 1. Confirm `wf-testing` and `wf-review` are complete.

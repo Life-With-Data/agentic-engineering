@@ -54,6 +54,18 @@ Production or integration failures also require `observability`. A bug remains u
 
 Load only the references needed for the active route.
 
+## Sub-agent delegation
+
+The session's default agent orchestrates and validates grooming; it delegates
+the legwork. Dispatch focused sub-agents for codebase reconnaissance,
+prior-art and learnings research, and reproduction attempts, then verify their
+reports before relying on them. The orchestrator retains scope decisions, user
+interviews, plan readiness, and all issue writes. Choose each sub-agent's
+model by task complexity: an economy tier for mechanical searches, a standard
+tier for scoped research and summarization, the strongest available tier for
+ambiguous reproduction or architectural analysis. Hosts without a sub-agent
+mechanism run the same steps inline.
+
 ## Completion boundary
 
 Grooming is complete only when the request is unambiguous, acceptance and validation criteria are explicit, repository capabilities have been consulted, and the work item is ready for `wf-development`. For bugs, the reproduction evidence is mandatory. Grooming never claims implementation work or edits product code.

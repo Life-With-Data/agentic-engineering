@@ -37,6 +37,18 @@ Stop on contract failure. Read each required capability's primary target, then s
 
 Document-specific review policy lives in `wf-documentation`; testing sufficiency lives in `wf-testing`.
 
+## Sub-agent delegation
+
+The session's default agent orchestrates and validates the review; it
+delegates the reading. Dispatch one focused reviewer sub-agent per selected
+review lens, in parallel when lenses are independent. The orchestrator retains
+lens selection, deduplication, severity classification, fix/defer decisions,
+and the final verdict, and spot-checks findings against the diff before
+accepting them. Choose each reviewer's model by lens complexity: a standard
+tier for convention and conformance passes, the strongest available tier for
+security, architecture, and data-integrity judgment. Hosts without a
+sub-agent mechanism run the same lenses inline, sequentially.
+
 ## Review contract
 
 1. Identify the intended behavior and affected system boundaries.

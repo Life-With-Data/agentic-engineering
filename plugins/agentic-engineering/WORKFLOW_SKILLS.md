@@ -43,6 +43,24 @@ top-level skill:
 3. `wf-testing` owns regression protection and the original reproduction rerun.
 4. `wf-review` evaluates the fix and its risks.
 
+## Delegation model
+
+Across every workflow, the session's default agent is the **orchestrator and
+validator**, not the worker. It decomposes the task, dispatches focused
+sub-agents for stage work (research, implementation units, test authoring,
+review lenses, CI diagnosis, documentation drafts), verifies each result
+independently, and owns every tracker or board write. Sub-agents never mutate
+shared state.
+
+The orchestrator also selects each sub-agent's model at dispatch time based on
+that unit's complexity — economy tiers for mechanical work with deterministic
+exit checks, standard tiers for well-scoped work against clear criteria, and
+the strongest available tier for ambiguous or high-blast-radius work — while
+keeping the session's own model for verification and triage. The canonical
+policy lives in `wf-development`'s sub-agent delegation reference; each router
+carries the stage-specific posture. Hosts without a sub-agent mechanism run
+the same sequences inline — delegation is an execution model, never a gate.
+
 ## Granular capability references
 
 Condensing skills does not remove precision. Express a granular need as four
