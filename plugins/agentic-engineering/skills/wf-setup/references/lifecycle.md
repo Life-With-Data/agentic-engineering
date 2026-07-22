@@ -136,8 +136,11 @@ python3 "<skill-directory>/scripts/lifecycle_board.py" --claim N
 
 The verb assigns, freshly re-reads, confirms the caller is the sole assignee,
 checks open `blocked-by` dependencies, and only then writes `in_progress`.
-Results are `proceed`, `claim_conflict`, or `blocked`. Branch and PR naming are
-secondary signals, never ownership authority.
+Results are `proceed`, `claim_conflict`, or `blocked`. An OPEN sub-issue is
+never claimable: `--claim` on a parented issue refuses before any assignment
+write with a structured `sub_issue_claim` error naming the parent — claim and
+work the parent instead. Branch and PR naming are secondary signals, never
+ownership authority.
 
 Move Status only through:
 
