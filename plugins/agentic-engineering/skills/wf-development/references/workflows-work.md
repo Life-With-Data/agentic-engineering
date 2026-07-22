@@ -165,11 +165,11 @@ When `verdict == no_board`, the repo has no configured Projects board — lifecy
 
 | Model | Use when | How it runs |
 |-------|----------|-------------|
-| **Inline** (default, below) | An issue you implement yourself; simple, linear work | You implement each sub-issue directly in this session, closing each as its criteria pass. |
-| **Orchestrated** ([section](#orchestrated-execution-board-driven)) | Work backed by tracked sub-issues — one or many | You own the board/sub-issue state and drive one subagent per sub-issue, looping each to a terminal state before returning. |
+| **Orchestrated** (default, [section](#orchestrated-execution-board-driven)) | Any work the host can delegate to subagents — one tracked sub-issue or many | You own the board/sub-issue state and drive one subagent per sub-issue, looping each to a terminal state before returning. |
+| **Inline** (fallback, below) | The host has no subagent mechanism, or the change is a trivial single edit | You implement each sub-issue directly in this session, closing each as its criteria pass. |
 | **Swarm** ([section](#swarm-mode-optional)) | 5+ independent workstreams needing maximum parallelism | Long-lived teammates self-claim from a shared queue. |
 
-Even a **single** tracked item benefits from Orchestrated Execution — the orchestrator absorbs the retry/verify/unblock loop and returns a finished or verifiably-blocked result, not a half-step. The Inline loop below is the default when one agent implements the issue directly — **except when this command runs under the `wf-development` orchestration route in an autonomous mode (its fully-autonomous default, or `--final-review`)**, where Orchestrated is the default for all inputs: the orchestrator is a reviewer, not an implementer, and delegates every work item to a sub-agent whose diff it verifies before accepting.
+**Orchestrated is the default.** The session's default agent stays the orchestrator and validator — it delegates each work item to a focused subagent whose diff it verifies before accepting, per the [sub-agent delegation](subagent-delegation.md) policy. Even a **single** tracked item benefits — the orchestrator absorbs the retry/verify/unblock loop and returns a finished or verifiably-blocked result, not a half-step. Drop to the Inline loop only when the host has no subagent mechanism or the change is genuinely trivial; under the `wf-development` orchestration route in an autonomous mode (its fully-autonomous default, or `--final-review`), Orchestrated is mandatory for all inputs.
 
 1. **Task Execution Loop** (board mode — iterate open sub-issues)
 
@@ -518,10 +518,16 @@ report "done" while an open sub-issue is unstarted or a follow-on is open.
    The subagent implements only — **the orchestrator owns every `--sub-status` write**; the subagent never touches GitHub.
    For file-conflicting parallel work, isolate each agent with the bundled
    worktree manager and reconcile on return.
-   **Model tiering:** run implementation subagents on an Opus-tier model (`model: "opus"`), in the
-   background for parallel waves — the orchestrator keeps the session's strongest model for the
-   verify/review step, and purely mechanical chores (docs regeneration, count bumps) can drop to a
-   cheaper tier.
+   **Model tiering:** set each subagent's model explicitly at dispatch — hosts otherwise inherit
+   the session's model, silently running mechanical chores on the most expensive tier. Choose the
+   lowest tier the sub-issue's complexity allows, per
+   [sub-agent delegation](subagent-delegation.md) — an economy tier for mechanical chores (docs
+   regeneration, count bumps, renames), a standard tier for well-scoped implementation against
+   clear criteria, the strongest available tier only for ambiguous, cross-cutting, or
+   high-blast-radius sub-issues. When uncertain, start a tier lower and escalate on retry after a
+   dry attempt. Run parallel waves in the background. The orchestrator keeps the session's own
+   model for the verify/review step — never validate with a weaker model than the one that
+   produced the work.
 4. **Verify & branch** (orchestrator, per returned subagent):
    - On return, mark it awaiting verification: `lifecycle_board.py --sub-status <sub> in_review`.
    - Review the diff vs acceptance criteria; integrate any worktree.
@@ -559,6 +565,9 @@ DO:
 2. Implement the acceptance criteria — nothing more.
 3. Run the repository's mapped quality gates. They must be clean.
 4. Do NOT touch shared tracker state — the orchestrator owns it.
+5. You are the worker for this sub-issue, not an orchestrator: do NOT load
+   workflow routers to re-route this work, and do NOT delegate to further
+   sub-agents.
 
 REPORT BACK (your final message = structured result, not prose to a human):
 - Files created/modified (absolute paths)
@@ -701,6 +710,10 @@ Before creating PR, verify:
 - [ ] PR description includes Compound Engineered badge
 
 ## When to Use Reviewer Agents
+
+This section governs optional in-loop review *during implementation* — it is
+distinct from the mandated downstream `wf-review` stage, which always runs and
+dispatches its own reviewer sub-agents per selected lens.
 
 **Don't use by default.** Use reviewer agents only when:
 

@@ -27,14 +27,28 @@ Use the GitHub issue/project state and explicitly supplied artifacts.
 
 ## Execute
 
+The orchestrator is the session's default agent acting as coordinator and
+validator, not as the worker. Delegate stage work to sub-agents per
+[sub-agent delegation](subagent-delegation.md) — research during grooming,
+each implementation unit during development, test authoring, review lenses,
+CI diagnosis, and documentation drafts — and set each sub-agent's model
+explicitly at dispatch (hosts otherwise inherit the session's model), choosing
+the lowest tier that unit's complexity allows: economy tiers for mechanical
+work, standard tiers for well-scoped work, the strongest available tier only
+for ambiguous or high-blast-radius work. The orchestrator keeps the session's
+own model for verification and triage.
+
 1. Validate the repository capabilities required by the current and next stage.
 2. Claim work only at the development boundary.
 3. Decompose implementation by dependency and file ownership. Parallelize only
    independent units; otherwise serialize or use repository-approved isolation.
-4. Review every delegated result against acceptance criteria and rerun relevant
+4. Dispatch one focused sub-agent per unit with a self-contained brief and an
+   explicit exit check; implement inline only when the host has no sub-agent
+   mechanism or the unit is a trivial single edit.
+5. Review every delegated result against acceptance criteria and rerun relevant
    repository gates independently.
-5. Route failures back to the owning workflow with the concrete evidence.
-6. Preserve tracker writer ownership; implementation helpers do not mutate
+6. Route failures back to the owning workflow with the concrete evidence.
+7. Preserve tracker writer ownership; implementation helpers do not mutate
    shared issue or board state.
 
 Retry a returned implementation at most twice when the failure is specific and

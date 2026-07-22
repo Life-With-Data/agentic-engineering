@@ -7,7 +7,7 @@ description: Workflow policy for implementing planned engineering changes, diagn
 
 Layer: Workflow policy
 
-Owns: claiming ready work, implementation sequencing, scope control, change isolation, and handoffs to testing, review, and delivery.
+Owns: claiming ready work, implementation sequencing, scope control, change isolation, sub-agent delegation and per-dispatch model selection, and handoffs to testing, review, and delivery.
 
 Requires repository capabilities: `repository-overview`, `development-environment`, `test-execution`.
 
@@ -31,6 +31,7 @@ Stop on contract failure. Read each required capability's primary target, then s
 ## Route the request
 
 - Execute a prepared plan: read [workflow work](references/workflows-work.md).
+- Delegate lifecycle work to sub-agents while orchestrating and validating: read [sub-agent delegation](references/subagent-delegation.md).
 - Diagnose a reproduced bug, establish root cause, and recover safely: read [debugging and error recovery](references/debugging-and-error-recovery.md). Require `bug-reproduction` and, for production or integration failures, `observability`.
 - Drive the complete cross-stage pipeline: read [workflow orchestrate](references/workflows-orchestrate.md), loading other `wf-*` skills at their boundaries.
 - Work in an isolated checkout: read [git worktree](references/git-worktree.md).
@@ -43,6 +44,20 @@ Stop on contract failure. Read each required capability's primary target, then s
 Load only the selected reference. Framework, language, vendor, and tool-specific
 implementation techniques must come from mapped repository assets or separately
 installed capabilities; this workflow does not prescribe them.
+
+## Sub-agent delegation
+
+The session's default agent is the orchestrator and validator for this
+workflow, not the worker. Delegate each planned implementation unit and each
+isolated diagnosis experiment to a focused sub-agent; the orchestrator keeps
+decomposition, diff verification, gate reruns, and every tracker write. Set
+each sub-agent's model explicitly at dispatch — hosts otherwise inherit the
+session's model — choosing the lowest tier the unit's complexity allows:
+economy tiers for mechanical work, standard tiers for well-scoped
+implementation, the strongest available tier only for ambiguous or
+high-blast-radius work — per
+[sub-agent delegation](references/subagent-delegation.md). Hosts without a
+sub-agent mechanism run the same sequence inline.
 
 ## Quality handoffs
 

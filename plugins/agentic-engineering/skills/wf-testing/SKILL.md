@@ -37,6 +37,19 @@ Stop on contract failure. Read the primary target for both required capabilities
 Load only the references needed for the affected interfaces.
 Platform-specific device and build mechanics come from repository capability targets.
 
+## Sub-agent delegation
+
+The session's default agent orchestrates and validates testing; it delegates
+the authoring. Dispatch focused sub-agents to write tests per surface and to
+analyze failures. The orchestrator retains test strategy, evidence
+sufficiency, and the ready/not-ready verdict, and independently reruns the
+decisive checks rather than trusting a sub-agent's report. Set each
+sub-agent's model explicitly at dispatch — hosts otherwise inherit the
+session's model — choosing the lowest tier the task allows: an economy tier
+for running prescribed checks and reporting output, a standard tier for test
+authoring against clear criteria, the strongest available tier only for
+flaky-failure or cross-layer analysis. Hosts without a sub-agent mechanism run the same steps inline.
+
 ## Evidence ladder
 
 Prefer the cheapest test that can falsify the claim, then add broader evidence in proportion to risk:

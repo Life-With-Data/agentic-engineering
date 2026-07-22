@@ -36,6 +36,20 @@ Stop on contract failure. Read the primary target for both required capabilities
 - Ship documentation changes: read [land docs](references/land-docs.md).
 - Prepare documentation deployment: read [deploy docs](references/deploy-docs.md); require `delivery` when publication is requested.
 
+## Sub-agent delegation
+
+The session's default agent orchestrates and validates documentation work; it
+delegates the drafting. Dispatch focused sub-agents for first drafts and
+per-document review passes. The orchestrator retains accuracy validation
+against the current source, placement decisions, and publication, and never
+publishes a delegated draft it has not verified. Set each sub-agent's model
+explicitly at dispatch — hosts otherwise inherit the session's model —
+choosing the lowest tier the task allows: an economy tier for regenerating
+derived documentation, a standard tier for drafting from settled material,
+the strongest available tier only for distilling ambiguous or cross-cutting
+knowledge. Hosts without a
+sub-agent mechanism run the same steps inline.
+
 ## Completion boundary
 
 Documentation is complete when it is accurate against the current source, placed where the repository says readers will find it, linked from the appropriate index, reviewed for its intended audience, and validated through repository documentation tooling.
