@@ -131,6 +131,29 @@ class RuntimeSafetyTest(unittest.TestCase):
             enabled, _, _ = health._config(str(nested))
             self.assertFalse(enabled)
 
+    def test_invalid_local_enabled_value_falls_back_to_default(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            subprocess.run(["git", "init", "-q", str(root)], check=True)
+            (root / "agentic-engineering.local.md").write_text(
+                "---\nplugin_health_enabled: sometimes\nplugin_health_ttl: 30s\n---\n",
+                encoding="utf-8",
+            )
+            enabled, ttl, selected = health._config(str(root))
+            self.assertEqual((enabled, ttl, selected), (True, 30, True))
+
+    def test_invalid_local_ttl_falls_back_to_default(self):
+        for ttl_raw in ("0", "-1", "garbage"):
+            with self.subTest(ttl_raw=ttl_raw), tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp)
+                subprocess.run(["git", "init", "-q", str(root)], check=True)
+                (root / "agentic-engineering.local.md").write_text(
+                    f"---\nplugin_health_enabled: false\nplugin_health_ttl: {ttl_raw}\n---\n",
+                    encoding="utf-8",
+                )
+                enabled, ttl, selected = health._config(str(root))
+                self.assertEqual((enabled, ttl, selected), (False, health.DEFAULT_TTL, True))
+
 
 if __name__ == "__main__":
     unittest.main()

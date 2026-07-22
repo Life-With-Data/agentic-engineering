@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import os
 import pathlib
+import re
 import subprocess
 import sys
 import tempfile
@@ -114,8 +115,17 @@ def collect() -> dict[str, Any]:
 
 def _duration(value: str) -> int:
     value = value.strip().lower()
+    if re.fullmatch(r"[1-9][0-9]*(?:[smhd])?", value) is None:
+        raise ValueError("duration must be positive seconds or use an s/m/h/d suffix")
     factor = {"s": 1, "m": 60, "h": 3600, "d": 86400}.get(value[-1:], 1)
-    return max(1, int(value[:-1] if value[-1:] in "smhd" else value) * factor)
+    return int(value[:-1] if value[-1:] in "smhd" else value) * factor
+
+
+def _enabled(value: str) -> bool:
+    normalized = value.strip().lower()
+    if normalized not in {"true", "false"}:
+        raise ValueError("plugin_health_enabled must be a boolean")
+    return normalized == "true"
 
 
 def _config(cwd: str) -> tuple[bool, int, bool]:
@@ -134,10 +144,17 @@ def _config(cwd: str) -> tuple[bool, int, bool]:
         if tracked or not local.is_file():
             return True, DEFAULT_TTL, True
         meta = lifecycle_board.parse_frontmatter(local.read_text(encoding="utf-8"))
-        enabled = meta.get("plugin_health_enabled", "true").strip().lower() == "true"
+        try:
+            enabled = _enabled(meta.get("plugin_health_enabled", "true"))
+        except ValueError:
+            enabled = True
         assets = meta.get("plugin_health_assets", "claude-mem")
         ttl_raw = meta.get("plugin_health_ttl", "15m")
-        return enabled, _duration(ttl_raw), "claude-mem" in assets.lower()
+        try:
+            ttl = _duration(ttl_raw)
+        except ValueError:
+            ttl = DEFAULT_TTL
+        return enabled, ttl, "claude-mem" in assets.lower()
     except Exception:
         return True, DEFAULT_TTL, True
 
