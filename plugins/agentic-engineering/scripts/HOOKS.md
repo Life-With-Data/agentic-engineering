@@ -23,6 +23,7 @@ script changes). Wiring differs per platform:
 | `nudge-todowrite-to-tracker.py` | Ships (`TodoWrite`) | N/A | N/A | No TodoWrite equivalent on Cursor/Codex |
 | `sdd-cache-pre.py` / `sdd-cache-post.py` | Ships (`WebFetch`, opt-in) | N/A | N/A | WebFetch-specific; opt-in via `AGENTIC_SDD_CACHE=1` |
 | `worktree-session.py` | Ships (`SessionStart` / `startup`) | N/A | N/A | Worktree bootstrap + staleness advisory; no-op outside `.claude/worktrees/*` |
+| `plugin-health-check.py` | Ships (`SessionStart` / `startup`) | N/A | N/A | Advisory claude-mem asset health checks; silent when healthy |
 
 Harness config files:
 
@@ -250,6 +251,29 @@ clone.
 **Cursor/Codex:** N/A — neither exposes a `SessionStart` worktree-bootstrap event,
 so this is Claude-only. Adapted and generalized
 from the BlueStar monorepo's `setup-worktree.sh` / `check-stale-worktree.sh`.
+
+## `plugin-health-check.py` — SessionStart (`startup`) — Claude-only
+
+**Never blocks** (`exit 0` always). This advisory hook detects a locally installed
+`claude-mem` plugin and checks its worker, authentication errors, version drift,
+queue backlog, and observation freshness. It is silent when claude-mem is absent
+or every result is PASS/SKIP, including a clean fresh install. An unreachable
+worker or recent model 401 is a FAIL; major version drift and established
+queue/freshness failures are WARN. Unknown, offline, timeout, and warmup states
+are SKIP rather than false alarms.
+
+Results are machine-global, atomically cached outside the worktree at
+`~/.cache/agentic-engineering/plugin-health/` (or `$XDG_CACHE_HOME`). Corrupt,
+expired, or clock-skewed entries re-probe; persistent warnings and failures are
+shown every session. Multiple findings recommend `lifecycle-doctor`; the hook
+only advises and never invokes it.
+
+Optional, untracked `agentic-engineering.local.md` frontmatter configures it:
+`plugin_health_enabled: true|false` (default `true`), `plugin_health_ttl: 15m`
+(positive seconds or `s`/`m`/`h`/`d` duration), and
+`plugin_health_assets: claude-mem`. A tracked local config is ignored.
+
+**Cursor/Codex:** N/A — this uses Claude's `SessionStart` event only.
 
 ## Testing hooks
 
