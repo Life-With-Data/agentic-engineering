@@ -50,10 +50,12 @@ installed capabilities; this workflow does not prescribe them.
 The session's default agent is the orchestrator and validator for this
 workflow, not the worker. Delegate each planned implementation unit and each
 isolated diagnosis experiment to a focused sub-agent; the orchestrator keeps
-decomposition, diff verification, gate reruns, and every tracker write. Choose
-each sub-agent's model by the complexity of its unit — economy tiers for
-mechanical work, standard tiers for well-scoped implementation, the strongest
-available tier for ambiguous or high-blast-radius work — per
+decomposition, diff verification, gate reruns, and every tracker write. Set
+each sub-agent's model explicitly at dispatch — hosts otherwise inherit the
+session's model — choosing the lowest tier the unit's complexity allows:
+economy tiers for mechanical work, standard tiers for well-scoped
+implementation, the strongest available tier only for ambiguous or
+high-blast-radius work — per
 [sub-agent delegation](references/subagent-delegation.md). Hosts without a
 sub-agent mechanism run the same sequence inline.
 

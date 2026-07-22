@@ -46,10 +46,11 @@ the diagnosis and drafting. Dispatch focused sub-agents for per-job CI-failure
 diagnosis and for release-note and PR-body drafting. The orchestrator retains
 merge decisions, every PR and tracker state write, and release evidence, and
 verifies each delegated result against the actual CI and repository state.
-Choose each sub-agent's model by task complexity: an economy tier for
-mechanical log collection and drafting from templates, a standard tier for
-single-job failure diagnosis, the strongest available tier for cross-job or
-flaky-infrastructure analysis. Hosts without a sub-agent mechanism run the
+Set each sub-agent's model explicitly at dispatch — hosts otherwise inherit
+the session's model — choosing the lowest tier the task allows: an economy
+tier for mechanical log collection and drafting from templates, a standard
+tier for single-job failure diagnosis, the strongest available tier only for
+cross-job or flaky-infrastructure analysis. Hosts without a sub-agent mechanism run the
 same steps inline.
 
 ## Delivery gates

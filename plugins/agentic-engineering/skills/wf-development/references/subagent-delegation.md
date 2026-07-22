@@ -49,8 +49,13 @@ model, never a gate on the work itself.
 ## Model selection
 
 The orchestrator chooses each sub-agent's model at dispatch time, per unit —
-never one tier for the whole run. Judge complexity on three axes: ambiguity of
-the exit check, reasoning depth required, and blast radius of a wrong answer.
+never one tier for the whole run. Set the model explicitly on every dispatch:
+most hosts run a sub-agent on the session's own model when none is specified,
+so omission silently buys the most expensive tier — inheriting by default is a
+selection failure, not a choice. The default is the lowest tier that can pass
+the unit's exit checks; reserve stronger tiers for units that demonstrably
+need them. Judge complexity on three axes: ambiguity of the exit check,
+reasoning depth required, and blast radius of a wrong answer.
 
 | Tier | Use for |
 |---|---|
@@ -60,7 +65,11 @@ the exit check, reasoning depth required, and blast radius of a wrong answer.
 
 Selection rules:
 
-- When uncertain between two tiers, take the stronger.
+- When uncertain between two tiers, start with the lower one; the retry path
+  below is the recovery mechanism, and a cheap failed attempt costs less than
+  routinely over-provisioning every dispatch. Exception: when a wrong answer
+  would be expensive to detect or undo, take the stronger tier — retry only
+  recovers from failures the exit checks can catch.
 - Escalate one tier when re-dispatching after a dry attempt.
 - The orchestrator keeps the session's own model for verification and triage;
   never validate a result with a weaker model than the one that produced it.

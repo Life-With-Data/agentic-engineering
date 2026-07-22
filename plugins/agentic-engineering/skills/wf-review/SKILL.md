@@ -44,9 +44,10 @@ delegates the reading. Dispatch one focused reviewer sub-agent per selected
 review lens, in parallel when lenses are independent. The orchestrator retains
 lens selection, deduplication, severity classification, fix/defer decisions,
 and the final verdict, and spot-checks findings against the diff before
-accepting them. Choose each reviewer's model by lens complexity: a standard
-tier for convention and conformance passes, the strongest available tier for
-security, architecture, and data-integrity judgment. Hosts without a
+accepting them. Set each reviewer's model explicitly at dispatch — hosts
+otherwise inherit the session's model — choosing the lowest tier the lens
+allows: a standard tier for convention and conformance passes, the strongest
+available tier only for security, architecture, and data-integrity judgment. Hosts without a
 sub-agent mechanism run the same lenses inline, sequentially.
 
 ## Review contract

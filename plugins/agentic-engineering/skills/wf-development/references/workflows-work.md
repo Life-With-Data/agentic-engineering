@@ -518,14 +518,16 @@ report "done" while an open sub-issue is unstarted or a follow-on is open.
    The subagent implements only — **the orchestrator owns every `--sub-status` write**; the subagent never touches GitHub.
    For file-conflicting parallel work, isolate each agent with the bundled
    worktree manager and reconcile on return.
-   **Model tiering:** pick each subagent's model at dispatch by the sub-issue's complexity, per
+   **Model tiering:** set each subagent's model explicitly at dispatch — hosts otherwise inherit
+   the session's model, silently running mechanical chores on the most expensive tier. Choose the
+   lowest tier the sub-issue's complexity allows, per
    [sub-agent delegation](subagent-delegation.md) — an economy tier for mechanical chores (docs
    regeneration, count bumps, renames), a standard tier for well-scoped implementation against
-   clear criteria, the strongest available tier for ambiguous, cross-cutting, or high-blast-radius
-   sub-issues. When uncertain, take the stronger tier; escalate a tier on retry after a dry
-   attempt. Run parallel waves in the background. The orchestrator keeps the session's own model
-   for the verify/review step — never validate with a weaker model than the one that produced the
-   work.
+   clear criteria, the strongest available tier only for ambiguous, cross-cutting, or
+   high-blast-radius sub-issues. When uncertain, start a tier lower and escalate on retry after a
+   dry attempt. Run parallel waves in the background. The orchestrator keeps the session's own
+   model for the verify/review step — never validate with a weaker model than the one that
+   produced the work.
 4. **Verify & branch** (orchestrator, per returned subagent):
    - On return, mark it awaiting verification: `lifecycle_board.py --sub-status <sub> in_review`.
    - Review the diff vs acceptance criteria; integrate any worktree.

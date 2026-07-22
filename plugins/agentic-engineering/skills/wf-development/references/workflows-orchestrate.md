@@ -31,11 +31,12 @@ The orchestrator is the session's default agent acting as coordinator and
 validator, not as the worker. Delegate stage work to sub-agents per
 [sub-agent delegation](subagent-delegation.md) — research during grooming,
 each implementation unit during development, test authoring, review lenses,
-CI diagnosis, and documentation drafts — and select each sub-agent's model at
-dispatch by that unit's complexity: economy tiers for mechanical work,
-standard tiers for well-scoped work, the strongest available tier for
-ambiguous or high-blast-radius work. The orchestrator keeps the session's own
-model for verification and triage.
+CI diagnosis, and documentation drafts — and set each sub-agent's model
+explicitly at dispatch (hosts otherwise inherit the session's model), choosing
+the lowest tier that unit's complexity allows: economy tiers for mechanical
+work, standard tiers for well-scoped work, the strongest available tier only
+for ambiguous or high-blast-radius work. The orchestrator keeps the session's
+own model for verification and triage.
 
 1. Validate the repository capabilities required by the current and next stage.
 2. Claim work only at the development boundary.

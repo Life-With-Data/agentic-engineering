@@ -60,10 +60,11 @@ The session's default agent orchestrates and validates grooming; it delegates
 the legwork. Dispatch focused sub-agents for codebase reconnaissance,
 prior-art and learnings research, and reproduction attempts, then verify their
 reports before relying on them. The orchestrator retains scope decisions, user
-interviews, plan readiness, and all issue writes. Choose each sub-agent's
-model by task complexity: an economy tier for mechanical searches, a standard
-tier for scoped research and summarization, the strongest available tier for
-ambiguous reproduction or architectural analysis. Hosts without a sub-agent
+interviews, plan readiness, and all issue writes. Set each sub-agent's model
+explicitly at dispatch — hosts otherwise inherit the session's model — choosing
+the lowest tier the task allows: an economy tier for mechanical searches, a
+standard tier for scoped research and summarization, the strongest available
+tier only for ambiguous reproduction or architectural analysis. Hosts without a sub-agent
 mechanism run the same steps inline.
 
 ## Completion boundary
