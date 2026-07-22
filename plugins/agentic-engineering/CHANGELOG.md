@@ -5,6 +5,19 @@ All notable changes to the agentic-engineering plugin will be documented in this
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.4.0](https://github.com/Life-With-Data/agentic-engineering/compare/agentic-engineering-v5.3.0...agentic-engineering-v5.4.0) (2026-07-22)
+
+
+### Features
+
+* **lifecycle:** claim guard, backfill exclusion, and parent-only handoff for sub-issues ([#280](https://github.com/Life-With-Data/agentic-engineering/issues/280)) ([38f88a8](https://github.com/Life-With-Data/agentic-engineering/commit/38f88a8397547930984994bfed1482ef0cb7c662))
+* **lifecycle:** grooming assigns implementation-complexity labels for economical downstream dispatch ([#290](https://github.com/Life-With-Data/agentic-engineering/issues/290)) ([0cdbcb5](https://github.com/Life-With-Data/agentic-engineering/commit/0cdbcb549be5268bd6ece113e4c484825cad66af))
+
+
+### Bug Fixes
+
+* **lifecycle:** count only open blockers ([#279](https://github.com/Life-With-Data/agentic-engineering/issues/279)) ([e33c3e7](https://github.com/Life-With-Data/agentic-engineering/commit/e33c3e7cd5c9ecb31adcfda3f208537f79a306c6))
+
 ## [5.3.0](https://github.com/Life-With-Data/agentic-engineering/compare/agentic-engineering-v5.2.0...agentic-engineering-v5.3.0) (2026-07-22)
 
 
