@@ -370,10 +370,13 @@ The philosophy here: **opening the PR is the `in_review` transition, not a compl
 
 2. **Collect user-visible evidence for interface changes.** Use `wf-testing`'s
    browser route and the repository-approved environment, accounts, browser
-   mechanism, and artifact handling. Capture before/after or expected-state
-   evidence when it helps review, and attach it through the repository's mapped
-   delivery process. Do not assume a server command, URL, browser CLI, or upload
-   provider.
+   mechanism, and artifact handling. **For UI-affecting changes, screenshot
+   capture is an expected part of ship-it evidence, not optional** — capture
+   before/after (or expected-state, when there is no prior UI) proof of the
+   user-visible change so review can see it, and attach it through the
+   repository's mapped delivery process. For non-UI changes, capture
+   user-visible evidence only when it helps review. Do not assume a server
+   command, URL, browser CLI, or upload provider.
 
 3. **Create Pull Request**
 
@@ -411,9 +414,14 @@ The philosophy here: **opening the PR is the `in_review` transition, not a compl
      - `No additional operational monitoring required: <reason>`
 
    ## Before / After Screenshots
+   <!-- UI-affecting changes only; omit this whole section when the change touches no user-visible surface. -->
+   <!-- Two ways evidence gets here: externally hosted references (already served at a URL) embed
+        directly as markdown; locally captured screenshots attach through the repository's mapped
+        delivery process (do not assume an upload provider). If no mapped mechanism exists, record the
+        links or file paths here and note the gap so review can request the images. -->
    | Before | After |
    |--------|-------|
-   | ![before](URL) | ![after](URL) |
+   | (embed externally hosted reference, or attach the captured screenshot) | (embed externally hosted reference, or attach the captured screenshot) |
 
    ## Figma Design
    [Link if applicable]
@@ -702,7 +710,7 @@ Before creating PR, verify:
 - [ ] Linting passes (use linting-agent)
 - [ ] Code follows existing patterns
 - [ ] Figma designs match implementation (if applicable)
-- [ ] Before/after screenshots captured and uploaded (for UI changes)
+- [ ] For UI-affecting changes: before/after (or expected-state) screenshots captured and attached through the repository's mapped delivery process — this is expected evidence, not optional; for non-UI changes this item is N/A
 - [ ] Commit messages follow conventional format
 - [ ] PR body includes `Closes #<N>` and targets the default branch
 - [ ] PR description includes Post-Deploy Monitoring & Validation section (or explicit no-impact rationale)
