@@ -5,6 +5,22 @@ All notable changes to the agentic-engineering plugin will be documented in this
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.0.0](https://github.com/Life-With-Data/agentic-engineering/compare/agentic-engineering-v4.5.0...agentic-engineering-v5.0.0) (2026-07-22)
+
+
+### ⚠ BREAKING CHANGES
+
+* single github-project tracker mode, worktree finish/sync lifecycle, and vendored-script sync tooling ([#255](https://github.com/Life-With-Data/agentic-engineering/issues/255))
+
+### Features
+
+* single github-project tracker mode, worktree finish/sync lifecycle, and vendored-script sync tooling ([#255](https://github.com/Life-With-Data/agentic-engineering/issues/255)) ([b0cfac2](https://github.com/Life-With-Data/agentic-engineering/commit/b0cfac212a139f27b073f8a02e8a9db08d48dda7))
+
+
+### Bug Fixes
+
+* detect multi-commit squash merges in worktree-manager ([#258](https://github.com/Life-With-Data/agentic-engineering/issues/258)) ([d359695](https://github.com/Life-With-Data/agentic-engineering/commit/d35969531fc88f653754ba61425be03d3d3b8746))
+
 ## [4.5.0](https://github.com/Life-With-Data/agentic-engineering/compare/agentic-engineering-v4.4.1...agentic-engineering-v4.5.0) (2026-07-21)
 
 
