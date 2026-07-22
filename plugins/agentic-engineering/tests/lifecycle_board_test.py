@@ -264,13 +264,23 @@ class ReconcilerTest(unittest.TestCase):
         self.assertNotIn("sub_issue_on_board", [r.rule for r in repairs])
 
     def test_rule6_preempts_stage_regression_rules(self) -> None:
-        # An open parented sub at in_progress with an open assignee PR would match
-        # rule 5; de-boarding a parented open issue supersedes any Status repair.
-        s = _issue(number=263, state="OPEN", stage="in_progress", parent_number=265,
-                   item_id="IT_9", assignees=["me"],
-                   closing_prs=[_pr(state="OPEN", merged=False, author="me")])
-        repairs, _ = lb.plan_repairs([s], "main")
-        self.assertEqual([r.rule for r in repairs], ["sub_issue_on_board"])
+        # De-boarding a parented open issue supersedes any Status repair its own
+        # (noise) board stage would otherwise trigger. Both regression shapes:
+        cases = {
+            # rule 5 shape: in_progress + open assignee PR (would advance to in_review)
+            "rule5": dict(stage="in_progress",
+                          closing_prs=[_pr(state="OPEN", merged=False, author="me")]),
+            # rule 3 shape: in_review + all-closed-unmerged assignee PRs (would
+            # regress to in_progress)
+            "rule3": dict(stage="in_review",
+                          closing_prs=[_pr(state="CLOSED", merged=False, author="me")]),
+        }
+        for name, kw in cases.items():
+            with self.subTest(shape=name):
+                s = _issue(number=263, state="OPEN", parent_number=265,
+                           item_id="IT_9", assignees=["me"], **kw)
+                repairs, _ = lb.plan_repairs([s], "main")
+                self.assertEqual([r.rule for r in repairs], ["sub_issue_on_board"])
 
 
 class ReadyWorkTest(unittest.TestCase):
@@ -1467,6 +1477,28 @@ class SubIssueParsingTest(unittest.TestCase):
         self.assertEqual(sum(1 for s in st.all_sub_issues if s["blocked_by"] > 0), 2)
         self.assertEqual(st.open_sub_issues, [183, 184])  # unchanged contract
 
+    def test_archived_project_item_parses_as_not_on_board(self) -> None:
+        # projectItems defaults to includeArchived:true, so a rule-6-archived item
+        # is STILL returned (id + Status intact) flagged isArchived. It must parse
+        # as not-on-board (item_id None, stage None) — the invariant that makes
+        # de-boarding idempotent against real GraphQL.
+        board = lb.BoardConfig(owner="o", number=1, source="committed")
+        payload = {"data": {"repository": {"issue": {
+            "number": 263, "state": "OPEN", "authorAssociation": "OWNER", "url": "u",
+            "subIssues": {"nodes": []},
+            "projectItems": {"nodes": [{
+                "id": "IT_9", "isArchived": True,
+                "project": {"number": 1, "owner": {"login": "o"}},
+                "fieldValueByName": {"name": "stub"}}]}}}}}
+        st = lb.parse_issue_state(payload, board)
+        self.assertIsNone(st.item_id)
+        self.assertIsNone(st.stage)
+        # A NON-archived item on the same board still binds (regression guard).
+        payload["data"]["repository"]["issue"]["projectItems"]["nodes"][0]["isArchived"] = False
+        st2 = lb.parse_issue_state(payload, board)
+        self.assertEqual(st2.item_id, "IT_9")
+        self.assertEqual(st2.stage, "stub")
+
 
 def _parented_payload(number=263, parent=265, stage="stub", state="OPEN",
                       author="OWNER"):
@@ -1550,15 +1582,32 @@ class ParentAwareSubIssueGateTest(unittest.TestCase):
         self.assertIn("sub_issue", lb.VERDICTS)
         self.assertIn("sub_issue", lb.GROOM_ROUTES)
 
+    def test_untrusted_open_sub_still_routes_sub_issue(self) -> None:
+        # Deliberate ordering: for an OPEN parented sub, `sub_issue` beats
+        # `untrusted_provenance` (the parent re-checks provenance during its own
+        # groom). Freeze that ordering so it can't silently flip to a `blocked`
+        # untrusted verdict, which would strand the child instead of routing it.
+        r = lb.route_for_groom(True, "stub", None, None, "untrusted",
+                               parent_number=265, issue_state="OPEN")
+        self.assertEqual(r.route, "sub_issue")
+        self.assertEqual(r.parent, 265)
+        self.assertIsNone(r.blocker)
+
 
 def _ctx(root: str, slug=("o", "r")) -> "lb.RepoContext":
     return lb.RepoContext(root=root, main_root=root, origin_owner=slug[0],
                           origin_repo=slug[1], default_branch="main")
 
 
-def _subissue_payload(item=True, stage="stub", state="OPEN"):
+def _subissue_payload(item=True, stage="stub", state="OPEN", archived=False):
     """An OPEN native sub-issue #263 of parent #265, optionally carrying its own
-    (invariant-violating) board item. Drives the rule-6 de-board path."""
+    (invariant-violating) board item. Drives the rule-6 de-board path.
+
+    `archived=True` models the REALISTIC post-archive payload real GraphQL
+    returns: projectItems defaults to includeArchived:true, so the node is still
+    present (id + Status intact) but flagged isArchived — which parse_issue_state
+    must treat as not-on-board. This is the fixture the idempotency tests use;
+    `item=False` (node absent) is not a shape real GraphQL produces after archive."""
     node = {"number": 263, "state": state, "stateReason": None,
             "authorAssociation": "OWNER", "url": "u", "parent": {"number": 265},
             "assignees": {"nodes": []},
@@ -1567,9 +1616,48 @@ def _subissue_payload(item=True, stage="stub", state="OPEN"):
             "subIssues": {"nodes": []}, "projectItems": {"nodes": []}}
     if item:
         node["projectItems"]["nodes"] = [{
-            "id": "IT_9", "project": {"number": 1, "owner": {"login": "o"}},
+            "id": "IT_9", "isArchived": archived,
+            "project": {"number": 1, "owner": {"login": "o"}},
             "fieldValueByName": {"name": stage}}]
     return json.dumps({"data": {"repository": {"issue": node}}})
+
+
+class ParentAwareVerbThreadingTest(unittest.TestCase):
+    """P2 guard: the effectful verbs must THREAD state.parent_number into the
+    routing core. Without a verb-level test, deleting
+    `parent_number = state.parent_number` (or narrowing the evaluate_gate /
+    route_for_groom call) passes the entire pure-function suite while reproducing
+    the original #263 CLI misroute. Driven end-to-end over a FakeRunner from the
+    #263 fixture (parent #265, child board stage `stub`)."""
+
+    BOARD = lb.BoardConfig(owner="o", number=1, source="committed")
+
+    def test_verb_gate_threads_parent_and_routes_sub_issue(self) -> None:
+        runner = FakeRunner([
+            (["api", "graphql"], _ok(json.dumps(_parented_payload(stage="stub")))),
+        ])
+        with mock.patch.object(lb, "read_board_config", return_value=self.BOARD), \
+                tempfile.TemporaryDirectory() as d:
+            out = lb.verb_gate("work", 263, _ctx(d), runner)
+        self.assertEqual(out["verdict"], "sub_issue")
+        self.assertEqual(out["route"], "parent")
+        self.assertEqual(out["parent"], 265)
+        self.assertIsNotNone(out["next"])
+
+    def test_verb_groom_entry_threads_parent_and_routes_sub_issue(self) -> None:
+        # verb_reconcile is short-circuited (its own seams are exercised
+        # elsewhere); this isolates the parent-threading through route_for_groom.
+        runner = FakeRunner([
+            (["api", "graphql"], _ok(json.dumps(_parented_payload(stage="stub")))),
+        ])
+        with mock.patch.object(lb, "read_board_config", return_value=self.BOARD), \
+                mock.patch.object(lb, "verb_reconcile",
+                                  return_value={"skipped_ttl": True, "flags": []}), \
+                tempfile.TemporaryDirectory() as d:
+            out = lb.verb_groom_entry(263, _ctx(d), runner)
+        self.assertEqual(out["route"], "sub_issue")
+        self.assertEqual(out["parent"], 265)
+        self.assertIsNotNone(out["next"])
 
 
 class SubIssueDeboardReconcileTest(unittest.TestCase):
@@ -1602,10 +1690,15 @@ class SubIssueDeboardReconcileTest(unittest.TestCase):
             self.assertIn("#265", comment)
 
     def test_second_run_after_removal_is_a_noop(self) -> None:
-        # The item is gone (archived) -> no archive, no comment, no repair.
+        # The idempotent second run against the REALISTIC post-archive payload:
+        # projectItems still returns the item, but flagged isArchived:true (real
+        # GraphQL defaults to includeArchived). parse_issue_state must read it as
+        # not-on-board, so plan_repairs sees item_id None -> no archive, no
+        # comment, no repair. (Proves the no-op against a payload real GraphQL
+        # actually produces, not a hand-removed item.)
         with tempfile.TemporaryDirectory() as d:
             runner, out = self._reconcile(d, [
-                (["api", "graphql"], _ok(_subissue_payload(item=False))),
+                (["api", "graphql"], _ok(_subissue_payload(item=True, archived=True))),
             ])
             self.assertEqual(out["repairs_applied"], [])
             self.assertEqual(out["repairs_failed"], [])
@@ -1623,6 +1716,43 @@ class SubIssueDeboardReconcileTest(unittest.TestCase):
             ])
             self.assertEqual([r["rule"] for r in out["repairs_applied"]],
                              ["sub_issue_on_board"])
+
+    def test_global_sweep_discovers_no_status_open_sub(self) -> None:
+        # P1-A: `add-to-project.yml` auto-adds a sub WITHOUT setting Status, so a
+        # CI-added sub sits in the NO-STATUS bucket. A GLOBAL reconcile (no
+        # hand-picked --issue) must enumerate it via the sweep's `no:status` leg
+        # and de-board it. Before that leg existed, the four in_progress/terminal
+        # legs never enumerated it and rule 6 never fired for its own async-CI-add
+        # race — the exact convergence gap this leg closes.
+        item = {"content": {"type": "Issue", "number": 263, "repository": "o/r",
+                            "title": "t"}}
+
+        def leg(query, items):
+            return (["project", "item-list", "1", "--owner", "o", "--format",
+                     "json", "--limit", str(lb.RECONCILE_ITEM_LIMIT), "--query", query],
+                    _ok(json.dumps({"items": items})))
+
+        responses = [
+            leg("status:in_progress", []),
+            leg("status:in_review", []),
+            leg("status:done", []),
+            leg("status:abandoned", []),
+            leg("no:status", [item]),          # the CI-added sub lands here
+            leg("status:stub", []),
+            leg("status:brainstormed", []),
+            leg("status:planned", []),
+            (["api", "graphql"], _ok(_subissue_payload(item=True))),
+            (["project", "item-archive", "1", "--owner", "o", "--id", "IT_9"], _ok("{}")),
+            (["issue", "comment", "263", "--repo", "o/r", "--body"], _ok("")),
+        ]
+        with tempfile.TemporaryDirectory() as d:
+            runner = FakeRunner(responses)
+            with mock.patch.object(lb, "read_board_config", return_value=self.BOARD), \
+                    mock.patch.object(lb, "load_cache", return_value={}), \
+                    mock.patch.object(lb, "save_cache", lambda *a, **k: None):
+                out = lb.verb_reconcile(_ctx(d), runner, issue=None, force=True)
+        self.assertEqual([r["rule"] for r in out["repairs_applied"]],
+                         ["sub_issue_on_board"])
 
     def test_failed_archive_is_reported_not_fatal(self) -> None:
         fail = subprocess.CompletedProcess(args=[], returncode=1, stdout="", stderr="nope")
@@ -1673,6 +1803,16 @@ class DeboardSubissueHelperTest(unittest.TestCase):
             (["api", "graphql"], _ok(_subissue_payload(item=True))),
             (["project", "item-archive", "1", "--owner", "o", "--id", "IT_9"], fail),
         ])
+        with mock.patch.object(lb, "read_board_config", return_value=self.BOARD):
+            out = lb._deboard_subissue(263, self.BOARD, _ctx("/tmp"), runner)
+        self.assertFalse(out["deboarded"])
+        self.assertIn("error", out)
+
+    def test_malformed_json_read_is_reported_never_raised(self) -> None:
+        # returncode 0 but non-JSON stdout: fetch_issue_state's json.loads raises
+        # ValueError (json.JSONDecodeError). The best-effort de-board must degrade
+        # to a reported result, not crash — its whole contract is to never raise.
+        runner = FakeRunner([(["api", "graphql"], _ok("not json{"))])
         with mock.patch.object(lb, "read_board_config", return_value=self.BOARD):
             out = lb._deboard_subissue(263, self.BOARD, _ctx("/tmp"), runner)
         self.assertFalse(out["deboarded"])
@@ -1891,6 +2031,25 @@ class GroomVerifyVerbTest(unittest.TestCase):
                 deboard=failing)
             self.assertTrue(out["groomed"])
             self.assertEqual([w["issue"] for w in out["warnings"]], [183])
+
+    def test_second_verify_after_archive_emits_no_repeat_warning(self) -> None:
+        # Idempotency at verify against the REALISTIC post-archive payload. Using
+        # the REAL _deboard_subissue (deboard=None): the parent read yields one
+        # OPEN sub, then the sub is re-read and its item comes back isArchived:true
+        # (real GraphQL includeArchived default). parse_issue_state reads that as
+        # not-on-board, so _deboard_subissue reports deboarded=False with no error
+        # and no archive call fires -> NO repeated warning on the second verify.
+        with tempfile.TemporaryDirectory() as d:
+            runner = FakeRunner([
+                (["api", "graphql"], _ok(self._issue_payload("planned", [
+                    {"number": 263, "state": "OPEN", "blockedBy": {"totalCount": 0}}]))),
+                (["api", "graphql"], _ok(_subissue_payload(item=True, archived=True))),
+            ])
+            with mock.patch.object(lb, "read_board_config",
+                                   return_value=lb.BoardConfig(owner="o", number=1, source="committed")):
+                out = lb.verb_groom_verify(182, _ctx(str(d)), runner, deboard=None)
+            self.assertTrue(out["groomed"])
+            self.assertEqual(out["warnings"], [])
 
 
 class PacketVerbTest(unittest.TestCase):

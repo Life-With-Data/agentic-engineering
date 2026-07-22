@@ -671,6 +671,7 @@ query($owner: String!, $repo: String!, $number: Int!) {
       projectItems(first: 10) {
         nodes {
           id
+          isArchived
           project { id number owner { ... on User { login } ... on Organization { login } } }
           fieldValueByName(name: "Status") {
             ... on ProjectV2ItemFieldSingleSelectValue { name }
@@ -716,6 +717,13 @@ def parse_issue_state(data: dict, board: BoardConfig) -> Optional[IssueState]:
         return None
     stage = item_id = None
     for node in issue.get("projectItems", {}).get("nodes", []):
+        # projectItems defaults to includeArchived:true, so an item archived by
+        # rule 6 is STILL returned on the next read (id + Status intact). Treat an
+        # archived node as not-on-board (item_id/stage stay None): it occupies no
+        # board view, so rule 6 must not re-fire on it and groom-verify must not
+        # re-warn. This is what makes de-boarding idempotent against real GraphQL.
+        if node.get("isArchived"):
+            continue
         proj = node.get("project") or {}
         if proj.get("number") == board.number and (proj.get("owner") or {}).get("login") == board.owner:
             item_id = node.get("id")
@@ -870,7 +878,8 @@ def evaluate_gate(command: str, stage: Optional[str], has_issue: bool,
         return gr("proceed", "compound", "knowledge disposition is independent of Status")
 
     if command == "orchestrate":
-        # Orchestrate consumes raw state and applies its own ladder.
+        # Orchestrate consumes raw state and applies its own ladder — except an
+        # OPEN sub-issue, already rerouted to `sub_issue` above before reaching here.
         return gr("proceed", "orchestrate", "state read for orchestrator")
 
     return gr("no_board", "none", f"unknown command {command!r}")
@@ -1280,6 +1289,11 @@ def verb_set_status(issue: int, stage: str, ctx: RepoContext, runner: GhRunner,
             "out-of-scope ones), then retry. Deliberate override: --force")
     item_id = state.item_id
     if item_id is None:
+        # An archived item now parses as absent (item_id None), so this reaches
+        # the item-add path even when an archived item exists. That is safe:
+        # item-add on existing content is idempotent at GitHub's API level and
+        # leaves the item archived. Acceptable because set_status only ever
+        # targets PARENTS, which rule 6 never archives — no unarchive plumbing.
         add = _run_gh_retry(runner, ["project", "item-add", str(board.number),
                                      "--owner", board.owner, "--url", state.url, "--format", "json"])
         if add.returncode != 0:
@@ -1425,10 +1439,15 @@ def _deboard_subissue(number: int, board: BoardConfig, ctx: RepoContext,
 
     Race note (parent plan): `add-to-project.yml` fires asynchronously on issue
     `opened`, so a freshly created sub often is not on the board yet at decompose
-    time (deboarded=False, no error), and a later CI add is reconciled instead."""
+    time (deboarded=False, no error), and a later CI add is reconciled instead —
+    the CI add sets no Status, so the global sweep's `no:status` leg enumerates
+    it and rule 6 archives it (that leg is what makes this claim true)."""
     try:
         state = fetch_issue_state(number, board, ctx, runner)
-    except BoardError as exc:
+    except (BoardError, ValueError) as exc:
+        # ValueError covers json.JSONDecodeError: a returncode-0 read with
+        # malformed stdout must degrade like any other read failure, not crash
+        # the best-effort de-board (its whole contract is to never raise).
         return {"issue": number, "deboarded": False, "error": str(exc)}
     if state is None or not state.item_id:
         return {"issue": number, "deboarded": False}
@@ -1845,8 +1864,21 @@ def verb_reconcile(ctx: RepoContext, runner: GhRunner, issue: Optional[int] = No
         # Include terminal items so packet cleanup and close-as-not-planned
         # repair are eventually deterministic even when no workflow command
         # targets the issue again.
+        #
+        # The `no:status`/stub/brainstormed/planned legs exist for rule 6's
+        # PRIMARY population: `add-to-project.yml` auto-adds a sub-issue WITHOUT
+        # setting Status, so a CI-added-after-decompose sub lands in the
+        # no-status bucket (or a pre-planned stage) — never in the in_progress+
+        # terminal legs above. Without these legs the global sweep would never
+        # enumerate the exact async-CI-add race rule 6 was built to converge, and
+        # the "reconciler is the convergence guarantee" contract (see the rule-6
+        # and de-board docstrings) would be false for a global reconcile.
+        # Read-cost tradeoff: each swept item costs one ISSUE_QUERY read, so
+        # these legs widen the sweep's read fan-out — accepted because
+        # correctness (convergence for the primary rule-6 population) requires it.
         for query in ("status:in_progress", "status:in_review", "status:done",
-                      "status:abandoned"):
+                      "status:abandoned", "no:status", "status:stub",
+                      "status:brainstormed", "status:planned"):
             for item in _item_list(board, runner, query, RECONCILE_ITEM_LIMIT):
                 number = _origin_issue_number(item, ctx.slug)  # foreign items: never examined
                 if number is not None:
