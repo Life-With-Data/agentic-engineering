@@ -15,8 +15,8 @@ const SKILLS = path.join(PLUGIN, "skills");
 
 const WORKFLOW_REFERENCES: Record<string, string[]> = {
   "wf-grooming": [
-    "brainstorming", "deepen-plan", "interview-me", "report-bug",
-    "reproduce-bug", "triage", "workflows-brainstorm",
+    "brainstorming", "deepen-plan", "design-context", "interview-me",
+    "report-bug", "reproduce-bug", "triage", "workflows-brainstorm",
     "workflows-groom", "workflows-plan",
   ],
   "wf-development": [
