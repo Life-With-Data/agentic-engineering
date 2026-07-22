@@ -5,6 +5,19 @@ All notable changes to the agentic-engineering plugin will be documented in this
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.2.0](https://github.com/Life-With-Data/agentic-engineering/compare/agentic-engineering-v5.1.0...agentic-engineering-v5.2.0) (2026-07-22)
+
+
+### Features
+
+* **lifecycle:** sub-issue board hygiene — parent-aware gates + reconciler-owned de-boarding ([#283](https://github.com/Life-With-Data/agentic-engineering/issues/283)) ([6da9cba](https://github.com/Life-With-Data/agentic-engineering/commit/6da9cba47d4ae12073bcd82946fbcd8071c0b039))
+* **workflow:** design-aware grooming and development for UI work items ([#281](https://github.com/Life-With-Data/agentic-engineering/issues/281)) ([f09a5b9](https://github.com/Life-With-Data/agentic-engineering/commit/f09a5b97bc3bad13c6eb619d23729306822ee099))
+
+
+### Bug Fixes
+
+* **wf-skills:** state owned lifecycle transitions as observable postconditions and enforce the mapping with a guardrail test ([#268](https://github.com/Life-With-Data/agentic-engineering/issues/268)) ([4926e33](https://github.com/Life-With-Data/agentic-engineering/commit/4926e33a936fb0e92d9edff7bcae2ed273536dbe))
+
 ## [5.1.0](https://github.com/Life-With-Data/agentic-engineering/compare/agentic-engineering-v5.0.0...agentic-engineering-v5.1.0) (2026-07-22)
 
 
