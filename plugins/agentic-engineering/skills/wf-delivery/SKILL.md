@@ -66,6 +66,8 @@ same steps inline.
 7. Merge only when policy and repository gates pass.
 8. Deploy or verify production only through declared capabilities.
 
+Delivery is complete only when the issue is closed and the board reads `Status = done`, verified by read-back — `--reconcile --issue <N>` repairs a missed stamp and `--delete-packet <N>` independently verifies the terminal state — not when the merge command returns. The [land route](references/land-pr.md) owns that mechanics.
+
 ## Wrong-layer recovery
 
 If a delivery reference guesses a CI provider, deploy command, versioning convention, or credential flow, stop and use the mapped repository assets. The workflow decides when delivery is allowed; the repository decides how it is performed.

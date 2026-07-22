@@ -67,6 +67,8 @@ Development does not declare completion by itself:
 2. `wf-review` evaluates the change and its risks.
 3. `wf-delivery` owns PR, merge, and deployment actions.
 
+In Project mode, development owns exactly two board transitions, each real only as an observable postcondition: the claim holds only when `--claim <N>` returns proceed (`Status = in_progress` on the board), and development's exit is `--set-status <N> in_review` succeeding at PR open — a write the engine refuses while the parent has open sub-issues. Sub-issue progress is the `status:*` label track, not board Status; the [work route](references/workflows-work.md) owns that mechanics.
+
 For bug fixes, start with `wf-grooming`; it hands off only after reproduction evidence and an actionable bug report exist. Development owns localization, root cause, and the fix. It must not edit a speculative fix before root cause is established.
 
 ## Wrong-layer recovery
