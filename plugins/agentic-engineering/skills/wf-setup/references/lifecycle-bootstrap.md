@@ -182,12 +182,14 @@ run the idempotent backfill separately:
 python3 "<skill-directory>/scripts/lifecycle_board.py" --backfill
 ```
 
-Review `counts`, `added`, `already_present`, `failed`, `flags`, and the advisory
-high-water marker in its JSON. Any failed item or `backfill_truncated` flag means
-the import is incomplete; correct the reported access or enumeration problem
-and re-run. Backfill recomputes the open-issue difference every time, so it is
-safe recovery after a partial run. It does not assign readiness: newly added
-items still require the appropriate lifecycle Status.
+Review `counts`, `added`, `already_present`, `skipped_sub_issues`, `failed`,
+`flags`, and the advisory high-water marker in its JSON. Sub-issues are excluded
+by design — they carry no lifecycle stage, so only parents belong on the board —
+and each excluded sub-issue is listed under `skipped_sub_issues`. Any failed item
+or `backfill_truncated` flag means the import is incomplete; correct the reported
+access or enumeration problem and re-run. Backfill recomputes the open-issue
+difference every time, so it is safe recovery after a partial run. It does not
+assign readiness: newly added items still require the appropriate lifecycle Status.
 
 ## 6. Create the ready-work view
 

@@ -1741,6 +1741,16 @@ def verb_claim(issue: int, ctx: RepoContext, runner: GhRunner) -> dict:
     if state is None:
         raise BoardError("issue_not_found", f"Issue #{issue} not found in {ctx.slug}",
                          "Check the issue number")
+    # An OPEN native sub-issue has no independent lifecycle — the parent owns the
+    # board stage and the PR. Refuse the claim BEFORE any assignment write so the
+    # board is never touched for an issue that should never be worked directly.
+    # Mirror the gate's OPEN-only condition: a CLOSED sub-issue is inert.
+    if state.parent_number is not None and state.state == "OPEN":
+        raise BoardError(
+            "sub_issue_claim",
+            f"Issue #{issue} is a sub-issue of #{state.parent_number} — sub-issues are not "
+            "claimed or worked directly; the parent owns the board stage and PR",
+            f"Claim and work the parent #{state.parent_number} instead")
     if state.assignees and me not in state.assignees:
         decision = decide_claim(state.assignees, me, state.blocked_by_count)
         return {"issue": issue, "claimed": False, "verdict": "claim_conflict", "reason": decision.reason}
@@ -1828,6 +1838,52 @@ def _batched_blocked_counts(numbers: "list[int]", ctx: RepoContext, runner: GhRu
     repo_data = (json.loads(result.stdout or "{}").get("data") or {}).get("repository") or {}
     return {n: ((repo_data.get(f"i{n}") or {}).get("blockedBy") or {}).get("totalCount", 0)
             for n in numbers}
+
+
+PARENT_QUERY_HEADER = "query($owner: String!, $repo: String!) {\n  repository(owner: $owner, name: $repo) {\n"
+
+
+def _batched_parent_numbers(numbers: "list[int]", ctx: RepoContext,
+                            runner: GhRunner) -> "dict[int, Optional[int]]":
+    """Map each origin-repo issue number to its parent issue number, or None when
+    the issue has no parent (a top-level work item). `gh issue list` cannot report
+    sub-issue linkage, so parentage is read in ONE aliased GraphQL query for every
+    candidate — mirroring `_batched_blocked_counts`, never N+1 `gh issue view`.
+
+    A number ABSENT from the returned map could not be read (the node came back
+    null, or the whole query failed). Callers MUST fail such a candidate toward
+    NOT adding it — never treat an unreadable parent as 'parentless', since a
+    silently-added sub-issue is exactly the regression this guards against
+    (issue #269). Unlike `_batched_blocked_counts`, a total failure does NOT raise:
+    backfill is partial-failure-tolerant, so every candidate simply drops out of
+    the map and the loop records it as failed without aborting."""
+    if not numbers:
+        return {}
+    body = "".join(
+        f"    i{n}: issue(number: {n}) {{ parent {{ number }} }}\n" for n in numbers
+    )
+    query = PARENT_QUERY_HEADER + body + "  }\n}"
+    result = _run_gh_retry(runner, ["api", "graphql", "-f", f"query={query}",
+                                    "-F", f"owner={ctx.origin_owner}", "-F", f"repo={ctx.origin_repo}"])
+    if result.returncode != 0:
+        return {}
+    try:
+        repo_data = (json.loads(result.stdout or "{}").get("data") or {}).get("repository") or {}
+    except ValueError:
+        # rc==0 but the body is not JSON: degrade exactly like rc!=0 so the
+        # docstring's "a total failure does NOT raise" promise holds. Every
+        # candidate drops out of the map and the loop records it as failed
+        # without aborting — never a JSONDecodeError up the stack.
+        return {}
+    out: "dict[int, Optional[int]]" = {}
+    for n in numbers:
+        node = repo_data.get(f"i{n}")
+        if not isinstance(node, dict):
+            continue  # null/errored node -> absent -> caller fails toward not-adding
+        parent = node.get("parent") or {}
+        pnum = parent.get("number")
+        out[n] = pnum if isinstance(pnum, int) else None
+    return out
 
 
 def verb_ready_work(ctx: RepoContext, runner: GhRunner) -> dict:
@@ -2031,25 +2087,54 @@ def _repo_open_issues(ctx: RepoContext, runner: GhRunner) -> "tuple[list[dict], 
 def verb_backfill(ctx: RepoContext, runner: GhRunner) -> dict:
     """Add every open origin-repo issue not already on the board, idempotently,
     then record an advisory high-water mark (see the section comment — it gates
-    re-offer only, never skips work). Reports added / already-present / failed
-    counts. Safe to re-run: a second pass adds only what a partial first pass
-    missed, recomputing the full difference each time."""
+    re-offer only, never skips work). Reports added / already-present / skipped
+    sub-issue / failed counts. Safe to re-run: a second pass adds only what a
+    partial first pass missed, recomputing the full difference each time.
+
+    Sub-issues never belong on the board — they carry no lifecycle stage; the
+    parent owns it (issue #269). So each candidate's parentage is read in ONE
+    batched GraphQL query and any parented issue is skipped, not added. A parent
+    lookup that cannot be read fails that candidate toward NOT adding it, exactly
+    like a failed add: it breaks the high-water prefix so a re-run reconsiders
+    it, and never adds a possible sub-issue by accident. This complements the
+    reconciler's rule 6 by preventing add-then-archive churn."""
     board = _require_board(ctx)
     existing, board_truncated = _board_issue_numbers(board, ctx, runner)
     issues, issues_truncated = _repo_open_issues(ctx, runner)
 
     added: "list[int]" = []
     already_present: "list[int]" = []
+    skipped_sub_issues: "list[int]" = []
     failed: "list[dict]" = []
     high_water = 0
     contiguous = True  # cleared at the first failure so the mark stays truthful
 
     # Drop malformed rows (missing/typed-wrong number) before ordering.
     valid = [i for i in issues if isinstance(i.get("number"), int)]
+    # Read parentage once for the add-candidates only (issues already on the
+    # board are never re-evaluated — removing a hand-dragged sub-issue is out of
+    # scope). An unreadable candidate is absent from `parents`, handled below.
+    candidates = [i["number"] for i in valid if i["number"] not in existing]
+    parents = _batched_parent_numbers(candidates, ctx, runner)
     for issue in sorted(valid, key=lambda i: i["number"]):
         number = issue["number"]
         if number in existing:
             already_present.append(number)
+            if contiguous:
+                high_water = number
+            continue
+        if number not in parents:
+            # Parentage could not be read; fail toward not-adding (never risk
+            # sweeping a sub-issue onto the board) and break the prefix.
+            failed.append({"issue": number,
+                           "error": "parent lookup failed — not added (would risk adding a sub-issue)"})
+            contiguous = False
+            continue
+        if parents[number] is not None:
+            # A sub-issue: the parent owns the board stage, so it is skipped, not
+            # added. This is a permanent, non-failure decision, so — like an
+            # already-present issue — it advances the advisory mark.
+            skipped_sub_issues.append(number)
             if contiguous:
                 high_water = number
             continue
@@ -2089,9 +2174,10 @@ def verb_backfill(ctx: RepoContext, runner: GhRunner) -> dict:
     return {
         "added": added,
         "already_present": already_present,
+        "skipped_sub_issues": skipped_sub_issues,
         "failed": failed,
         "counts": {"added": len(added), "already_present": len(already_present),
-                   "failed": len(failed)},
+                   "skipped_sub_issues": len(skipped_sub_issues), "failed": len(failed)},
         "high_water": high_water,
         "marker_written": marker_written,
         "flags": flags,

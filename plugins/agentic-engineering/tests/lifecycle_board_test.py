@@ -492,10 +492,11 @@ class CallBudgetTest(unittest.TestCase):
 
 
 def _issue_query_response(*, number=5, assignees=(), stage="planned", blocked=0,
-                          item_id="item5", url="u", open_subs=()):
+                          item_id="item5", url="u", open_subs=(), parent=None):
     """Build an ISSUE_QUERY graphql response with the dict-shaped blockedBy the
-    new parser reads (blockedBy(first:1){totalCount})."""
-    return {"data": {"repository": {"issue": {
+    new parser reads (blockedBy(first:1){totalCount}). `parent` is an int parent
+    issue number (None => no parent node, i.e. a top-level item)."""
+    issue = {
         "number": number, "state": "OPEN", "stateReason": None, "url": url,
         "authorAssociation": "OWNER",
         "blockedBy": {"totalCount": blocked},
@@ -504,7 +505,10 @@ def _issue_query_response(*, number=5, assignees=(), stage="planned", blocked=0,
         "subIssues": {"nodes": [{"number": n, "state": "OPEN"} for n in open_subs]},
         "projectItems": {"nodes": [{"id": item_id,
             "project": {"id": "P", "number": 1, "owner": {"login": "acme"}},
-            "fieldValueByName": {"name": stage}}]}}}}}
+            "fieldValueByName": {"name": stage}}]}}
+    if parent is not None:
+        issue["parent"] = {"number": parent}
+    return {"data": {"repository": {"issue": issue}}}
 
 
 class SetStatusGateTest(unittest.TestCase):
@@ -634,6 +638,52 @@ class ClaimVerbTest(unittest.TestCase):
         self.assertEqual((result["claimed"], result["verdict"]), (False, "blocked"))
         # No assign call was ever made.
         self.assertFalse(any("--add-assignee" in c for c in runner.calls))
+
+    def test_sub_issue_claim_refused_before_any_board_write(self) -> None:
+        # An OPEN parented issue is a sub-issue: refuse with a structured error
+        # naming the parent, and never touch the board (no assign, no item-edit).
+        runner = FakeRunner([
+            (["api", "user"], _ok("me\n")),
+            (["api", "graphql"], _ok(json.dumps(_issue_query_response(assignees=(), parent=269)))),
+        ])
+        with self.assertRaises(lb.BoardError) as caught:
+            lb.verb_claim(5, self.ctx, runner)
+        self.assertEqual(caught.exception.code, "sub_issue_claim")
+        self.assertIn("269", str(caught.exception))
+        # No mutating call of any kind was made.
+        self.assertFalse(any("--add-assignee" in c for c in runner.calls))
+        self.assertFalse(any(c[:2] == ["project", "item-edit"] for c in runner.calls))
+
+    def test_sub_issue_guard_precedes_self_assigned_write(self) -> None:
+        # A sub-issue already assigned to ME would otherwise sail past the
+        # assignee checks straight into the board write. The parent guard must
+        # win first: refuse with sub_issue_claim, mutate nothing.
+        runner = FakeRunner([
+            (["api", "user"], _ok("me\n")),
+            (["api", "graphql"],
+             _ok(json.dumps(_issue_query_response(assignees=["me"], parent=269)))),
+        ])
+        with self.assertRaises(lb.BoardError) as caught:
+            lb.verb_claim(5, self.ctx, runner)
+        self.assertEqual(caught.exception.code, "sub_issue_claim")
+        # Neither an assign nor a board write happened.
+        self.assertFalse(any("--add-assignee" in c for c in runner.calls))
+        self.assertFalse(any(c[:2] == ["project", "item-edit"] for c in runner.calls))
+
+    def test_sub_issue_guard_precedes_claim_conflict(self) -> None:
+        # A sub-issue assigned to SOMEONE ELSE would otherwise return a
+        # claim_conflict verdict. The parent guard outranks it: this is a
+        # sub_issue_claim refusal, not a conflict, and touches nothing.
+        runner = FakeRunner([
+            (["api", "user"], _ok("me\n")),
+            (["api", "graphql"],
+             _ok(json.dumps(_issue_query_response(assignees=["other"], parent=269)))),
+        ])
+        with self.assertRaises(lb.BoardError) as caught:
+            lb.verb_claim(5, self.ctx, runner)
+        self.assertEqual(caught.exception.code, "sub_issue_claim")
+        self.assertFalse(any("--add-assignee" in c for c in runner.calls))
+        self.assertFalse(any(c[:2] == ["project", "item-edit"] for c in runner.calls))
 
 
 class SubStatusVerbTest(unittest.TestCase):
@@ -831,6 +881,23 @@ class RetryTimeoutTest(unittest.TestCase):
 def _issue_item(number, repo="acme/widget", type_="Issue"):
     return {"content": {"type": type_, "number": number, "repository": repo,
                         "title": f"i{number}"}}
+
+
+def _parents_batch(numbers, parents=None, null_for=()):
+    """A `_batched_parent_numbers` GraphQL reply for `numbers`. `parents` maps a
+    number to its parent number (a sub-issue); numbers in `null_for` come back as
+    a null alias (an unreadable node the caller must fail toward not-adding);
+    every other number is parentless."""
+    parents = parents or {}
+    null_for = set(null_for)
+    nodes = {}
+    for n in numbers:
+        if n in null_for:
+            nodes[f"i{n}"] = None
+            continue
+        p = parents.get(n)
+        nodes[f"i{n}"] = {"parent": {"number": p} if p is not None else None}
+    return json.dumps({"data": {"repository": nodes}})
 
 
 class ConfigKeysWriteTest(unittest.TestCase):
@@ -1223,13 +1290,15 @@ class BackfillVerbTest(unittest.TestCase):
         runner = FakeRunner([
             (["project", "item-list", "1", "--owner", "acme"], _ok(json.dumps(board_items))),
             (["issue", "list", "--repo", "acme/widget"], _ok(json.dumps(repo_issues))),
+            (["api", "graphql"], _ok(_parents_batch([3, 4]))),
             (["project", "item-add", "1", "--owner", "acme"], _ok(json.dumps({"id": "i3"}))),
             (["project", "item-add", "1", "--owner", "acme"], _ok(json.dumps({"id": "i4"}))),
         ])
         result = lb.verb_backfill(self.ctx, runner)
         self.assertEqual(result["added"], [3, 4])
         self.assertEqual(sorted(result["already_present"]), [1, 2])
-        self.assertEqual(result["counts"], {"added": 2, "already_present": 2, "failed": 0})
+        self.assertEqual(result["counts"], {"added": 2, "already_present": 2,
+                                            "skipped_sub_issues": 0, "failed": 0})
         self.assertEqual(result["high_water"], 4)
         self.assertTrue(result["marker_written"])
         self.assertEqual(self._marker(), 4)  # round-trips through the reader
@@ -1246,6 +1315,7 @@ class BackfillVerbTest(unittest.TestCase):
         runner = FakeRunner([
             (["project", "item-list", "1", "--owner", "acme"], _ok(json.dumps(board_items))),
             (["issue", "list", "--repo", "acme/widget"], _ok(json.dumps(repo_issues))),
+            (["api", "graphql"], _ok(_parents_batch([5]))),
             (["project", "item-add", "1", "--owner", "acme"], _ok(json.dumps({"id": "i5"}))),
         ])
         result = lb.verb_backfill(self.ctx, runner)
@@ -1261,6 +1331,7 @@ class BackfillVerbTest(unittest.TestCase):
         responses = [
             (["project", "item-list", "1", "--owner", "acme"], _ok(json.dumps({"items": []}))),
             (["issue", "list", "--repo", "acme/widget"], _ok(json.dumps(repo_issues))),
+            (["api", "graphql"], _ok(_parents_batch(list(range(1, n + 1))))),
         ]
         responses += [(["project", "item-add", "1", "--owner", "acme"],
                        _ok(json.dumps({"id": f"i{i}"}))) for i in range(1, n + 1)]
@@ -1280,6 +1351,7 @@ class BackfillVerbTest(unittest.TestCase):
         runner = FakeRunner([
             (["project", "item-list", "1", "--owner", "acme"], _ok(json.dumps({"items": []}))),
             (["issue", "list", "--repo", "acme/widget"], _ok(json.dumps(repo_issues))),
+            (["api", "graphql"], _ok(_parents_batch([1, 2, 3, 4, 5]))),
             (["project", "item-add", "1", "--owner", "acme"], _ok(json.dumps({"id": "i1"}))),
             (["project", "item-add", "1", "--owner", "acme"], _ok(json.dumps({"id": "i2"}))),
             (["project", "item-add", "1", "--owner", "acme"],
@@ -1308,6 +1380,105 @@ class BackfillVerbTest(unittest.TestCase):
         self.assertEqual(result["added"], [])
         self.assertFalse(result["marker_written"])  # 2 is not > prior 2
         self.assertEqual(self._marker(), 2)
+
+    def test_sub_issue_skipped_parentless_added(self) -> None:
+        # Sub-issues carry no lifecycle stage; only parents belong on the board
+        # (issue #269). Issue 2 is a sub-issue of #99 → skipped, not added; the
+        # parentless 1 and 3 are added. A skip is a permanent decision, so — like
+        # an already-present issue — it advances the contiguous high-water mark.
+        repo_issues = [{"number": n, "url": f"u{n}"} for n in (1, 2, 3)]
+        runner = FakeRunner([
+            (["project", "item-list", "1", "--owner", "acme"], _ok(json.dumps({"items": []}))),
+            (["issue", "list", "--repo", "acme/widget"], _ok(json.dumps(repo_issues))),
+            (["api", "graphql"], _ok(_parents_batch([1, 2, 3], parents={2: 99}))),
+            (["project", "item-add", "1", "--owner", "acme"], _ok(json.dumps({"id": "i1"}))),
+            (["project", "item-add", "1", "--owner", "acme"], _ok(json.dumps({"id": "i3"}))),
+        ])
+        result = lb.verb_backfill(self.ctx, runner)
+        self.assertEqual(result["added"], [1, 3])
+        self.assertEqual(result["skipped_sub_issues"], [2])
+        self.assertEqual(result["failed"], [])
+        self.assertEqual(result["counts"],
+                         {"added": 2, "already_present": 0,
+                          "skipped_sub_issues": 1, "failed": 0})
+        self.assertEqual(result["high_water"], 3)   # skip does not stall the mark
+        self.assertTrue(result["marker_written"])
+        self.assertEqual(self._marker(), 3)
+        # The sub-issue never reached item-add (only the two parentless adds ran).
+        self.assertEqual(sum(1 for c in runner.calls if c[:2] == ["project", "item-add"]), 2)
+
+    def test_parent_lookup_failure_fails_toward_not_adding(self) -> None:
+        # A single unreadable parent node must fail THAT candidate toward not
+        # adding it (never risk sweeping a sub-issue on) and break the prefix so a
+        # re-run reconsiders it — the rest of the loop still proceeds.
+        repo_issues = [{"number": n, "url": f"u{n}"} for n in (1, 2, 3)]
+        runner = FakeRunner([
+            (["project", "item-list", "1", "--owner", "acme"], _ok(json.dumps({"items": []}))),
+            (["issue", "list", "--repo", "acme/widget"], _ok(json.dumps(repo_issues))),
+            (["api", "graphql"], _ok(_parents_batch([1, 2, 3], null_for={2}))),
+            (["project", "item-add", "1", "--owner", "acme"], _ok(json.dumps({"id": "i1"}))),
+            (["project", "item-add", "1", "--owner", "acme"], _ok(json.dumps({"id": "i3"}))),
+        ])
+        result = lb.verb_backfill(self.ctx, runner)
+        self.assertEqual(sorted(result["added"]), [1, 3])
+        self.assertEqual([f["issue"] for f in result["failed"]], [2])
+        self.assertEqual(result["skipped_sub_issues"], [])
+        self.assertEqual(result["high_water"], 1)   # contiguous prefix stops at 2
+        self.assertEqual(self._marker(), 1)
+
+    def test_skip_does_not_advance_mark_past_an_earlier_failure(self) -> None:
+        # Candidate 1's parent lookup fails (breaks the contiguous prefix), then
+        # candidate 2 is a legitimate sub-issue skip. The skip branch's advance is
+        # guarded by `if contiguous:` — a broken prefix must keep the mark at 0 so
+        # a re-run reconsiders 1 and the skip never masquerades as coverage.
+        repo_issues = [{"number": n, "url": f"u{n}"} for n in (1, 2)]
+        runner = FakeRunner([
+            (["project", "item-list", "1", "--owner", "acme"], _ok(json.dumps({"items": []}))),
+            (["issue", "list", "--repo", "acme/widget"], _ok(json.dumps(repo_issues))),
+            (["api", "graphql"], _ok(_parents_batch([1, 2], parents={2: 99}, null_for={1}))),
+        ])
+        result = lb.verb_backfill(self.ctx, runner)
+        self.assertEqual(result["added"], [])
+        self.assertEqual([f["issue"] for f in result["failed"]], [1])
+        self.assertEqual(result["skipped_sub_issues"], [2])
+        self.assertEqual(result["high_water"], 0)          # skip stays behind the failure
+        self.assertFalse(result["marker_written"])
+        self.assertIsNone(self._marker())
+        # No add was attempted at all.
+        self.assertFalse(any(c[:2] == ["project", "item-add"] for c in runner.calls))
+
+    def test_total_parent_lookup_failure_adds_nothing_without_aborting(self) -> None:
+        # A whole-query parent-lookup failure fails EVERY candidate toward not
+        # adding — the loop must not abort and must add nothing.
+        repo_issues = [{"number": n, "url": f"u{n}"} for n in (1, 2)]
+        runner = FakeRunner([
+            (["project", "item-list", "1", "--owner", "acme"], _ok(json.dumps({"items": []}))),
+            (["issue", "list", "--repo", "acme/widget"], _ok(json.dumps(repo_issues))),
+            (["api", "graphql"], subprocess.CompletedProcess([], 1, "", "boom")),
+        ])
+        result = lb.verb_backfill(self.ctx, runner)
+        self.assertEqual(result["added"], [])
+        self.assertEqual([f["issue"] for f in result["failed"]], [1, 2])
+        self.assertEqual(result["high_water"], 0)
+        # No add was attempted (loop failed toward not-adding, did not abort).
+        self.assertFalse(any(c[:2] == ["project", "item-add"] for c in runner.calls))
+
+    def test_malformed_parent_lookup_body_degrades_like_total_failure(self) -> None:
+        # rc==0 but non-JSON stdout must degrade exactly like an rc!=0 failure:
+        # every candidate drops out of the parent map and is failed toward
+        # not-adding — never a JSONDecodeError up the stack (the docstring's
+        # "a total failure does NOT raise" promise).
+        repo_issues = [{"number": n, "url": f"u{n}"} for n in (1, 2)]
+        runner = FakeRunner([
+            (["project", "item-list", "1", "--owner", "acme"], _ok(json.dumps({"items": []}))),
+            (["issue", "list", "--repo", "acme/widget"], _ok(json.dumps(repo_issues))),
+            (["api", "graphql"], _ok("<html>rate limited</html>")),  # rc 0, not JSON
+        ])
+        result = lb.verb_backfill(self.ctx, runner)  # must not raise
+        self.assertEqual(result["added"], [])
+        self.assertEqual([f["issue"] for f in result["failed"]], [1, 2])
+        self.assertEqual(result["high_water"], 0)
+        self.assertFalse(any(c[:2] == ["project", "item-add"] for c in runner.calls))
 
 
 class FixtureReplayTest(unittest.TestCase):
