@@ -127,6 +127,27 @@ SUB_STATUS_LABEL_META = {
     "status:done": ("0E8A16", "Sub-issue: acceptance criteria met"),
 }
 
+# Implementation-complexity vocabulary. Grooming — the one stage that reads
+# every unit closely with full plan context — assesses complexity ONCE and
+# persists it as a repo-scoped, mutually-exclusive `complexity:*` label, so
+# downstream dispatch reads a durable signal instead of re-deriving it ad hoc.
+# This mirrors the `status:*` mechanism above: repo-scoped (no board),
+# upsert-then-attach, at most one per issue. The tuple order is the ascending
+# tier order used for the parent rollup (= highest child tier).
+COMPLEXITY_TIERS = ("trivial", "low", "medium", "high")
+COMPLEXITY_LABELS = {tier: f"complexity:{tier}" for tier in COMPLEXITY_TIERS}
+ALL_COMPLEXITY_LABELS = tuple(COMPLEXITY_LABELS.values())
+# Ascending rank for the parent rollup (max of the child tiers).
+_COMPLEXITY_ORDER = {tier: i for i, tier in enumerate(COMPLEXITY_TIERS)}
+# (color hex without '#', description) — a green->yellow->orange->red ramp so
+# the four tiers read as one ascending scale in the issues list.
+COMPLEXITY_LABEL_META = {
+    "complexity:trivial": ("0E8A16", "Complexity: mechanical, single-file, no design judgment"),
+    "complexity:low": ("FBCA04", "Complexity: localized change, established pattern, minimal branching"),
+    "complexity:medium": ("D93F0B", "Complexity: multi-file or new small subsystem; some design choices"),
+    "complexity:high": ("B60205", "Complexity: cross-cutting, ambiguous, or high-blast-radius"),
+}
+
 READY_WORK_LIMIT = 50
 RECONCILE_ITEM_LIMIT = 10000
 RECONCILE_TTL_SECONDS = 600
@@ -1002,6 +1023,15 @@ def validate_decompose_spec(spec: dict, has_parent: bool) -> "list[dict]":
         raise bad("spec.body_file (string) is required")
     if not has_parent and not (isinstance(spec.get("parent_title"), str) and spec["parent_title"].strip()):
         raise bad("spec.parent_title is required when no parent issue number is given")
+    def check_complexity(value, where: str) -> None:
+        # `complexity` is optional (advisory) — an omitted or null value stays
+        # valid and simply writes no label. A present value must be a known tier.
+        if value is None:
+            return
+        if not isinstance(value, str) or value not in COMPLEXITY_TIERS:
+            raise bad(f"{where} complexity={value!r} must be one of {COMPLEXITY_TIERS} (or omitted)")
+
+    check_complexity(spec.get("complexity"), "spec")
     subs = spec.get("sub_issues")
     if not isinstance(subs, list):
         raise bad("spec.sub_issues (array) is required (use [] for a single-task item)")
@@ -1012,6 +1042,7 @@ def validate_decompose_spec(spec: dict, has_parent: bool) -> "list[dict]":
             raise bad(f"sub_issues[{i}].title (non-empty string) is required")
         if not isinstance(sub.get("body_file"), str) or not sub["body_file"].strip():
             raise bad(f"sub_issues[{i}].body_file (string path) is required")
+        check_complexity(sub.get("complexity"), f"sub_issues[{i}]")
         deps = sub.get("blocked_by", [])
         if not isinstance(deps, list):
             raise bad(f"sub_issues[{i}].blocked_by must be an array of earlier indices")
@@ -1380,6 +1411,45 @@ def verb_sub_status(issue: int, status: str, ctx: RepoContext, runner: GhRunner)
             "removed_labels": remove, "was_open": is_open}
 
 
+def apply_complexity_label(issue: int, tier: str, ctx: RepoContext, runner: GhRunner) -> dict:
+    """Attach the repo-scoped `complexity:{tier}` label to an issue, mutually
+    exclusive with any other `complexity:*` label. Mirrors the `status:*`
+    upsert-then-attach path: ensure the target label exists (idempotent,
+    `--force` self-heals color/description), add it, and strip any OTHER
+    `complexity:*` label so an issue carries at most one. Board-free — labels
+    are repo-scoped. Re-applying the current tier is a cheap no-op edit."""
+    if tier not in COMPLEXITY_TIERS:
+        raise BoardError("invalid_complexity", f"{tier!r} is not a complexity tier",
+                         f"Use one of: {', '.join(COMPLEXITY_TIERS)}")
+    view = _run_gh_retry(runner, ["issue", "view", str(issue), "--repo", ctx.slug,
+                                  "--json", "labels"])
+    if view.returncode != 0:
+        stderr = view.stderr.strip()
+        if "Could not resolve" in stderr or "not found" in stderr.lower():
+            raise BoardError("issue_not_found", f"Issue #{issue} not found in {ctx.slug}",
+                             "Check the issue number")
+        raise BoardError("gh_read_failed", f"reading issue #{issue} failed: {stderr[:200]}",
+                         "retry; check network/auth (gh auth status)")
+    current = {lbl.get("name", "") for lbl in json.loads(view.stdout or "{}").get("labels", [])}
+    target = COMPLEXITY_LABELS[tier]
+    color, desc = COMPLEXITY_LABEL_META[target]
+    ensure = _run_gh_retry(runner, ["label", "create", target, "--repo", ctx.slug,
+                                    "--color", color, "--description", desc, "--force"])
+    if ensure.returncode != 0:
+        raise BoardError("label_write_failed", f"ensuring {target} failed: {ensure.stderr.strip()[:200]}",
+                         "Verify issues-write (triage) permission on the repo")
+    present = [lbl for lbl in ALL_COMPLEXITY_LABELS if lbl in current]
+    remove = [lbl for lbl in present if lbl != target]
+    add = [] if target in current else ["--add-label", target]
+    if add or remove:
+        edit = _run_gh_retry(runner, ["issue", "edit", str(issue), "--repo", ctx.slug, *add,
+                                      *sum((["--remove-label", lbl] for lbl in remove), [])])
+        if edit.returncode != 0:
+            raise BoardError("label_write_failed", f"issue-edit failed: {edit.stderr.strip()[:200]}",
+                             "Verify issues-write permission on the repo")
+    return {"issue": issue, "complexity": tier, "label": target, "removed_labels": remove}
+
+
 # --------------------------------------------------------------------------
 # Groom orchestration verbs. These do not add any new transition — they
 # sequence the existing primitives (reconcile, gate, set_status) into the
@@ -1547,16 +1617,34 @@ def verb_decompose(issue: Optional[int], spec_path: str, ctx: RepoContext, runne
             wired.append({"issue": created[i], "blocked_by": created[dep_idx]})
 
     # 4. Advance the parent to planned (board-adds if needed) — the transition.
+    #    This happens BEFORE the complexity labels below so a label write can
+    #    never gate or break the `planned` transition (issue #285 AC5).
     st = set_status(parent, "planned", ctx, runner)
 
-    # 5. Best-effort de-board each created sub — the Project tracks the parent,
+    # 5. Persist implementation-complexity labels (advisory, optional). Each
+    #    sub-issue gets its own tier; the parent gets a ROLLUP = the highest
+    #    child tier when there are sub-issues, else its own spec-level value
+    #    (the single-task case). Omitted complexity writes no label.
+    for i, sub in enumerate(subs):
+        tier = sub.get("complexity")
+        if tier:
+            apply_complexity_label(created[i], tier, ctx, runner)
+    child_tiers = [sub["complexity"] for sub in subs if sub.get("complexity")]
+    parent_tier = (max(child_tiers, key=lambda t: _COMPLEXITY_ORDER[t])
+                   if child_tiers else spec.get("complexity"))
+    if parent_tier:
+        apply_complexity_label(parent, parent_tier, ctx, runner)
+
+    # 6. Best-effort de-board each created sub — the Project tracks the parent,
     #    not its task units. Non-fatal by construction (see _deboard_subissue):
     #    the async auto-add usually has not fired yet, and the reconciler's
     #    rule 6 is the convergence guarantee for any board item that lands later.
     deboarded = [deboard(number, board, ctx, runner) for number in created]
     return {"parent": parent, "body_file": spec[body_key], "stage": st.get("stage"),
             "previous_stage": st.get("previous_stage"),
+            "parent_complexity": parent_tier,
             "sub_issues": [{"number": created[i], "title": subs[i]["title"],
+                            "complexity": subs[i].get("complexity"),
                             "blocked_by": [created[d] for d in subs[i].get("blocked_by", [])]}
                            for i in range(len(subs))],
             "sub_issue_count": len(created), "dependencies_wired": len(wired),

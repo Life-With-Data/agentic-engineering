@@ -8,6 +8,7 @@ and call-count budgets via an argv-recording fake runner. No network, no gh.
 from __future__ import annotations
 
 import importlib.util
+import inspect
 import json
 import subprocess
 import sys
@@ -771,6 +772,72 @@ class SubStatusVerbTest(unittest.TestCase):
         ])
         with self.assertRaises(lb.BoardError) as caught:
             lb.verb_sub_status(99, "blocked", self.ctx, runner)
+        self.assertEqual(caught.exception.code, "issue_not_found")
+
+
+class ComplexityLabelWriterTest(unittest.TestCase):
+    """apply_complexity_label drives the mutually-exclusive `complexity:*` labels
+    board-free, mirroring the status:* upsert-then-attach path."""
+
+    def setUp(self) -> None:
+        self.ctx = lb.RepoContext(root=".", main_root=".", origin_owner="acme",
+                                  origin_repo="widget", default_branch="main")
+
+    @staticmethod
+    def _view(labels):
+        return _ok(json.dumps({"labels": [{"name": n} for n in labels]}))
+
+    def test_invalid_tier_rejected_before_any_gh_call(self) -> None:
+        runner = FakeRunner([])  # any call would raise "unexpected gh call"
+        with self.assertRaises(lb.BoardError) as caught:
+            lb.apply_complexity_label(7, "epic", self.ctx, runner)
+        self.assertEqual(caught.exception.code, "invalid_complexity")
+        self.assertEqual(runner.calls, [])
+
+    def test_fresh_issue_ensures_label_and_adds_it(self) -> None:
+        runner = FakeRunner([
+            (["issue", "view", "7", "--repo", "acme/widget", "--json", "labels"],
+             self._view([])),
+            (["label", "create", "complexity:medium", "--repo", "acme/widget"], _ok("")),
+            (["issue", "edit", "7", "--repo", "acme/widget",
+              "--add-label", "complexity:medium"], _ok("")),
+        ])
+        result = lb.apply_complexity_label(7, "medium", self.ctx, runner)
+        self.assertEqual((result["complexity"], result["label"]),
+                         ("medium", "complexity:medium"))
+        self.assertEqual(result["removed_labels"], [])
+        self.assertIn("--force", runner.calls[1])  # idempotent upsert
+
+    def test_swap_removes_prior_complexity_label_and_adds_target(self) -> None:
+        runner = FakeRunner([
+            (["issue", "view", "8", "--repo", "acme/widget", "--json", "labels"],
+             self._view(["complexity:high", "bug"])),
+            (["label", "create", "complexity:low", "--repo", "acme/widget"], _ok("")),
+            (["issue", "edit", "8", "--repo", "acme/widget",
+              "--add-label", "complexity:low",
+              "--remove-label", "complexity:high"], _ok("")),
+        ])
+        result = lb.apply_complexity_label(8, "low", self.ctx, runner)
+        self.assertEqual(result["removed_labels"], ["complexity:high"])
+
+    def test_reapplying_current_tier_is_a_noop_edit(self) -> None:
+        runner = FakeRunner([
+            (["issue", "view", "9", "--repo", "acme/widget", "--json", "labels"],
+             self._view(["complexity:medium"])),
+            (["label", "create", "complexity:medium", "--repo", "acme/widget"], _ok("")),
+        ])
+        result = lb.apply_complexity_label(9, "medium", self.ctx, runner)
+        self.assertEqual(result["complexity"], "medium")
+        self.assertFalse(any(c[:2] == ["issue", "edit"] for c in runner.calls))
+
+    def test_missing_issue_is_issue_not_found(self) -> None:
+        miss = subprocess.CompletedProcess(args=[], returncode=1, stdout="",
+                                           stderr="Could not resolve to an Issue with the number of 99.")
+        runner = FakeRunner([
+            (["issue", "view", "99", "--repo", "acme/widget", "--json", "labels"], miss),
+        ])
+        with self.assertRaises(lb.BoardError) as caught:
+            lb.apply_complexity_label(99, "high", self.ctx, runner)
         self.assertEqual(caught.exception.code, "issue_not_found")
 
 
@@ -1630,6 +1697,27 @@ class DecomposeSpecValidationTest(unittest.TestCase):
         # updating an existing parent does not
         self.assertEqual(lb.validate_decompose_spec(spec, has_parent=True), [])
 
+    def test_valid_complexity_on_parent_and_subs_accepted(self) -> None:
+        spec = {"plan_path": "p", "complexity": "low", "sub_issues": [
+            {"title": "a", "body_file": "s1", "complexity": "high"},
+            {"title": "b", "body_file": "s2"}]}  # sub omitting complexity stays valid
+        subs = lb.validate_decompose_spec(spec, has_parent=True)
+        self.assertEqual(len(subs), 2)
+
+    def test_omitted_complexity_still_valid(self) -> None:
+        spec = {"plan_path": "p", "sub_issues": [{"title": "a", "body_file": "s"}]}
+        # No complexity anywhere is backward compatible — no raise.
+        self.assertEqual(len(lb.validate_decompose_spec(spec, has_parent=True)), 1)
+
+    def test_out_of_vocabulary_complexity_rejected(self) -> None:
+        parent_bad = {"plan_path": "p", "complexity": "epic", "sub_issues": []}
+        sub_bad = {"plan_path": "p", "sub_issues": [
+            {"title": "a", "body_file": "s", "complexity": "huge"}]}
+        for bad in (parent_bad, sub_bad):
+            with self.assertRaises(lb.BoardError) as cm:
+                lb.validate_decompose_spec(bad, has_parent=True)
+            self.assertEqual(cm.exception.code, "invalid_decompose_spec")
+
 
 class SubIssueParsingTest(unittest.TestCase):
     """parse_issue_state must surface EVERY sub-issue (open + closed) with its
@@ -2111,6 +2199,117 @@ class DecomposeVerbTest(unittest.TestCase):
                                       set_status=lambda *a, **k: None)
             self.assertEqual(caught.exception.code, "sub_body_missing")
             self.assertEqual(runner.calls, [])
+
+    def test_mixed_tier_complexity_labels_applied_with_parent_rollup(self) -> None:
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            (root / "parent.md").write_text("parent", encoding="utf-8")
+            (root / "s1.md").write_text("sub1", encoding="utf-8")
+            (root / "s2.md").write_text("sub2", encoding="utf-8")
+            # Parent spec-level complexity is `low`, but children are high+low, so
+            # the parent ROLLUP must be `high` (max child), not the spec-level value.
+            spec = {"body_file": "parent.md", "complexity": "low", "sub_issues": [
+                {"title": "core", "body_file": "s1.md", "complexity": "high"},
+                {"title": "follow", "body_file": "s2.md", "blocked_by": [0], "complexity": "low"}]}
+            spec_path = root / "spec.json"
+            spec_path.write_text(json.dumps(spec), encoding="utf-8")
+
+            runner = FakeRunner([
+                (["issue", "edit", "182", "--repo", "o/r", "--body-file"],
+                 _ok("https://github.com/o/r/issues/182\n")),
+                (["issue", "create", "--repo", "o/r", "--parent", "182", "--title", "core"],
+                 _ok("https://github.com/o/r/issues/183\n")),
+                (["issue", "create", "--repo", "o/r", "--parent", "182", "--title", "follow"],
+                 _ok("https://github.com/o/r/issues/184\n")),
+                (["issue", "edit", "184", "--repo", "o/r", "--add-blocked-by", "183"], _ok("")),
+                # sub 183 -> complexity:high
+                (["issue", "view", "183", "--repo", "o/r", "--json", "labels"], _ok('{"labels":[]}')),
+                (["label", "create", "complexity:high", "--repo", "o/r"], _ok("")),
+                (["issue", "edit", "183", "--repo", "o/r", "--add-label", "complexity:high"], _ok("")),
+                # sub 184 -> complexity:low
+                (["issue", "view", "184", "--repo", "o/r", "--json", "labels"], _ok('{"labels":[]}')),
+                (["label", "create", "complexity:low", "--repo", "o/r"], _ok("")),
+                (["issue", "edit", "184", "--repo", "o/r", "--add-label", "complexity:low"], _ok("")),
+                # parent rollup -> complexity:high (max child)
+                (["issue", "view", "182", "--repo", "o/r", "--json", "labels"], _ok('{"labels":[]}')),
+                (["label", "create", "complexity:high", "--repo", "o/r"], _ok("")),
+                (["issue", "edit", "182", "--repo", "o/r", "--add-label", "complexity:high"], _ok("")),
+            ])
+            seen = {}
+
+            def fake_set_status(parent, stage, ctx, run, force=False):
+                seen["call"] = (parent, stage)
+                return {"issue": parent, "stage": stage, "previous_stage": None}
+
+            with mock.patch.object(lb, "read_board_config",
+                                   return_value=lb.BoardConfig(owner="o", number=1, source="committed")):
+                out = lb.verb_decompose(182, str(spec_path), _ctx(str(root)), runner,
+                                        set_status=fake_set_status,
+                                        deboard=lambda number, board, ctx, run: {"issue": number, "deboarded": False})
+
+            # AC3: parent label = highest child tier; AC5: planned still stamped.
+            self.assertEqual(out["parent_complexity"], "high")
+            self.assertEqual([s["complexity"] for s in out["sub_issues"]], ["high", "low"])
+            self.assertEqual(seen["call"], (182, "planned"))
+            self.assertEqual(runner.responses, [])  # every label call consumed in order
+
+    def test_single_task_parent_uses_own_complexity(self) -> None:
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            (root / "parent.md").write_text("parent", encoding="utf-8")
+            spec = {"body_file": "parent.md", "complexity": "medium", "sub_issues": []}
+            spec_path = root / "spec.json"
+            spec_path.write_text(json.dumps(spec), encoding="utf-8")
+
+            runner = FakeRunner([
+                (["issue", "edit", "182", "--repo", "o/r", "--body-file"],
+                 _ok("https://github.com/o/r/issues/182\n")),
+                # single-task: parent takes its own spec-level complexity
+                (["issue", "view", "182", "--repo", "o/r", "--json", "labels"], _ok('{"labels":[]}')),
+                (["label", "create", "complexity:medium", "--repo", "o/r"], _ok("")),
+                (["issue", "edit", "182", "--repo", "o/r", "--add-label", "complexity:medium"], _ok("")),
+            ])
+            with mock.patch.object(lb, "read_board_config",
+                                   return_value=lb.BoardConfig(owner="o", number=1, source="committed")):
+                out = lb.verb_decompose(182, str(spec_path), _ctx(str(root)), runner,
+                                        set_status=lambda p, s, c, r, force=False: {"stage": s},
+                                        deboard=lambda number, board, ctx, run: {"issue": number, "deboarded": False})
+            self.assertEqual(out["parent_complexity"], "medium")
+            self.assertEqual(runner.responses, [])
+
+
+class ComplexityLabelGuardrailTest(unittest.TestCase):
+    """Freeze the complexity-label CATEGORY, not a frozen literal set of tiers.
+
+    A guardrail pinned to exact strings false-passes when the surface is renamed
+    but still broken; assert the `complexity:` namespace exists, carries self-heal
+    metadata, and is applied by verb_decompose. Mirrors the category-not-literal
+    policy the status:* labels follow (see skill_transition_ownership_test.py)."""
+
+    def test_complexity_category_is_defined_with_metadata(self) -> None:
+        self.assertTrue(lb.COMPLEXITY_LABELS, "complexity label vocabulary must be non-empty")
+        for label in lb.COMPLEXITY_LABELS.values():
+            # Category, not literal spelling: every label lives in `complexity:`.
+            self.assertTrue(label.startswith("complexity:"), label)
+            self.assertIn(label, lb.COMPLEXITY_LABEL_META)  # color/description self-heal present
+
+    def test_writer_emits_a_complexity_namespace_label(self) -> None:
+        ctx = lb.RepoContext(root=".", main_root=".", origin_owner="o",
+                             origin_repo="r", default_branch="main")
+        tier = next(iter(lb.COMPLEXITY_TIERS))  # any tier — don't pin which
+        label = lb.COMPLEXITY_LABELS[tier]
+        runner = FakeRunner([
+            (["issue", "view", "5", "--repo", "o/r", "--json", "labels"], _ok('{"labels":[]}')),
+            (["label", "create", label, "--repo", "o/r"], _ok("")),
+            (["issue", "edit", "5", "--repo", "o/r", "--add-label", label], _ok("")),
+        ])
+        out = lb.apply_complexity_label(5, tier, ctx, runner)
+        self.assertTrue(out["label"].startswith("complexity:"))
+
+    def test_verb_decompose_is_wired_to_the_complexity_writer(self) -> None:
+        # The dispatch unit's complexity must be applied by the SINGLE decompose
+        # writer — not re-derived elsewhere. Prove the wiring structurally.
+        self.assertIn("apply_complexity_label", inspect.getsource(lb.verb_decompose))
 
 
 class GroomVerifyVerbTest(unittest.TestCase):

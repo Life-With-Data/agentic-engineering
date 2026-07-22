@@ -54,14 +54,24 @@ most hosts run a sub-agent on the session's own model when none is specified,
 so omission silently buys the most expensive tier — inheriting by default is a
 selection failure, not a choice. The default is the lowest tier that can pass
 the unit's exit checks; reserve stronger tiers for units that demonstrably
-need them. Judge complexity on three axes: ambiguity of the exit check,
-reasoning depth required, and blast radius of a wrong answer.
+need them.
 
-| Tier | Use for |
-|---|---|
-| Economy (fastest, cheapest) | Mechanical, low-ambiguity work with a deterministic exit check: renames, formatting, count updates, regenerating derived files, running prescribed commands and reporting output |
-| Standard | Well-scoped implementation against clear acceptance criteria, research summarization, test authoring, first-draft writing |
-| Strongest available | Ambiguous or high-blast-radius work: root-cause debugging, architectural and security judgment, cross-cutting refactors, criteria that need interpretation |
+Read the unit's persisted `complexity:*` label first — grooming assessed
+complexity once with full plan context and wrote it to the dispatch unit (see
+[grooming's complexity assessment](../../wf-grooming/references/workflows-plan.md)),
+so it is the primary input; read it with
+`gh issue view <sub> --repo <origin> --json labels`. Map the tier to a model
+tier (advisory — judgment retained): `complexity:trivial` → fastest economy,
+`complexity:low` → economy, `complexity:medium` → standard/balanced,
+`complexity:high` → strongest available. Only when the unit carries no
+`complexity:*` label, derive it inline by judging three axes: ambiguity of the
+exit check, reasoning depth required, and blast radius of a wrong answer.
+
+| Tier | `complexity:*` | Use for |
+|---|---|---|
+| Economy (fastest, cheapest) | `trivial`, `low` | Mechanical, low-ambiguity work with a deterministic exit check: renames, formatting, count updates, regenerating derived files, running prescribed commands and reporting output |
+| Standard | `medium` | Well-scoped implementation against clear acceptance criteria, research summarization, test authoring, first-draft writing |
+| Strongest available | `high` | Ambiguous or high-blast-radius work: root-cause debugging, architectural and security judgment, cross-cutting refactors, criteria that need interpretation |
 
 Selection rules:
 

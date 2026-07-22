@@ -106,6 +106,35 @@ or provenance decision remains unresolved. In an unconfigured repository
 board yet (the `wf-setup` lifecycle bootstrap configures one), perform no
 tracker writes, and apply the same exact temporary-file cleanup.
 
+### Assess implementation complexity
+
+Grooming is the one stage with full plan context and the one that reads every
+unit closely — so grooming assesses implementation complexity **once** here,
+rather than leaving downstream dispatch to re-derive it ad hoc. The decompose
+spec MAY carry an optional `complexity` value on the parent (spec level) and on
+each `sub_issues[]` entry; populate it for every unit while the plan is fresh.
+The engine persists it as a durable, repo-scoped `complexity:*` label that
+`wf-development` reads to
+[pick an economical agent tier at dispatch](../../wf-development/references/workflows-orchestrate.md).
+
+Complexity is **advisory**, not a gate: a spec that omits `complexity` is still
+valid and still reaches `Status = planned`. Do not turn the planned attestation
+into a hard complexity gate.
+
+Assess each unit against this 4-tier rubric (the values match the engine
+vocabulary exactly — use these spellings):
+
+| `complexity` | When it fits |
+|--------------|--------------|
+| `trivial`    | Mechanical, single-file, no design judgment (a copy/const/doc-line change). |
+| `low`        | Localized change on an established pattern, minimal branching. |
+| `medium`     | Multi-file, or a new small subsystem; some design choices. |
+| `high`       | Cross-cutting, ambiguous, or high-blast-radius; needs strong synthesis and verification. |
+
+The engine applies the sub-issue's own tier to each dispatch unit and rolls the
+parent's label up to the **highest child tier** (or, for a single-task item with
+empty `sub_issues`, the parent's own value).
+
 In Project mode, after a successful GitHub update, run:
 
 ```bash

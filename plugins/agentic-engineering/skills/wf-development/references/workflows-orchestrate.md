@@ -33,10 +33,29 @@ validator, not as the worker. Delegate stage work to sub-agents per
 each implementation unit during development, test authoring, review lenses,
 CI diagnosis, and documentation drafts — and set each sub-agent's model
 explicitly at dispatch (hosts otherwise inherit the session's model), choosing
-the lowest tier that unit's complexity allows: economy tiers for mechanical
-work, standard tiers for well-scoped work, the strongest available tier only
-for ambiguous or high-blast-radius work. The orchestrator keeps the session's
-own model for verification and triage.
+the lowest tier that unit's complexity allows. The orchestrator keeps the
+session's own model for verification and triage.
+
+Read the unit's persisted `complexity:*` label as the **primary** complexity
+input rather than re-deriving it — grooming assessed it once with full plan
+context (see
+[grooming's complexity assessment](../../wf-grooming/references/workflows-plan.md)),
+and the sub-issue is the dispatch unit that carries it. Read it with
+`gh issue view <sub> --repo <origin> --json labels`. Map the tier to an agent
+tier (advisory — the orchestrator retains judgment):
+
+| `complexity:*` label | Intended agent tier |
+|----------------------|---------------------|
+| `complexity:trivial` | Fastest economy tier (e.g. Haiku, low effort). |
+| `complexity:low`     | Economy tier. |
+| `complexity:medium`  | Balanced/standard tier. |
+| `complexity:high`    | Powerful, orchestrator/verifier-grade tier. |
+
+When a unit carries **no** `complexity:*` label (an unlabeled or legacy issue),
+fall back to deriving complexity inline from the unit's scope — economy tiers
+for mechanical work, standard tiers for well-scoped work, the strongest
+available tier only for ambiguous or high-blast-radius work. The label is an
+optimization, never a hard dependency.
 
 1. Validate the repository capabilities required by the current and next stage.
 2. Claim work only at the development boundary.
