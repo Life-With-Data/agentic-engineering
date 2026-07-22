@@ -15,6 +15,11 @@ roles and selection rules, never repository commands or host-specific APIs.
   with explicit exit checks and returns a structured report. Sub-agents never
   mutate shared tracker, board, or PR state.
 
+Role assignment is self-disambiguating: an agent operating under a dispatch
+brief is a sub-agent for that unit. It executes the brief directly and never
+re-enters this policy as orchestrator, loads workflow routers to re-route its
+unit, or delegates further.
+
 ## When to delegate
 
 Delegate any unit that has a definable exit check and meaningful working
