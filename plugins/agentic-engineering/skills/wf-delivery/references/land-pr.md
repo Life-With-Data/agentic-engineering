@@ -30,8 +30,10 @@ discovered after merge.
 
 Merging is outward-facing and effectively irreversible. Called on its own, land-pr **pauses and asks
 the user before merging**. Merge automatically **only** when invoked in an autonomous context —
-`--auto` in the arguments, or when called from the `wf-development` orchestration route in an autonomous run (its
-fully-autonomous default, or after its `--final-review` gate has been approved) — **and** all
+`--auto` in the arguments, when called from the `wf-development` orchestration route in an autonomous run (its
+fully-autonomous default, or after its `--final-review` gate has been approved), or when the
+ticket's [resolved delivery posture](../../wf-development/references/workflows-orchestrate.md#delivery-posture)
+is autonomous — **and** all
 landability conditions below hold. Never auto-merge a PR that touches the default branch directly,
 force-pushes, or has any unresolved blocker.
 
@@ -104,7 +106,8 @@ the mechanical conditions only — also confirm the independent review ran, per 
 Repeat until all landability conditions hold, or a blocker resists ~2 attempts that make **no
 strictly-measurable progress** — a fix that does not reduce the failing-check count, the unresolved-
 thread count, or the open-P1 count counts as a dry attempt (the uniform no-progress rule in
-the `wf-development` orchestration route). After two dry attempts, stop and escalate to the user with the specific
+the `wf-development` orchestration route; stall bounds are item (d) of the
+[escalation contract](../../wf-development/references/escalation-contract.md)). After two dry attempts, stop and escalate to the user with the specific
 failure from `blockers`:
 
 - **CI red or a required check failing** → inspect the failure, fix it, push, and re-check:
@@ -136,7 +139,10 @@ failure from `blockers`:
 - **Merge blocked by branch protection** (`mergeStateStatus: BLOCKED`) → the repo physically requires
   something the agent can't supply (e.g. a human approval, a CODEOWNERS sign-off, an external check).
   This is a genuine blocker: stop and surface it to the user with the specific reason. Do not loop on
-  it and do not attempt an admin override unless the user explicitly authorizes one.
+  it and do not attempt an admin override unless the user explicitly authorizes one. This is one of the
+  externally-imposed gates in the
+  [escalation contract](../../wf-development/references/escalation-contract.md) — it stops the run in
+  every mode, autonomous included.
 
 - **Branch behind base** (`mergeStateStatus: BEHIND`) → update it:
   ```bash
@@ -156,9 +162,13 @@ waive the final compounding gate in step 5:
   method, that the branch will be deleted, and that the final compounding check will run before the
   merge. Example: *"PR #123 is green, independently reviewed (P1s resolved), and all threads
   resolved. Run the final compounding check, then merge with squash and delete the branch? [y/N]"*
-  Continue only on explicit yes.
+  Continue only on explicit yes. This interactive prompt is exactly the routine gate standard mode
+  adds on top of the shared
+  [escalation contract](../../wf-development/references/escalation-contract.md); autonomous mode
+  suppresses it in favor of the next bullet.
 
-- **Autonomous (`--auto`, or called from the `wf-development` orchestration route in an autonomous run)** — merge
+- **Autonomous (`--auto`, called from the `wf-development` orchestration route in an autonomous run,
+  or the ticket's resolved delivery posture is autonomous)** — merge
   without asking **once and only once** all conditions hold. This is the point of autonomous mode: do not bounce a
   "say the word and I'll merge" back to the user when the PR is already green, reviewed, and
   mergeable — just merge. If a condition is genuinely unmet (CI stuck red after retries,

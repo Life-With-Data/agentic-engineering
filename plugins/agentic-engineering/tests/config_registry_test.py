@@ -76,6 +76,13 @@ class InventoryShapeTest(unittest.TestCase):
             config_registry.verb_get(self.ctx, "nonexistent_flag")
         self.assertEqual(cm.exception.code, "unknown_flag")
 
+    def test_delivery_mode_is_in_the_inventory_with_standard_default(self) -> None:
+        row = config_registry.verb_get(self.ctx, "delivery_mode")
+        self.assertEqual(row["default"], "standard")
+        self.assertEqual(row["effective"], "standard")
+        self.assertEqual(row["kind"], "enum")
+        self.assertFalse(row["set"])
+
 
 class ValidationTest(unittest.TestCase):
     def test_boolean_accepts_true_false_case_insensitive(self) -> None:
@@ -92,6 +99,13 @@ class ValidationTest(unittest.TestCase):
         for value in ("github-project", "GITHUB-PROJECT"):
             self.assertTrue(config_registry._validate(flag, value))
         for value in ("linear", "beads", "github", "none", ""):
+            self.assertFalse(config_registry._validate(flag, value))
+
+    def test_delivery_mode_enum_accepts_only_standard_or_autonomous(self) -> None:
+        flag = config_registry._BY_KEY["delivery_mode"]
+        for value in ("standard", "autonomous", "AUTONOMOUS"):
+            self.assertTrue(config_registry._validate(flag, value))
+        for value in ("hands-off", "yolo", ""):
             self.assertFalse(config_registry._validate(flag, value))
 
     def test_duration_accepts_positive_seconds_or_duration_suffix(self) -> None:
@@ -138,6 +152,14 @@ class SetTest(unittest.TestCase):
         result = config_registry.verb_set(self.ctx, "nudge_todowrite", "false")
         self.assertEqual(result["previous"], "true")
         self.assertEqual(result["value"], "false")
+
+    def test_set_delivery_mode_to_autonomous_round_trips(self) -> None:
+        result = config_registry.verb_set(self.ctx, "delivery_mode", "autonomous")
+        self.assertEqual(result["value"], "autonomous")
+        self.assertIsNone(result["previous"])
+        row = config_registry.verb_get(self.ctx, "delivery_mode")
+        self.assertEqual(row["effective"], "autonomous")
+        self.assertEqual(row["source"], "local")
 
     def test_set_invalid_value_refused(self) -> None:
         with self.assertRaises(lifecycle_board.BoardError) as cm:

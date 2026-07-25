@@ -210,6 +210,74 @@ def read_local_config_tracker(repo_root: str) -> tuple[Optional[str], Optional[s
     return (None, None)
 
 
+# The only supported delivery-posture defaults today; more may follow the
+# posture vocabulary in lifecycle_board.py (POSTURE_VALUES).
+VALID_DELIVERY_MODES = {"standard", "autonomous"}
+
+
+def read_local_config_delivery_mode(repo_root: str) -> tuple[Optional[str], Optional[str]]:
+    """Read delivery_mode: from agentic-engineering.local.md frontmatter.
+
+    Symmetric to read_local_config_tracker above: same (valid, invalid) return
+    shape, and the same tracked-file security invariant (a .local.md that is
+    *tracked* in git would ride a PR, letting the PR pin every clone's default
+    delivery posture; a tracked copy is ignored with a warning and resolution
+    falls back to the safe `standard` default).
+    """
+    config_path = pathlib.Path(repo_root) / "agentic-engineering.local.md"
+    if not config_path.is_file():
+        return (None, None)
+    tracked = subprocess.run(["git", "-C", repo_root, "ls-files", "--error-unmatch", config_path.name], text=True, capture_output=True)
+    if tracked.returncode == 0:
+        print(
+            f"warning: {config_path.name} is tracked in git — a PR must not carry it; "
+            "ignoring its delivery_mode override and falling back to standard",
+            file=sys.stderr,
+        )
+        return (None, None)
+    try:
+        text = config_path.read_text(encoding="utf-8")
+    except OSError:
+        return (None, None)
+    if not text.startswith("---"):
+        return (None, None)
+    # Extract frontmatter block between leading --- and the next ---.
+    match = re.match(r"^---\s*\n(.*?)\n---\s*(?:\n|$)", text, re.DOTALL)
+    if not match:
+        return (None, None)
+    for line in match.group(1).splitlines():
+        m = re.match(r"^\s*delivery_mode\s*:\s*([A-Za-z][A-Za-z-]*)\s*$", line)
+        if m:
+            value = m.group(1).lower()
+            if value in VALID_DELIVERY_MODES:
+                return (value, None)
+            return (None, value)
+    return (None, None)
+
+
+def resolve_delivery_mode(repo_root: str) -> dict[str, Any]:
+    """Apply the resolution chain and return both the decision and provenance.
+
+    Unlike the issue tracker, there is no board-configured signal to fall
+    back on: absent a local override, the resolved default is always the
+    safe `standard` posture."""
+    local_override, invalid_override = read_local_config_delivery_mode(repo_root)
+    if local_override is not None:
+        return {
+            "resolved": local_override,
+            "source": "agentic-engineering.local.md",
+            "local_override": local_override,
+            "local_override_invalid": None,
+        }
+
+    return {
+        "resolved": "standard",
+        "source": "auto-detect",
+        "local_override": None,
+        "local_override_invalid": invalid_override,
+    }
+
+
 def resolve_issue_tracker(
     repo_root: str,
     board_configured: bool,
@@ -335,6 +403,7 @@ def main() -> int:
         repo_root=repo_root,
         board_configured=board is not None,
     )
+    delivery_mode_info = resolve_delivery_mode(repo_root=repo_root)
 
     data["integrations"] = {
         "github_cli_authed": gh_authenticated,
@@ -344,6 +413,10 @@ def main() -> int:
         "issue_tracker_local_config_invalid": tracker_info["local_override_invalid"],
         "issue_tracker_resolved": tracker_info["resolved"],
         "issue_tracker_source": tracker_info["source"],
+        "delivery_mode_local_config": delivery_mode_info["local_override"],
+        "delivery_mode_local_config_invalid": delivery_mode_info["local_override_invalid"],
+        "delivery_mode_resolved": delivery_mode_info["resolved"],
+        "delivery_mode_source": delivery_mode_info["source"],
     }
     if tracker_info["local_override_invalid"]:
         print(
@@ -351,6 +424,14 @@ def main() -> int:
             f"'{tracker_info['local_override_invalid']}', which is not a supported tracker "
             f"({' | '.join(sorted(VALID_TRACKERS))} is the only supported mode today); "
             "falling back to auto-detect",
+            file=sys.stderr,
+        )
+    if delivery_mode_info["local_override_invalid"]:
+        print(
+            "warning: agentic-engineering.local.md pins delivery_mode: "
+            f"'{delivery_mode_info['local_override_invalid']}', which is not a supported "
+            f"delivery mode ({' | '.join(sorted(VALID_DELIVERY_MODES))} is supported today); "
+            "falling back to standard",
             file=sys.stderr,
         )
 

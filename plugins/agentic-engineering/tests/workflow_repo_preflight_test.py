@@ -132,5 +132,66 @@ class ResolveIssueTrackerTest(unittest.TestCase):
         self.assertEqual(preflight.VALID_TRACKERS, {"github-project"})
 
 
+class ResolveDeliveryModeTest(unittest.TestCase):
+    """delivery_mode's resolution chain mirrors issue_tracker's: local
+    override wins; absent one, the resolver falls back to the safe
+    `standard` default (there is no board-configured signal to consult)."""
+
+    def setUp(self) -> None:
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.repo = self._tmp.name
+
+    def test_valid_local_override_wins_over_default(self) -> None:
+        _repo_with_config(self.repo, "delivery_mode: autonomous")
+        info = preflight.resolve_delivery_mode(repo_root=self.repo)
+        self.assertEqual(info["resolved"], "autonomous")
+        self.assertEqual(info["source"], "agentic-engineering.local.md")
+        self.assertEqual(info["local_override"], "autonomous")
+
+    def test_invalid_override_falls_through_and_is_surfaced(self) -> None:
+        _repo_with_config(self.repo, "delivery_mode: yolo")
+        info = preflight.resolve_delivery_mode(repo_root=self.repo)
+        self.assertEqual(info["resolved"], "standard")
+        self.assertEqual(info["source"], "auto-detect")
+        self.assertIsNone(info["local_override"])
+        self.assertEqual(info["local_override_invalid"], "yolo")
+
+    def test_no_signals_resolves_standard(self) -> None:
+        info = preflight.resolve_delivery_mode(repo_root=self.repo)
+        self.assertEqual(info["resolved"], "standard")
+        self.assertEqual(info["source"], "auto-detect")
+        self.assertIsNone(info["local_override_invalid"])
+
+    def test_missing_config_file_reads_as_no_override(self) -> None:
+        valid, invalid = preflight.read_local_config_delivery_mode(self.repo)
+        self.assertIsNone(valid)
+        self.assertIsNone(invalid)
+
+    def test_tracked_local_config_is_ignored(self) -> None:
+        # Mirrors read_local_config_tracker's security invariant: a .local.md
+        # tracked in git would ride a PR and pin every clone's delivery mode.
+        subprocess.run(["git", "-C", self.repo, "init", "-q"], check=True,
+                       capture_output=True, text=True)
+        _repo_with_config(self.repo, "delivery_mode: autonomous")
+        subprocess.run(["git", "-C", self.repo, "add", "agentic-engineering.local.md"],
+                       check=True, capture_output=True, text=True)
+        info = preflight.resolve_delivery_mode(repo_root=self.repo)
+        self.assertEqual(info["resolved"], "standard")
+        self.assertEqual(info["source"], "auto-detect")
+        self.assertIsNone(info["local_override"])
+
+    def test_untracked_local_config_in_git_repo_is_honored(self) -> None:
+        subprocess.run(["git", "-C", self.repo, "init", "-q"], check=True,
+                       capture_output=True, text=True)
+        _repo_with_config(self.repo, "delivery_mode: autonomous")
+        info = preflight.resolve_delivery_mode(repo_root=self.repo)
+        self.assertEqual(info["resolved"], "autonomous")
+        self.assertEqual(info["source"], "agentic-engineering.local.md")
+
+    def test_standard_and_autonomous_are_the_only_supported_modes(self) -> None:
+        self.assertEqual(preflight.VALID_DELIVERY_MODES, {"standard", "autonomous"})
+
+
 if __name__ == "__main__":
     unittest.main()

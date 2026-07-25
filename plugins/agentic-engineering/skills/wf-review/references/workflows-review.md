@@ -62,7 +62,12 @@ raise it against non-UI changes.
 ## Record and resolve
 
 Record findings through the repository's configured tracker or review system.
-For each proposed fix:
+Non-blocking findings triage is a routine gate standard mode keeps and
+autonomous mode suppresses in its favor (autonomous fixes P2 and defers P3
+per policy instead of asking); see the
+[escalation contract](../../wf-development/references/escalation-contract.md)
+for the complete, named set of reasons a run stops regardless of mode. For
+each proposed fix:
 
 1. return to `wf-development` for implementation;
 2. re-run relevant evidence through `wf-testing`;
