@@ -157,6 +157,12 @@ COMPLEXITY_LABEL_META = {
 POSTURE_VALUES = ("standard", "autonomous")
 POSTURE_LABELS = {"autonomous": "posture:autonomous"}   # standard writes none
 ALL_POSTURE_LABELS = tuple(POSTURE_LABELS.values())
+# The namespace both the writer and the reader police. Because only ONE label in
+# this namespace is ever written, an unrecognized `posture:*` label is by
+# definition not engine-authored: the writer strips it and the reader refuses to
+# treat the ticket as cleared while it is present. Both directions deliberately
+# fail toward `standard` — clearance is a positive grant, never a leftover.
+POSTURE_LABEL_PREFIX = "posture:"
 POSTURE_LABEL_META = {
     "posture:autonomous": (
         "5319E7",
@@ -1535,7 +1541,13 @@ def apply_posture_label(issue: int, posture: str, ctx: RepoContext, runner: GhRu
         if ensure.returncode != 0:
             raise BoardError("label_write_failed", f"ensuring {target} failed: {ensure.stderr.strip()[:200]}",
                              "Verify issues-write (triage) permission on the repo")
-    present = [lbl for lbl in ALL_POSTURE_LABELS if lbl in current]
+    # Strip by NAMESPACE, not by known-label membership. `ALL_POSTURE_LABELS`
+    # holds only `posture:autonomous`, so a membership test would silently leave
+    # a stray `posture:*` label (e.g. a hand-added `posture:standard`) in place —
+    # unremovable through this writer, and, since `resolve_posture` below reads
+    # `posture:autonomous` positively, resolving toward MORE autonomy. Clearance
+    # must never fail open, so any other `posture:*` label is removed here.
+    present = [lbl for lbl in current if lbl.startswith(POSTURE_LABEL_PREFIX)]
     remove = [lbl for lbl in present if lbl != target]
     add = [] if (target is None or target in current) else ["--add-label", target]
     if add or remove:
@@ -1549,11 +1561,21 @@ def apply_posture_label(issue: int, posture: str, ctx: RepoContext, runner: GhRu
 
 def resolve_posture(labels: "list[str]") -> str:
     """Read-side counterpart to `apply_posture_label`: `autonomous` if the
-    issue carries `posture:autonomous`, else the safe `standard` default —
-    unlabeled and legacy issues resolve to `standard` for free, matching the
-    writer's asymmetric label vocabulary (POSTURE_LABELS has no entry for
-    `standard`, so its absence IS the value)."""
-    return "autonomous" if POSTURE_LABELS["autonomous"] in labels else "standard"
+    issue carries `posture:autonomous` AND no other `posture:*` label, else the
+    safe `standard` default — unlabeled and legacy issues resolve to `standard`
+    for free, matching the writer's asymmetric label vocabulary (POSTURE_LABELS
+    has no entry for `standard`, so its absence IS the value).
+
+    Safe-wins on conflict. A ticket carrying both `posture:autonomous` and some
+    other `posture:*` label (a hand-added `posture:standard`, a value from a
+    future vocabulary this build does not know) is ambiguous, and an ambiguous
+    clearance is not a clearance: it resolves `standard` until a human or the
+    writer settles it. Resolving the other way would let a stray label — the one
+    thing a human reaches for to de-escalate a ticket in the GitHub UI — grant
+    hands-off execution instead of denying it."""
+    known = POSTURE_LABELS["autonomous"]
+    posture_labels = [lbl for lbl in labels if lbl.startswith(POSTURE_LABEL_PREFIX)]
+    return "autonomous" if posture_labels == [known] else "standard"
 
 
 # --------------------------------------------------------------------------

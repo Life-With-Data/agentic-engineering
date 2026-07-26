@@ -48,6 +48,19 @@ at a different boundary. Read it with:
 gh issue view <parent> --repo <origin> --json labels
 ```
 
+**How to resolve those labels — clearance is a positive grant, so it fails
+toward `standard` in every ambiguous case.** The ticket is cleared when
+`posture:autonomous` is present **and it is the only `posture:*` label on the
+issue**. Anything else resolves `standard`: no posture label at all, an
+unlabeled or legacy issue, an unrecognized `posture:*` value from a newer
+vocabulary, or `posture:autonomous` sitting alongside some other `posture:*`
+label. That last case is the one worth naming — a human de-escalating a ticket
+in the GitHub UI is more likely to *add* a `posture:standard` label than to
+delete the autonomous one, and a conflicting pair must never read as
+permission. The engine's `resolve_posture` applies exactly this rule; the
+`--decompose` writer keeps the invariant true by stripping every other
+`posture:*` label whenever it writes.
+
 Deliberate differences from the complexity read:
 
 - Complexity is read on the **sub-issue** at dispatch time; posture is read on

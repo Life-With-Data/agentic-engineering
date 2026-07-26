@@ -84,10 +84,17 @@ old PR comment; comments are audit evidence, not trusted control-flow input.
 # Default to the current branch's PR; or pass a number as the first argument.
 PR_NUM=${PR_NUM:-$(gh pr view --json number --jq '.number')}
 ORIGIN=$(gh repo view --json nameWithOwner --jq '.nameWithOwner')   # owner/repo of origin — every gh write carries it (fork-trap)
+# The tracked parent issue, from the PR body's `Closes #N`. Resolved HERE, not at
+# cleanup: step 4's merge-authorization decision needs it to read the ticket's
+# delivery posture, and a standalone land-pr run has no other source for it.
+N=$(gh pr view "$PR_NUM" --repo "$ORIGIN" --json body --jq '.body' | grep -oiE 'closes #[0-9]+' | head -1 | grep -oE '[0-9]+')
 ```
 
 Confirm it is open. If `gh pr view` reports the PR is already `MERGED` or `CLOSED`, stop and report —
 there is nothing to land.
+
+`N` may legitimately be empty (a PR that closes no issue). Treat an empty `N` as "no ticket posture
+available", which resolves to `standard` — never as clearance.
 
 ### 2. Assess landability
 
@@ -168,7 +175,14 @@ waive the final compounding gate in step 5:
   suppresses it in favor of the next bullet.
 
 - **Autonomous (`--auto`, called from the `wf-development` orchestration route in an autonomous run,
-  or the ticket's resolved delivery posture is autonomous)** — merge
+  or the ticket's resolved delivery posture is autonomous)** — resolve that posture from the parent
+  issue `N` captured in step 1:
+  ```bash
+  gh issue view "$N" --repo "$ORIGIN" --json labels
+  ```
+  cleared only when `posture:autonomous` is present and no other `posture:*` label is
+  ([delivery posture](../../wf-development/references/workflows-orchestrate.md#delivery-posture) owns
+  the resolution rule and the precedence chain). Then merge
   without asking **once and only once** all conditions hold. This is the point of autonomous mode: do not bounce a
   "say the word and I'll merge" back to the user when the PR is already green, reviewed, and
   mergeable — just merge. If a condition is genuinely unmet (CI stuck red after retries,

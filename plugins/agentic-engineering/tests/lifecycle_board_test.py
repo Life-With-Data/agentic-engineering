@@ -904,6 +904,35 @@ class PostureLabelWriterTest(unittest.TestCase):
         # No `label create` call — "standard" has no label to ensure/self-heal.
         self.assertFalse(any(c[:2] == ["label", "create"] for c in runner.calls))
 
+    def test_stray_posture_label_is_stripped_when_clearing(self) -> None:
+        # Regression (review of PR #304): `present` used to be computed by
+        # membership in ALL_POSTURE_LABELS, which holds only
+        # `posture:autonomous` — so a hand-added `posture:standard` survived,
+        # leaving BOTH labels on the issue. Strip by namespace instead.
+        runner = FakeRunner([
+            (["issue", "view", "11", "--repo", "acme/widget", "--json", "labels"],
+             self._view(["posture:standard", "bug"])),
+            (["label", "create", "posture:autonomous", "--repo", "acme/widget"], _ok("")),
+            (["issue", "edit", "11", "--repo", "acme/widget",
+              "--add-label", "posture:autonomous",
+              "--remove-label", "posture:standard"], _ok("")),
+        ])
+        result = lb.apply_posture_label(11, "autonomous", self.ctx, runner)
+        self.assertEqual(result["removed_labels"], ["posture:standard"])
+
+    def test_stray_posture_label_is_removable_via_standard(self) -> None:
+        # Same regression, the other direction: applying `standard` to an issue
+        # carrying only a stray `posture:*` label used to issue NO edit at all,
+        # making the stray label unremovable through the engine.
+        runner = FakeRunner([
+            (["issue", "view", "12", "--repo", "acme/widget", "--json", "labels"],
+             self._view(["posture:standard"])),
+            (["issue", "edit", "12", "--repo", "acme/widget",
+              "--remove-label", "posture:standard"], _ok("")),
+        ])
+        result = lb.apply_posture_label(12, "standard", self.ctx, runner)
+        self.assertEqual(result["removed_labels"], ["posture:standard"])
+
     def test_standard_on_a_bare_issue_is_a_noop(self) -> None:
         runner = FakeRunner([
             (["issue", "view", "10", "--repo", "acme/widget", "--json", "labels"],
@@ -2618,6 +2647,31 @@ class GroomVerifyVerbTest(unittest.TestCase):
     def test_reports_autonomous_posture_from_the_label(self) -> None:
         with tempfile.TemporaryDirectory() as d:
             out = self._run(Path(d), "planned", [], labels=["posture:autonomous"])
+            self.assertEqual(out["posture"], "autonomous")
+
+    def test_conflicting_posture_labels_resolve_standard(self) -> None:
+        # Regression (review of PR #304): a ticket carrying `posture:autonomous`
+        # alongside any other `posture:*` label used to resolve `autonomous`,
+        # so a human de-escalating in the GitHub UI by ADDING `posture:standard`
+        # silently granted clearance instead of revoking it. Ambiguous clearance
+        # is not clearance — it must fail toward `standard`.
+        with tempfile.TemporaryDirectory() as d:
+            out = self._run(Path(d), "planned", [],
+                            labels=["posture:standard", "posture:autonomous"])
+            self.assertEqual(out["posture"], "standard")
+
+    def test_unknown_posture_label_alone_resolves_standard(self) -> None:
+        # A value from a future vocabulary this build does not know must never
+        # be read as permission.
+        with tempfile.TemporaryDirectory() as d:
+            out = self._run(Path(d), "planned", [], labels=["posture:experimental"])
+            self.assertEqual(out["posture"], "standard")
+
+    def test_unrelated_namespaces_do_not_affect_posture(self) -> None:
+        # `complexity:*` and `status:*` share the issue but not the namespace.
+        with tempfile.TemporaryDirectory() as d:
+            out = self._run(Path(d), "planned", [],
+                            labels=["complexity:high", "posture:autonomous"])
             self.assertEqual(out["posture"], "autonomous")
 
     def test_no_warnings_when_no_sub_is_boarded(self) -> None:

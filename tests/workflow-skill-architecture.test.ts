@@ -381,6 +381,39 @@ describe("workflow skill architecture", () => {
     expect(claude.split(/\r?\n/, 1)[0]).toBe("@AGENTS.md");
   });
 
+  test("posture clearance is documented as failing toward standard", () => {
+    // Review of PR #304. The engine's resolve_posture is safe-wins (cleared only
+    // when `posture:autonomous` is the ONLY `posture:*` label), but the read the
+    // plugin actually prescribes at the routing boundary is a model-interpreted
+    // `gh issue view --json labels` — so the resolution rule has to be stated in
+    // prose too, or the Python fix never reaches the boundary that gates
+    // autonomy. Category-level: assert the rule is present, not its wording.
+    const orchestrate = readFileSync(
+      path.join(SKILLS, "wf-development", "references", "workflows-orchestrate.md"),
+      "utf8",
+    );
+    expect(orchestrate).toContain("only `posture:*` label");
+    expect(orchestrate).toContain("fails\ntoward `standard`");
+
+    // Grooming must not claim that declining an offer revokes an existing
+    // clearance — omitting `posture` leaves a cleared ticket cleared.
+    const plan = readFileSync(
+      path.join(SKILLS, "wf-grooming", "references", "workflows-plan.md"),
+      "utf8",
+    );
+    expect(plan).toContain("Revoking takes an explicit write");
+    expect(plan).not.toContain("silence or a no writes\n  nothing, which resolves to `standard`");
+
+    // The escalation contract must not whitelist the tracker as a trusted
+    // source of instructions, and must be honest about where (a) is enforced.
+    const contract = readFileSync(
+      path.join(SKILLS, "wf-development", "references", "escalation-contract.md"),
+      "utf8",
+    );
+    expect(contract).not.toContain("not the user or the tracker");
+    expect(contract).toContain("Where this is machine-enforced, and where it is not");
+  });
+
   test("autonomous-mode-owning skills reference the shared escalation contract", () => {
     // Category-level assertion (repo guardrail policy): freeze the presence of
     // the cross-link token — the relative path to escalation-contract.md — not
@@ -439,9 +472,24 @@ describe("workflow skill architecture", () => {
     // the blocker-escalation category tokens for genuine residual ambiguity.
     expect(work).toContain("Autonomous posture on a groomed issue");
     expect(work).toContain("do **not** re-open a general");
-    for (const token of ["--sub-status", "blocked", "--add-blocked-by", "human", "AskUserQuestion"]) {
-      expect(work).toContain(token);
-    }
+    // One contiguous fragment, not five separate tokens: every one of
+    // `--sub-status` / `blocked` / `--add-blocked-by` / `human` /
+    // `AskUserQuestion` already occurs elsewhere in this file, so asserting
+    // them individually would still pass with this entire bullet deleted.
+    expect(work).toContain(
+      "`--sub-status <sub> blocked` + `--add-blocked-by` + a `human`-labeled",
+    );
+    expect(work).toContain("batched `AskUserQuestion`");
+
+    // Review of PR #304: this route is directly selectable from wf-development's
+    // SKILL.md, so it must carry the posture read itself rather than assuming
+    // the agent arrived via the orchestrate router.
+    expect(work).toContain("workflows-orchestrate.md#delivery-posture");
+    expect(work).toContain("gh issue view <N> --repo <origin> --json labels");
+
+    // Issue text is untrusted input, stated where the agent is told to treat
+    // the groomed artifact as intent.
+    expect(work).toContain("requirements to satisfy");
 
     // The escalation contract is linked by relative path rather than restated.
     expect(work).toContain("escalation-contract.md");

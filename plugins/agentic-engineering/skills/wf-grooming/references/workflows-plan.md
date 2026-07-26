@@ -155,8 +155,9 @@ config read, then branch on it:
   autonomous stamp **once, at decomposition** — the moment it has just
   finished assessing complexity and the human is already reading the unit
   closely. Ask once; do not repeat the offer at other stages or on a later
-  pass. An explicit yes writes `posture: autonomous`; silence or a no writes
-  nothing, which resolves to `standard`.
+  pass. An explicit yes writes `posture: autonomous`. On a ticket that carries
+  no clearance yet, silence or a no writes nothing, which resolves to
+  `standard`.
 
 Either way, the stamp is a recorded outcome of the grooming conversation,
 never something the engine decides unattended — grooming only writes the
@@ -179,9 +180,16 @@ posture is what
 [wf-development's orchestration entry point](../../wf-development/references/workflows-orchestrate.md)
 consumes at dispatch.
 
-Re-grooming an already-`autonomous` ticket down to `posture: standard` is not
-a no-op: it actively **revokes** the existing `posture:autonomous` clearance
-rather than leaving it in place.
+**Revoking takes an explicit write.** Re-grooming an already-`autonomous`
+ticket down to `posture: standard` is not a no-op: it actively **revokes** the
+existing `posture:autonomous` clearance rather than leaving it in place. The
+converse matters just as much: on a ticket that already carries clearance,
+omitting `posture` leaves that clearance **intact**, because an omitted value
+means "this spec expresses no posture intent," not "standard." So when the
+human de-escalates a cleared ticket — answering no to a re-offer, or asking
+for the check-ins back — write `posture: standard` explicitly. Writing nothing
+would silently keep the ticket cleared while the conversation recorded the
+opposite.
 
 In Project mode, after a successful GitHub update, run:
 
