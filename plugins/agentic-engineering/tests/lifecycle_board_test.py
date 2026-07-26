@@ -842,6 +842,142 @@ class ComplexityLabelWriterTest(unittest.TestCase):
         self.assertEqual(caught.exception.code, "issue_not_found")
 
 
+class PostureLabelWriterTest(unittest.TestCase):
+    """apply_posture_label drives the mutually-exclusive `posture:*` labels
+    board-free, mirroring the complexity writer's upsert-then-attach path —
+    with one asymmetry: `standard` has no label, so applying it is a PURE
+    removal (the case complexity has no analogue for)."""
+
+    def setUp(self) -> None:
+        self.ctx = lb.RepoContext(root=".", main_root=".", origin_owner="acme",
+                                  origin_repo="widget", default_branch="main")
+
+    @staticmethod
+    def _view(labels):
+        return _ok(json.dumps({"labels": [{"name": n} for n in labels]}))
+
+    def test_invalid_value_rejected_before_any_gh_call(self) -> None:
+        runner = FakeRunner([])  # any call would raise "unexpected gh call"
+        with self.assertRaises(lb.BoardError) as caught:
+            lb.apply_posture_label(7, "yolo", self.ctx, runner)
+        self.assertEqual(caught.exception.code, "invalid_posture")
+        self.assertEqual(runner.calls, [])
+
+    def test_fresh_issue_ensures_label_and_adds_it(self) -> None:
+        runner = FakeRunner([
+            (["issue", "view", "7", "--repo", "acme/widget", "--json", "labels"],
+             self._view([])),
+            (["label", "create", "posture:autonomous", "--repo", "acme/widget"], _ok("")),
+            (["issue", "edit", "7", "--repo", "acme/widget",
+              "--add-label", "posture:autonomous"], _ok("")),
+        ])
+        result = lb.apply_posture_label(7, "autonomous", self.ctx, runner)
+        self.assertEqual((result["posture"], result["label"]),
+                         ("autonomous", "posture:autonomous"))
+        self.assertEqual(result["removed_labels"], [])
+        self.assertIn("--force", runner.calls[1])  # idempotent upsert
+
+    def test_reapplying_autonomous_is_a_noop_edit(self) -> None:
+        runner = FakeRunner([
+            (["issue", "view", "9", "--repo", "acme/widget", "--json", "labels"],
+             self._view(["posture:autonomous"])),
+            (["label", "create", "posture:autonomous", "--repo", "acme/widget"], _ok("")),
+        ])
+        result = lb.apply_posture_label(9, "autonomous", self.ctx, runner)
+        self.assertEqual(result["posture"], "autonomous")
+        self.assertFalse(any(c[:2] == ["issue", "edit"] for c in runner.calls))
+
+    def test_standard_strips_an_existing_autonomous_label(self) -> None:
+        # The case complexity has no analogue for: `standard` writes no label
+        # of its own, so applying it to an issue carrying `posture:autonomous`
+        # must be a PURE removal — a real downgrade path, not a no-op.
+        runner = FakeRunner([
+            (["issue", "view", "8", "--repo", "acme/widget", "--json", "labels"],
+             self._view(["posture:autonomous", "bug"])),
+            (["issue", "edit", "8", "--repo", "acme/widget",
+              "--remove-label", "posture:autonomous"], _ok("")),
+        ])
+        result = lb.apply_posture_label(8, "standard", self.ctx, runner)
+        self.assertEqual(result["posture"], "standard")
+        self.assertIsNone(result["label"])
+        self.assertEqual(result["removed_labels"], ["posture:autonomous"])
+        # No `label create` call — "standard" has no label to ensure/self-heal.
+        self.assertFalse(any(c[:2] == ["label", "create"] for c in runner.calls))
+
+    def test_stray_posture_label_is_stripped_when_clearing(self) -> None:
+        # Regression (review of PR #304): `present` used to be computed by
+        # membership in ALL_POSTURE_LABELS, which holds only
+        # `posture:autonomous` — so a hand-added `posture:standard` survived,
+        # leaving BOTH labels on the issue. Strip by namespace instead.
+        runner = FakeRunner([
+            (["issue", "view", "11", "--repo", "acme/widget", "--json", "labels"],
+             self._view(["posture:standard", "bug"])),
+            (["label", "create", "posture:autonomous", "--repo", "acme/widget"], _ok("")),
+            (["issue", "edit", "11", "--repo", "acme/widget",
+              "--add-label", "posture:autonomous",
+              "--remove-label", "posture:standard"], _ok("")),
+        ])
+        result = lb.apply_posture_label(11, "autonomous", self.ctx, runner)
+        self.assertEqual(result["removed_labels"], ["posture:standard"])
+
+    def test_case_variant_stray_label_is_stripped(self) -> None:
+        # Second review pass on PR #304: the namespace scan was case-SENSITIVE,
+        # so a hand-typed `Posture:Standard` was invisible to it. GitHub treats
+        # label names case-insensitively for uniqueness, so that label is one a
+        # human can really create — and missing it made clearance fail OPEN.
+        runner = FakeRunner([
+            (["issue", "view", "13", "--repo", "acme/widget", "--json", "labels"],
+             self._view(["Posture:Standard"])),
+            (["label", "create", "posture:autonomous", "--repo", "acme/widget"], _ok("")),
+            (["issue", "edit", "13", "--repo", "acme/widget",
+              "--add-label", "posture:autonomous",
+              "--remove-label", "Posture:Standard"], _ok("")),
+        ])
+        result = lb.apply_posture_label(13, "autonomous", self.ctx, runner)
+        self.assertEqual(result["removed_labels"], ["Posture:Standard"])
+
+    def test_vocabulary_and_prefix_cannot_drift(self) -> None:
+        # POSTURE_LABEL_PREFIX is what both the writer and the reader police; if
+        # it ever stopped matching the label POSTURE_LABELS actually writes, the
+        # scan would match nothing and autonomy would silently never engage.
+        for label in lb.POSTURE_LABELS.values():
+            self.assertTrue(label.startswith(lb.POSTURE_LABEL_PREFIX), label)
+        for label in lb.ALL_POSTURE_LABELS:
+            self.assertTrue(label.startswith(lb.POSTURE_LABEL_PREFIX), label)
+
+    def test_stray_posture_label_is_removable_via_standard(self) -> None:
+        # Same regression, the other direction: applying `standard` to an issue
+        # carrying only a stray `posture:*` label used to issue NO edit at all,
+        # making the stray label unremovable through the engine.
+        runner = FakeRunner([
+            (["issue", "view", "12", "--repo", "acme/widget", "--json", "labels"],
+             self._view(["posture:standard"])),
+            (["issue", "edit", "12", "--repo", "acme/widget",
+              "--remove-label", "posture:standard"], _ok("")),
+        ])
+        result = lb.apply_posture_label(12, "standard", self.ctx, runner)
+        self.assertEqual(result["removed_labels"], ["posture:standard"])
+
+    def test_standard_on_a_bare_issue_is_a_noop(self) -> None:
+        runner = FakeRunner([
+            (["issue", "view", "10", "--repo", "acme/widget", "--json", "labels"],
+             self._view([])),
+        ])
+        result = lb.apply_posture_label(10, "standard", self.ctx, runner)
+        self.assertEqual(result["removed_labels"], [])
+        self.assertFalse(any(c[:2] == ["issue", "edit"] for c in runner.calls))
+
+    def test_missing_issue_is_issue_not_found(self) -> None:
+        miss = subprocess.CompletedProcess(args=[], returncode=1, stdout="",
+                                           stderr="Could not resolve to an Issue with the number of 99.")
+        runner = FakeRunner([
+            (["issue", "view", "99", "--repo", "acme/widget", "--json", "labels"], miss),
+        ])
+        with self.assertRaises(lb.BoardError) as caught:
+            lb.apply_posture_label(99, "autonomous", self.ctx, runner)
+        self.assertEqual(caught.exception.code, "issue_not_found")
+
+
 class ConfigTest(unittest.TestCase):
     def test_parse_origin_forms(self) -> None:
         self.assertEqual(lb.parse_origin("git@github.com:a/b.git"), ("a", "b"))
@@ -1718,6 +1854,34 @@ class DecomposeSpecValidationTest(unittest.TestCase):
                 lb.validate_decompose_spec(bad, has_parent=True)
             self.assertEqual(cm.exception.code, "invalid_decompose_spec")
 
+    def test_valid_posture_on_parent_accepted(self) -> None:
+        for value in ("standard", "autonomous"):
+            spec = {"plan_path": "p", "posture": value, "sub_issues": [
+                {"title": "a", "body_file": "s"}]}
+            subs = lb.validate_decompose_spec(spec, has_parent=True)
+            self.assertEqual(len(subs), 1)
+
+    def test_omitted_posture_still_valid(self) -> None:
+        spec = {"plan_path": "p", "sub_issues": [{"title": "a", "body_file": "s"}]}
+        self.assertEqual(len(lb.validate_decompose_spec(spec, has_parent=True)), 1)
+
+    def test_out_of_vocabulary_posture_rejected(self) -> None:
+        spec = {"plan_path": "p", "posture": "yolo", "sub_issues": []}
+        with self.assertRaises(lb.BoardError) as cm:
+            lb.validate_decompose_spec(spec, has_parent=True)
+        self.assertEqual(cm.exception.code, "invalid_decompose_spec")
+
+    def test_sub_level_posture_rejected_with_spec_level_hint(self) -> None:
+        # Posture governs the claimed PARENT across implement->review->deliver,
+        # never an individual sub-issue — a hint must name the spec-level fix,
+        # not silently ignore an author's mistaken placement.
+        spec = {"plan_path": "p", "sub_issues": [
+            {"title": "a", "body_file": "s", "posture": "autonomous"}]}
+        with self.assertRaises(lb.BoardError) as cm:
+            lb.validate_decompose_spec(spec, has_parent=True)
+        self.assertEqual(cm.exception.code, "invalid_decompose_spec")
+        self.assertIn("spec.posture", str(cm.exception))
+
 
 class SubIssueParsingTest(unittest.TestCase):
     """parse_issue_state must surface EVERY sub-issue (open + closed) with its
@@ -2315,6 +2479,64 @@ class DecomposeVerbTest(unittest.TestCase):
             self.assertEqual(out["parent_complexity"], "medium")
             self.assertEqual(runner.responses, [])
 
+    def test_posture_write_is_ordered_after_set_status(self) -> None:
+        # AC8: the posture write must be observably ordered AFTER
+        # set_status(parent, "planned") — a label write must never gate or
+        # break the `planned` transition. apply_posture_label is spied (not
+        # exercised for real here — its own behavior is covered by
+        # PostureLabelWriterTest) purely to capture ordering.
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            (root / "parent.md").write_text("parent", encoding="utf-8")
+            spec = {"body_file": "parent.md", "posture": "autonomous", "sub_issues": []}
+            spec_path = root / "spec.json"
+            spec_path.write_text(json.dumps(spec), encoding="utf-8")
+
+            order = []
+
+            def fake_set_status(parent, stage, ctx, run, force=False):
+                order.append("set_status")
+                return {"issue": parent, "stage": stage, "previous_stage": None}
+
+            def fake_apply_posture(issue, posture, ctx, runner):
+                order.append("posture")
+                return {"issue": issue, "posture": posture, "label": "posture:autonomous",
+                        "removed_labels": []}
+
+            runner = FakeRunner([
+                (["issue", "edit", "182", "--repo", "o/r", "--body-file"],
+                 _ok("https://github.com/o/r/issues/182\n")),
+            ])
+            with mock.patch.object(lb, "read_board_config",
+                                   return_value=lb.BoardConfig(owner="o", number=1, source="committed")), \
+                 mock.patch.object(lb, "apply_posture_label", side_effect=fake_apply_posture):
+                out = lb.verb_decompose(182, str(spec_path), _ctx(str(root)), runner,
+                                        set_status=fake_set_status,
+                                        deboard=lambda number, board, ctx, run: {"issue": number, "deboarded": False})
+            self.assertEqual(order, ["set_status", "posture"])
+            self.assertEqual(out["parent_posture"], "autonomous")
+
+    def test_omitted_posture_writes_no_label(self) -> None:
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            (root / "parent.md").write_text("parent", encoding="utf-8")
+            spec = {"body_file": "parent.md", "sub_issues": []}
+            spec_path = root / "spec.json"
+            spec_path.write_text(json.dumps(spec), encoding="utf-8")
+
+            runner = FakeRunner([
+                (["issue", "edit", "182", "--repo", "o/r", "--body-file"],
+                 _ok("https://github.com/o/r/issues/182\n")),
+            ])
+            with mock.patch.object(lb, "read_board_config",
+                                   return_value=lb.BoardConfig(owner="o", number=1, source="committed")), \
+                 mock.patch.object(lb, "apply_posture_label") as spy:
+                out = lb.verb_decompose(182, str(spec_path), _ctx(str(root)), runner,
+                                        set_status=lambda p, s, c, r, force=False: {"stage": s},
+                                        deboard=lambda number, board, ctx, run: {"issue": number, "deboarded": False})
+            spy.assert_not_called()
+            self.assertIsNone(out["parent_posture"])
+
 
 class ComplexityLabelGuardrailTest(unittest.TestCase):
     """Freeze the complexity-label CATEGORY, not a frozen literal set of tiers.
@@ -2350,22 +2572,58 @@ class ComplexityLabelGuardrailTest(unittest.TestCase):
         self.assertIn("apply_complexity_label", inspect.getsource(lb.verb_decompose))
 
 
+class PostureLabelGuardrailTest(unittest.TestCase):
+    """Freeze the posture-label CATEGORY, not a frozen literal spelling.
+
+    Repo policy (see ComplexityLabelGuardrailTest above): a guardrail pinned to
+    an exact label string false-passes when the surface is renamed but still
+    broken. Assert the `posture:` namespace exists, carries self-heal
+    metadata, and is applied by verb_decompose — never assert the literal
+    label spelling."""
+
+    def test_posture_category_is_defined_with_metadata(self) -> None:
+        self.assertTrue(lb.POSTURE_LABELS, "posture label vocabulary must be non-empty")
+        for label in lb.POSTURE_LABELS.values():
+            # Category, not literal spelling: every label lives in `posture:`.
+            self.assertTrue(label.startswith("posture:"), label)
+            self.assertIn(label, lb.POSTURE_LABEL_META)  # color/description self-heal present
+
+    def test_writer_emits_a_posture_namespace_label(self) -> None:
+        ctx = lb.RepoContext(root=".", main_root=".", origin_owner="o",
+                             origin_repo="r", default_branch="main")
+        value = next(iter(lb.POSTURE_LABELS))  # any labeled value — don't pin which
+        label = lb.POSTURE_LABELS[value]
+        runner = FakeRunner([
+            (["issue", "view", "5", "--repo", "o/r", "--json", "labels"], _ok('{"labels":[]}')),
+            (["label", "create", label, "--repo", "o/r"], _ok("")),
+            (["issue", "edit", "5", "--repo", "o/r", "--add-label", label], _ok("")),
+        ])
+        out = lb.apply_posture_label(5, value, ctx, runner)
+        self.assertTrue(out["label"].startswith("posture:"))
+
+    def test_verb_decompose_is_wired_to_the_posture_writer(self) -> None:
+        # The claimed unit's posture must be applied by the SINGLE decompose
+        # writer — not re-derived elsewhere. Prove the wiring structurally.
+        self.assertIn("apply_posture_label", inspect.getsource(lb.verb_decompose))
+
+
 class GroomVerifyVerbTest(unittest.TestCase):
     """The postcondition verb: Status>=planned, with an
     exact sub-issue/blocked count straight from the parent's sub-issue nodes."""
 
     @staticmethod
-    def _issue_payload(stage, subs):
+    def _issue_payload(stage, subs, labels=()):
         return json.dumps({"data": {"repository": {"issue": {
             "number": 182, "state": "OPEN", "authorAssociation": "MEMBER", "url": "u",
+            "labels": {"nodes": [{"name": n} for n in labels]},
             "subIssues": {"nodes": subs},
             "projectItems": {"nodes": [{
                 "id": "IT_1",
                 "project": {"id": "PJ", "number": 1, "owner": {"login": "o"}},
                 "fieldValueByName": {"name": stage}}]}}}}})
 
-    def _run(self, root, stage, subs, deboard=None):
-        runner = FakeRunner([(["api", "graphql"], _ok(self._issue_payload(stage, subs)))])
+    def _run(self, root, stage, subs, deboard=None, labels=()):
+        runner = FakeRunner([(["api", "graphql"], _ok(self._issue_payload(stage, subs, labels)))])
         # Default: every touched sub is NOT on the board (no warnings). Tests that
         # exercise the still-boarded path inject their own deboard seam.
         deboard = deboard or (lambda number, board, ctx, run: {"issue": number, "deboarded": False})
@@ -2404,6 +2662,51 @@ class GroomVerifyVerbTest(unittest.TestCase):
             out = self._run(root, "brainstormed", [])
             self.assertFalse(out["groomed"])
             self.assertTrue(any("expected >= planned" in f for f in out["failures"]))
+
+    def test_reports_standard_posture_when_unlabeled(self) -> None:
+        # Unlabeled (and legacy) issues resolve to the safe `standard` default.
+        with tempfile.TemporaryDirectory() as d:
+            out = self._run(Path(d), "planned", [])
+            self.assertEqual(out["posture"], "standard")
+
+    def test_reports_autonomous_posture_from_the_label(self) -> None:
+        with tempfile.TemporaryDirectory() as d:
+            out = self._run(Path(d), "planned", [], labels=["posture:autonomous"])
+            self.assertEqual(out["posture"], "autonomous")
+
+    def test_conflicting_posture_labels_resolve_standard(self) -> None:
+        # Regression (review of PR #304): a ticket carrying `posture:autonomous`
+        # alongside any other `posture:*` label used to resolve `autonomous`,
+        # so a human de-escalating in the GitHub UI by ADDING `posture:standard`
+        # silently granted clearance instead of revoking it. Ambiguous clearance
+        # is not clearance — it must fail toward `standard`.
+        with tempfile.TemporaryDirectory() as d:
+            out = self._run(Path(d), "planned", [],
+                            labels=["posture:standard", "posture:autonomous"])
+            self.assertEqual(out["posture"], "standard")
+
+    def test_case_variant_conflict_resolves_standard(self) -> None:
+        # The read-side twin of the writer regression: a case-sensitive scan saw
+        # only `posture:autonomous` here and answered `autonomous`, handing
+        # hands-off clearance to a ticket a human had just de-escalated.
+        with tempfile.TemporaryDirectory() as d:
+            out = self._run(Path(d), "planned", [],
+                            labels=["posture:autonomous", "Posture:Standard"])
+            self.assertEqual(out["posture"], "standard")
+
+    def test_unknown_posture_label_alone_resolves_standard(self) -> None:
+        # A value from a future vocabulary this build does not know must never
+        # be read as permission.
+        with tempfile.TemporaryDirectory() as d:
+            out = self._run(Path(d), "planned", [], labels=["posture:experimental"])
+            self.assertEqual(out["posture"], "standard")
+
+    def test_unrelated_namespaces_do_not_affect_posture(self) -> None:
+        # `complexity:*` and `status:*` share the issue but not the namespace.
+        with tempfile.TemporaryDirectory() as d:
+            out = self._run(Path(d), "planned", [],
+                            labels=["complexity:high", "posture:autonomous"])
+            self.assertEqual(out["posture"], "autonomous")
 
     def test_no_warnings_when_no_sub_is_boarded(self) -> None:
         # The CI-add-after-verify race: at verify time the subs are not yet on

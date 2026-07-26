@@ -134,6 +134,63 @@ vocabulary exactly — use these spellings):
 The engine applies the sub-issue's own tier to each dispatch unit and rolls the
 parent's label up to the **highest child tier**.
 
+### Decide delivery posture
+
+Grooming decides delivery **posture** at the same moment it assesses
+complexity — the same full-context conversation, the same `--decompose` call.
+The decompose spec MAY carry an optional `posture` value (`standard` or
+`autonomous`) at the **spec (parent) level only**; `sub_issues[]` entries
+reject it — posture governs the claimed parent across implement -> review ->
+deliver, never a single dispatch unit.
+
+Read the repo's resolved default from the preflight JSON's
+`delivery_mode_resolved` field rather than re-deriving it from a separate
+config read, then branch on it:
+
+- In a `delivery_mode: autonomous` repo, grooming writes `posture: autonomous`
+  into the spec **by default**. Autonomy is the house default there; the human
+  may opt a ticket out during the grooming conversation, and it is that
+  conversational decision — not a silent default — that gets recorded.
+- In a `delivery_mode: standard` repo, grooming **proactively offers** the
+  autonomous stamp **once, at decomposition** — the moment it has just
+  finished assessing complexity and the human is already reading the unit
+  closely. Ask once; do not repeat the offer at other stages or on a later
+  pass. An explicit yes writes `posture: autonomous`. On a ticket that carries
+  no clearance yet, silence or a no writes nothing, which resolves to
+  `standard`.
+
+Either way, the stamp is a recorded outcome of the grooming conversation,
+never something the engine decides unattended — grooming only writes the
+value the human already settled with it. This offer supplements the
+conversation grooming already runs; it does not skip or shorten the research,
+scope, or acceptance-criteria work grooming still requires.
+
+Posture is **advisory**, not a gate: a spec that omits `posture` is still
+valid and still reaches `Status = planned`. Attestation and clearance travel
+together but neither gates the other — `Status = planned` says *this is
+ready*; `posture:autonomous` says *this may run unattended*. Both are written
+by the same `--decompose` call, at the same moment, from the same human
+decision. Do not turn the planned attestation into a hard posture gate.
+
+`--decompose` returns the value it wrote as `parent_posture`, and
+`--groom-verify` separately reports the resolved posture alongside its
+`planned`-stage check, so one call answers both halves of the downstream
+gate: is this attested, and is it cleared to run unattended. That resolved
+posture is what
+[wf-development's orchestration entry point](../../wf-development/references/workflows-orchestrate.md)
+consumes at dispatch.
+
+**Revoking takes an explicit write.** Re-grooming an already-`autonomous`
+ticket down to `posture: standard` is not a no-op: it actively **revokes** the
+existing `posture:autonomous` clearance rather than leaving it in place. The
+converse matters just as much: on a ticket that already carries clearance,
+omitting `posture` leaves that clearance **intact**, because an omitted value
+means "this spec expresses no posture intent," not "standard." So when the
+human de-escalates a cleared ticket — answering no to a re-offer, or asking
+for the check-ins back — write `posture: standard` explicitly. Writing nothing
+would silently keep the ticket cleared while the conversation recorded the
+opposite.
+
 In Project mode, after a successful GitHub update, run:
 
 ```bash

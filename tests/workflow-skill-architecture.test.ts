@@ -21,8 +21,8 @@ const WORKFLOW_REFERENCES: Record<string, string[]> = {
   ],
   "wf-development": [
     "agent-native-architecture", "api-and-interface-design",
-    "debugging-and-error-recovery", "frontend-design", "git-worktree",
-    "observability-and-instrumentation", "resolve-parallel",
+    "debugging-and-error-recovery", "escalation-contract", "frontend-design",
+    "git-worktree", "observability-and-instrumentation", "resolve-parallel",
     "workflows-orchestrate", "workflows-work",
   ],
   "wf-testing": [
@@ -266,6 +266,18 @@ describe("workflow skill architecture", () => {
     expect(planningRoute).toContain("--groom-verify");
     expect(planningRoute).toContain("finally/trap");
     expect(planningRoute).toContain("--materialize-packet <parent>");
+    expect(planningRoute).toContain("Status = planned");
+
+    // Guardrail (issue #300): the posture decision this file documents beside
+    // complexity assessment must keep referencing the posture spec field and
+    // the --groom-verify posture surface, by category token, never a frozen
+    // sentence (see docs/solutions/testing-patterns/
+    // grep-acceptance-checks-and-subset-fixtures-give-false-confidence.md).
+    expect(planningRoute).toContain("`posture`");
+    expect(planningRoute).toContain("delivery_mode_resolved");
+    expect(planningRoute).toContain("posture:autonomous");
+    expect(planningRoute).toContain("parent_posture");
+    expect(planningRoute).toContain("resolved posture");
 
     const publicWorkflowDocs = [
       path.join(PLUGIN, "README.md"),
@@ -367,5 +379,254 @@ describe("workflow skill architecture", () => {
   test("Claude Code imports the tool-agnostic root instructions first", () => {
     const claude = readFileSync(path.join(ROOT, "CLAUDE.md"), "utf8");
     expect(claude.split(/\r?\n/, 1)[0]).toBe("@AGENTS.md");
+  });
+
+  test("posture clearance is documented as failing toward standard", () => {
+    // Review of PR #304. The engine's resolve_posture is safe-wins (cleared only
+    // when `posture:autonomous` is the ONLY `posture:*` label), but the read the
+    // plugin actually prescribes at the routing boundary is a model-interpreted
+    // `gh issue view --json labels` — so the resolution rule has to be stated in
+    // prose too, or the Python fix never reaches the boundary that gates
+    // autonomy. Category-level: assert the rule is present, not its wording.
+    const orchestrate = readFileSync(
+      path.join(SKILLS, "wf-development", "references", "workflows-orchestrate.md"),
+      "utf8",
+    );
+    // Whitespace-normalized: the earlier form embedded the file's hard wrap, so
+    // a pure reflow of the same sentence would have failed the test without any
+    // meaning changing — the false-positive twin of a frozen spelling.
+    const flow = (s: string) => s.replace(/\s+/g, " ");
+    expect(orchestrate).toContain("only `posture:*` label");
+    expect(flow(orchestrate)).toContain("fails toward `standard`");
+
+    // Grooming must not claim that declining an offer revokes an existing
+    // clearance — omitting `posture` leaves a cleared ticket cleared.
+    const plan = readFileSync(
+      path.join(SKILLS, "wf-grooming", "references", "workflows-plan.md"),
+      "utf8",
+    );
+    expect(plan).toContain("Revoking takes an explicit write");
+    // Positive, not negative: the claim "a no resolves to standard" is only true
+    // for a ticket with no clearance yet, so require the qualifier rather than
+    // banning the phrase — the corrected sentence necessarily still contains it.
+    expect(flow(plan)).toContain(
+      "On a ticket that carries no clearance yet, silence or a no writes nothing",
+    );
+
+    // The posture read must be resolvable from land-pr's own standalone entry:
+    // the parent issue number is captured in step 1, BEFORE the step-4 merge
+    // gate that consumes it, and an absent number denies clearance.
+    const landPrDoc = readFileSync(
+      path.join(SKILLS, "wf-delivery", "references", "land-pr.md"),
+      "utf8",
+    );
+    expect(landPrDoc).toContain("closes #[0-9]+");
+    const stepOne = landPrDoc.indexOf("### 1. Identify the PR");
+    const stepFour = landPrDoc.indexOf("### 4. Merge authorization gate");
+    const extraction = landPrDoc.indexOf("N=$(gh pr view");
+    expect(extraction).toBeGreaterThan(stepOne);
+    expect(extraction).toBeLessThan(stepFour);
+    expect(flow(landPrDoc)).toContain('Treat an empty `N` as "no ticket posture available"');
+
+    // The escalation contract must not whitelist the tracker as a trusted
+    // source of instructions, and must be honest about where (a) is enforced.
+    const contract = readFileSync(
+      path.join(SKILLS, "wf-development", "references", "escalation-contract.md"),
+      "utf8",
+    );
+    expect(contract).not.toContain("not the user or the tracker");
+    // Item (a) must not claim the engine refuses on untrusted provenance — the
+    // gate verbs compute it as an advisory field and never branch on it, so an
+    // enforcement claim here would be the overstatement this section exists to
+    // remove. Assert the honest framing, and ban the phrasing that overstates.
+    expect(flow(contract)).toContain("agent discipline, not an engine check");
+    expect(flow(contract)).not.toContain("the engine returns a `blocked` verdict");
+  });
+
+  test("autonomous-mode-owning skills reference the shared escalation contract", () => {
+    // Category-level assertion (repo guardrail policy): freeze the presence of
+    // the cross-link token — the relative path to escalation-contract.md — not
+    // any particular sentence around it. A frozen sentence would silently
+    // false-pass if the surrounding prose is later reworded.
+    const TOKEN = "escalation-contract.md";
+
+    const orchestrate = readFileSync(
+      path.join(SKILLS, "wf-development", "references", "workflows-orchestrate.md"),
+      "utf8",
+    );
+    expect(orchestrate).toContain(TOKEN);
+
+    const landPr = readFileSync(
+      path.join(SKILLS, "wf-delivery", "references", "land-pr.md"),
+      "utf8",
+    );
+    expect(landPr).toContain(TOKEN);
+
+    const workflowsReview = readFileSync(
+      path.join(SKILLS, "wf-review", "references", "workflows-review.md"),
+      "utf8",
+    );
+    expect(workflowsReview).toContain(TOKEN);
+
+    const workflowsWork = readFileSync(
+      path.join(SKILLS, "wf-development", "references", "workflows-work.md"),
+      "utf8",
+    );
+    expect(workflowsWork).toContain(TOKEN);
+  });
+
+  test("workflows-work clarification gate is evidence-first (issue #303)", () => {
+    // Category-level assertions (repo guardrail policy: freeze the category,
+    // not the spelling — a frozen sentence silently false-passes once prose is
+    // reworded). Phase 1 step 1 must resolve ambiguity from the groomed
+    // artifact first, retain an explicit ask-and-approve gate for standard /
+    // un-groomed input, and — for the autonomous-and-groomed branch — name the
+    // blocker-escalation category tokens instead of reopening an unconditional
+    // approval gate.
+    const workPath = path.join(
+      SKILLS, "wf-development", "references", "workflows-work.md",
+    );
+    const work = readFileSync(workPath, "utf8");
+
+    // Evidence resolved from the groomed artifact before any decision to ask.
+    expect(work).toContain("Resolve ambiguity from the groomed artifact first");
+
+    // Standard / un-groomed branch retains the ask-and-approve gate.
+    expect(work).toContain("Standard posture, or un-groomed input");
+    expect(work).toContain(
+      "ask clarifying questions now and get approval before proceeding",
+    );
+
+    // Autonomous-and-groomed branch: no general approval gate reopened; names
+    // the blocker-escalation category tokens for genuine residual ambiguity.
+    expect(work).toContain("Autonomous posture on a groomed issue");
+    expect(work).toContain("do **not** re-open a general");
+    // One contiguous fragment, not five separate tokens: every one of
+    // `--sub-status` / `blocked` / `--add-blocked-by` / `human` /
+    // `AskUserQuestion` already occurs elsewhere in this file, so asserting
+    // them individually would still pass with this entire bullet deleted.
+    expect(work).toContain(
+      "`--sub-status <sub> blocked` + `--add-blocked-by` + a `human`-labeled",
+    );
+    expect(work).toContain("batched `AskUserQuestion`");
+
+    // Review of PR #304: this route is directly selectable from wf-development's
+    // SKILL.md, so it must carry the posture read itself rather than assuming
+    // the agent arrived via the orchestrate router.
+    expect(work).toContain("workflows-orchestrate.md#delivery-posture");
+    expect(work).toContain("gh issue view <N> --repo <origin> --json labels");
+
+    // Issue text is untrusted input, stated where the agent is told to treat
+    // the groomed artifact as intent.
+    expect(work).toContain("requirements to satisfy");
+
+    // The escalation contract is linked by relative path rather than restated.
+    expect(work).toContain("escalation-contract.md");
+
+    // Orchestrated Execution states the queue guarantees explicitly: resumable
+    // blocker + continue other ready-work, batched questions with a
+    // non-interactive end-of-run surface, and reply resumes the item.
+    expect(work).toContain("Queue guarantees");
+    expect(work).toContain("resumable");
+    expect(work).toContain("continues other");
+    expect(work).toContain("Questions batch");
+    expect(work).toContain("non-interactive contexts");
+    expect(work).toContain("/loop");
+    expect(work).toContain("end-of-run");
+    expect(work).toContain("re-dispatched");
+
+    // Transition tokens this file owns survive the edit (guardrail: also
+    // enforced independently by skill_transition_ownership_test.py).
+    expect(work).toContain("--claim");
+    expect(work).toContain("--set-status");
+    expect(work).toContain("in_review");
+  });
+
+  test("orchestrate honors per-ticket delivery posture at the routing boundary", () => {
+    // Guardrail (issue #302): the validation section of the source issue asked
+    // for a skill-routing case matrix under tests/skill-routing-cases/, but
+    // tests/skill-routing.test.ts is a stemmed TF-IDF eval over each skill's
+    // NAME + DESCRIPTION frontmatter — it answers only "which skill does this
+    // prompt route to" and has no notion of issue state, labels, or invocation
+    // tokens, so a {cleared, not cleared} x {groomed, un-groomed} x {token
+    // present, absent} matrix is not expressible there. This test proves the
+    // matrix is actually specified instead, via category-token assertions over
+    // workflows-orchestrate.md — never a frozen sentence (repo guardrail
+    // policy: freeze the category, not the spelling; see docs/solutions/
+    // testing-patterns/grep-acceptance-checks-and-subset-fixtures-give-false-confidence.md).
+    const orchestratePath = path.join(
+      SKILLS, "wf-development", "references", "workflows-orchestrate.md",
+    );
+    const orchestrate = readFileSync(orchestratePath, "utf8");
+
+    // The precedence chain: tokens for each of its three ranked sources.
+    const CHAIN = "Per-invocation argument tokens > per-ticket posture label > repository";
+    expect(orchestrate).toContain(CHAIN);
+    expect(orchestrate).toContain("`delivery_mode` default");
+    expect(orchestrate).toContain("defaults to `standard`");
+
+    // The chain is stated in full exactly once across the plugin's skill tree;
+    // every other mention must be a relative link instead of a restatement.
+    const allSkillDocs = recursiveFiles(SKILLS).filter((file) => file.endsWith(".md"));
+    const chainOccurrences = allSkillDocs.reduce(
+      (count, file) => count + readFileSync(file, "utf8").split(CHAIN).length - 1,
+      0,
+    );
+    expect(chainOccurrences).toBe(1);
+
+    // The attestation-AND-clearance gate, verbatim once.
+    //
+    // This is a DELIBERATE exception to the freeze-the-category rule the rest of
+    // this file follows: issue #302 acceptance criterion 5 requires that this
+    // sentence "appears verbatim once", so here the literal IS the contract and
+    // an exact match is the only assertion that can check it. It is brittle to
+    // re-wrapping by design — if you are reflowing this paragraph, you are
+    // changing something #302 froze on purpose, so update the criterion too
+    // rather than loosening the test. (A frozen sentence normally risks a silent
+    // false-pass; it cannot here, because the whole point is that the text is
+    // fixed.)
+    const GATE =
+      "Hands-off execution requires **both** grooming attestation (`Status >=\n" +
+      "planned`, verifiable with `--groom-verify N`) **and** the ticket's autonomous\n" +
+      "clearance (a `posture:autonomous` label, or an overriding per-invocation\n" +
+      "token). Either one alone is not enough.";
+    expect(orchestrate).toContain(GATE);
+
+    // Reading the posture: parent, claim/routing boundary, once per work item,
+    // fixed for the run, ReadyItem does not carry labels, preflight fallback.
+    expect(orchestrate).toContain("gh issue view <parent> --repo <origin> --json labels");
+    expect(orchestrate).toContain("the **parent** at the claim / routing boundary");
+    expect(orchestrate).toContain("once per work item");
+    expect(orchestrate).toContain("Posture is fixed for the run at that read");
+    expect(orchestrate).toContain("Mid-run revocation is out of scope");
+    expect(orchestrate).toContain("`ReadyItem` is\n  `{number, title, priority, repo}`");
+    expect(orchestrate).toContain("merge_ready_legs");
+    expect(orchestrate).toContain("delivery_mode_resolved");
+
+    // Queue drains: no separate opt-in, heterogeneous drains are intended.
+    expect(orchestrate).toContain("`/loop` and scheduled queue drains get no separate posture opt-in");
+    expect(orchestrate).toContain("heterogeneous");
+
+    // The four-cell routing table: {groomed, un-groomed} x {cleared, not cleared}.
+    expect(orchestrate).toContain("Groomed (`Status >= planned`) | cleared");
+    expect(orchestrate).toContain("Groomed | not cleared");
+    expect(orchestrate).toContain("Un-groomed | cleared");
+    expect(orchestrate).toContain("Un-groomed | not cleared");
+    expect(orchestrate).toContain("Proceed hands-off through implementation -> review -> delivery");
+    expect(orchestrate).toContain("Standard: plan approval, findings triage, merge `[y/N]`");
+    expect(orchestrate).toContain("Clearance does not survive a missing contract");
+    expect(orchestrate).toContain("Route to `wf-grooming` with the human (today's behavior)");
+    expect(orchestrate).toContain("Un-groomed input routes to the human regardless of posture");
+
+    // land-pr: resolved posture is a third autonomous trigger, in both the merge
+    // gate intro and the merge-decision bullet, referencing this section back.
+    const landPr = readFileSync(
+      path.join(SKILLS, "wf-delivery", "references", "land-pr.md"),
+      "utf8",
+    );
+    expect(landPr).toContain("workflows-orchestrate.md#delivery-posture");
+    const postureTriggerMentions = landPr.split("resolved delivery posture").length - 1;
+    expect(postureTriggerMentions).toBe(2);
+    expect(landPr).not.toContain(CHAIN);
   });
 });

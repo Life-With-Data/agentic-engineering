@@ -148,6 +148,29 @@ COMPLEXITY_LABEL_META = {
     "complexity:high": ("B60205", "Complexity: cross-cutting, ambiguous, or high-blast-radius"),
 }
 
+# Delivery-posture vocabulary. Grooming decides ONCE whether this work item may
+# run hands-off after attestation, and persists it as a repo-scoped label so any
+# later invocation reads the ticket instead of re-litigating posture.
+# Asymmetric by design: `standard` is the safe default and writes NO label, so
+# unlabeled and legacy issues are standard for free. `standard` in a spec is
+# still meaningful - it REVOKES a stale clearance on re-groom.
+POSTURE_VALUES = ("standard", "autonomous")
+POSTURE_LABELS = {"autonomous": "posture:autonomous"}   # standard writes none
+ALL_POSTURE_LABELS = tuple(POSTURE_LABELS.values())
+# The namespace both the writer and the reader police. Because only ONE label in
+# this namespace is ever written, an unrecognized `posture:*` label is by
+# definition not engine-authored: the writer strips it and the reader refuses to
+# treat the ticket as cleared while it is present. Both directions deliberately
+# fail toward `standard` — clearance is a positive grant, never a leftover.
+POSTURE_LABEL_PREFIX = "posture:"
+POSTURE_LABEL_META = {
+    "posture:autonomous": (
+        "5319E7",
+        "Delivery posture: cleared to run implementation -> review -> delivery "
+        "hands-off once Status >= planned",
+    ),
+}
+
 READY_WORK_LIMIT = 50
 # Blocker reads deliberately inspect bounded node states instead of totalCount:
 # closed blockers must not keep work blocked. A full result is conservative
@@ -680,6 +703,7 @@ query($owner: String!, $repo: String!, $number: Int!) {
   repository(owner: $owner, name: $repo) {
     issue(number: $number) {
       number title body updatedAt state stateReason url
+      labels(first: 20) { nodes { name } }
       authorAssociation
 parent { number }
       blockedBy(first: 100) { nodes { number title url state } }
@@ -730,6 +754,7 @@ class IssueState:
     title: str = ""
     body: str = ""
     updated_at: str = ""
+    labels: "list[str]" = field(default_factory=list)
     blocked_by: "list[dict]" = field(default_factory=list)
     # Every sub-issue (open AND closed) with its blocked-by count, for the
     # groom postcondition's exact "N created, M with dependencies" report.
@@ -790,6 +815,7 @@ blocked_by_count=open_blocker_count(issue.get("blockedBy")),
         title=issue.get("title", ""),
         body=issue.get("body", ""),
         updated_at=issue.get("updatedAt", ""),
+        labels=[n.get("name", "") for n in (issue.get("labels") or {}).get("nodes", [])],
         blocked_by=[
             {"number": n.get("number"), "title": n.get("title", ""),
              "url": n.get("url", ""), "state": n.get("state", "")}
@@ -1051,6 +1077,16 @@ def validate_decompose_spec(spec: dict, has_parent: bool) -> "list[dict]":
             raise bad(f"{where} complexity={value!r} must be one of {COMPLEXITY_TIERS} (or omitted)")
 
     check_complexity(spec.get("complexity"), "spec")
+
+    def check_posture(value, where: str) -> None:
+        # Optional. Omitted/null leaves posture untouched by this spec's intent
+        # and resolves through the repo default. A present value must be known.
+        if value is None:
+            return
+        if not isinstance(value, str) or value not in POSTURE_VALUES:
+            raise bad(f"{where} posture={value!r} must be one of {POSTURE_VALUES} (or omitted)")
+
+    check_posture(spec.get("posture"), "spec")
     subs = spec.get("sub_issues")
     if not isinstance(subs, list):
         raise bad("spec.sub_issues (array) is required (use [] for a single-task item)")
@@ -1062,6 +1098,10 @@ def validate_decompose_spec(spec: dict, has_parent: bool) -> "list[dict]":
         if not isinstance(sub.get("body_file"), str) or not sub["body_file"].strip():
             raise bad(f"sub_issues[{i}].body_file (string path) is required")
         check_complexity(sub.get("complexity"), f"sub_issues[{i}]")
+        if "posture" in sub:
+            raise bad(f"sub_issues[{i}].posture is not supported; set spec.posture instead - "
+                      "posture governs the claimed PARENT across implement -> review -> deliver, "
+                      "never an individual sub-issue")
         deps = sub.get("blocked_by", [])
         if not isinstance(deps, list):
             raise bad(f"sub_issues[{i}].blocked_by must be an array of earlier indices")
@@ -1469,6 +1509,85 @@ def apply_complexity_label(issue: int, tier: str, ctx: RepoContext, runner: GhRu
     return {"issue": issue, "complexity": tier, "label": target, "removed_labels": remove}
 
 
+def apply_posture_label(issue: int, posture: str, ctx: RepoContext, runner: GhRunner) -> dict:
+    """Attach (or, for `standard`, strip) the repo-scoped `posture:*` label.
+    Mirrors `apply_complexity_label`'s upsert-then-attach path: ensure the
+    target label exists (idempotent, `--force` self-heals color/description),
+    add it, and strip any OTHER `posture:*` label so an issue carries at most
+    one. Board-free — labels are repo-scoped.
+
+    The one structural difference from the complexity writer: `standard` has
+    no label (POSTURE_LABELS has no "standard" entry), so applying it is a
+    PURE removal of any existing `posture:*` label — a real downgrade path, not
+    a no-op, so a human de-escalating a ticket sees the clearance disappear."""
+    if posture not in POSTURE_VALUES:
+        raise BoardError("invalid_posture", f"{posture!r} is not a delivery posture",
+                         f"Use one of: {', '.join(POSTURE_VALUES)}")
+    view = _run_gh_retry(runner, ["issue", "view", str(issue), "--repo", ctx.slug,
+                                  "--json", "labels"])
+    if view.returncode != 0:
+        stderr = view.stderr.strip()
+        if "Could not resolve" in stderr or "not found" in stderr.lower():
+            raise BoardError("issue_not_found", f"Issue #{issue} not found in {ctx.slug}",
+                             "Check the issue number")
+        raise BoardError("gh_read_failed", f"reading issue #{issue} failed: {stderr[:200]}",
+                         "retry; check network/auth (gh auth status)")
+    current = {lbl.get("name", "") for lbl in json.loads(view.stdout or "{}").get("labels", [])}
+    target = POSTURE_LABELS.get(posture)  # None for "standard" — pure removal
+    if target is not None:
+        color, desc = POSTURE_LABEL_META[target]
+        ensure = _run_gh_retry(runner, ["label", "create", target, "--repo", ctx.slug,
+                                        "--color", color, "--description", desc, "--force"])
+        if ensure.returncode != 0:
+            raise BoardError("label_write_failed", f"ensuring {target} failed: {ensure.stderr.strip()[:200]}",
+                             "Verify issues-write (triage) permission on the repo")
+    # Strip by NAMESPACE, not by known-label membership. `ALL_POSTURE_LABELS`
+    # holds only `posture:autonomous`, so a membership test would silently leave
+    # a stray `posture:*` label (e.g. a hand-added `posture:standard`) in place —
+    # unremovable through this writer, and, since `resolve_posture` below reads
+    # `posture:autonomous` positively, resolving toward MORE autonomy. Clearance
+    # must never fail open, so any other `posture:*` label is removed here.
+    # Case-insensitive, because a human adds labels by typing them: GitHub treats
+    # label names case-insensitively for uniqueness, so `Posture:Standard` is a
+    # real label a person can create, and a case-sensitive scan would miss it and
+    # fail open. Sorted so a multi-label removal argv is deterministic.
+    present = sorted(lbl for lbl in current
+                     if lbl.lower().startswith(POSTURE_LABEL_PREFIX))
+    remove = [lbl for lbl in present if lbl != target]
+    add = [] if (target is None or target in current) else ["--add-label", target]
+    if add or remove:
+        edit = _run_gh_retry(runner, ["issue", "edit", str(issue), "--repo", ctx.slug, *add,
+                                      *sum((["--remove-label", lbl] for lbl in remove), [])])
+        if edit.returncode != 0:
+            raise BoardError("label_write_failed", f"issue-edit failed: {edit.stderr.strip()[:200]}",
+                             "Verify issues-write permission on the repo")
+    return {"issue": issue, "posture": posture, "label": target, "removed_labels": remove}
+
+
+def resolve_posture(labels: "list[str]") -> str:
+    """Read-side counterpart to `apply_posture_label`: `autonomous` if the
+    issue carries `posture:autonomous` AND no other `posture:*` label, else the
+    safe `standard` default — unlabeled and legacy issues resolve to `standard`
+    for free, matching the writer's asymmetric label vocabulary (POSTURE_LABELS
+    has no entry for `standard`, so its absence IS the value).
+
+    Safe-wins on conflict. A ticket carrying both `posture:autonomous` and some
+    other `posture:*` label (a hand-added `posture:standard`, a value from a
+    future vocabulary this build does not know) is ambiguous, and an ambiguous
+    clearance is not a clearance: it resolves `standard` until a human or the
+    writer settles it. Resolving the other way would let a stray label — the one
+    thing a human reaches for to de-escalate a ticket in the GitHub UI — grant
+    hands-off execution instead of denying it.
+
+    The namespace scan is case-insensitive for the same reason the writer's is:
+    a hand-typed `Posture:Standard` is a label a human can really create, and
+    matching case-sensitively would skip it and hand back `autonomous`."""
+    known = POSTURE_LABELS["autonomous"]
+    posture_labels = [lbl.lower() for lbl in labels
+                      if lbl.lower().startswith(POSTURE_LABEL_PREFIX)]
+    return "autonomous" if posture_labels == [known] else "standard"
+
+
 # --------------------------------------------------------------------------
 # Groom orchestration verbs. These do not add any new transition — they
 # sequence the existing primitives (reconcile, gate, set_status) into the
@@ -1654,6 +1773,16 @@ def verb_decompose(issue: Optional[int], spec_path: str, ctx: RepoContext, runne
     if parent_tier:
         apply_complexity_label(parent, parent_tier, ctx, runner)
 
+    # 5b. Persist the delivery-posture label (optional, PARENT-only — validation
+    #     already rejected a sub-level `posture` key, so there is no per-sub
+    #     write and no rollup to compute). Runs after set_status for the same
+    #     reason as the complexity labels above: a label write must never gate
+    #     or break the `planned` transition. Omitted spec-level posture writes
+    #     no label — the ticket resolves through the repo default downstream.
+    parent_posture = spec.get("posture")
+    if parent_posture:
+        apply_posture_label(parent, parent_posture, ctx, runner)
+
     # 6. Best-effort de-board each created sub — the Project tracks the parent,
     #    not its task units. Non-fatal by construction (see _deboard_subissue):
     #    the async auto-add usually has not fired yet, and the reconciler's
@@ -1662,6 +1791,7 @@ def verb_decompose(issue: Optional[int], spec_path: str, ctx: RepoContext, runne
     return {"parent": parent, "body_file": spec[body_key], "stage": st.get("stage"),
             "previous_stage": st.get("previous_stage"),
             "parent_complexity": parent_tier,
+            "parent_posture": parent_posture,
             "sub_issues": [{"number": created[i], "title": subs[i]["title"],
                             "complexity": subs[i].get("complexity"),
                             "blocked_by": [created[d] for d in subs[i].get("blocked_by", [])]}
@@ -1676,6 +1806,9 @@ def verb_groom_verify(issue: int, ctx: RepoContext, runner: GhRunner,
     reports the EXACT sub-issue and
     with-dependency counts (from the parent's own sub-issue nodes — the
     `.subIssues | length`-style miscount is structurally impossible here).
+    Also reports the resolved delivery posture (`resolve_posture` off the
+    issue's own labels) so one call answers both halves of the downstream
+    gate: is this attested (`groomed`) and is it cleared (`posture`).
     `groomed` is false, and the CLI exits 1, if either assertion fails.
 
     Also best-effort de-boards each OPEN sub-issue (the Project tracks the
@@ -1710,6 +1843,7 @@ def verb_groom_verify(issue: int, ctx: RepoContext, runner: GhRunner,
                            f"tracks the parent #{issue} — {detail}; the reconciler's rule 6 "
                            "converges either way"})
     return {"issue": issue, "groomed": not failures, "stage": state.stage,
+            "posture": resolve_posture(state.labels),
             "sub_issue_count": len(subs), "sub_issues_with_dependencies": blocked,
             "failures": failures, "warnings": warnings}
 
