@@ -36,7 +36,8 @@ CLI verbs (used by workflow commands; humans/CI may call them directly):
   --decompose <N> --spec FILE    create/update the canonical parent issue, create
                                  each sub-issue, wire dependencies, Status=planned
   --groom-verify <N>             groom postcondition: assert stage >= planned; emit the exact
-                                 sub-issue + blocked counts; exit 1 if not groomed
+                                 sub-issue + blocked counts and the clearance read
+                                 (cleared/posture/posture_source); exit 1 if not groomed
   --materialize-packet <N>       refresh generated issue context under git-common-dir
   --delete-packet <N>            delete that exact packet after done/abandoned
 """
@@ -1544,7 +1545,7 @@ def apply_posture_label(issue: int, posture: str, ctx: RepoContext, runner: GhRu
     # Strip by NAMESPACE, not by known-label membership. `ALL_POSTURE_LABELS`
     # holds only `posture:autonomous`, so a membership test would silently leave
     # a stray `posture:*` label (e.g. a hand-added `posture:standard`) in place —
-    # unremovable through this writer, and, since `resolve_posture` below reads
+    # unremovable through this writer, and, since `resolve_clearance` below reads
     # `posture:autonomous` positively, resolving toward MORE autonomy. Clearance
     # must never fail open, so any other `posture:*` label is removed here.
     # Case-insensitive, because a human adds labels by typing them: GitHub treats
@@ -1564,12 +1565,15 @@ def apply_posture_label(issue: int, posture: str, ctx: RepoContext, runner: GhRu
     return {"issue": issue, "posture": posture, "label": target, "removed_labels": remove}
 
 
-def resolve_posture(labels: "list[str]") -> str:
-    """Read-side counterpart to `apply_posture_label`: `autonomous` if the
-    issue carries `posture:autonomous` AND no other `posture:*` label, else the
-    safe `standard` default — unlabeled and legacy issues resolve to `standard`
-    for free, matching the writer's asymmetric label vocabulary (POSTURE_LABELS
-    has no entry for `standard`, so its absence IS the value).
+def resolve_clearance(labels: "list[str]") -> dict:
+    """Read-side counterpart to `apply_posture_label`: the safe-wins posture
+    AND whether the ticket said anything about posture at all.
+
+    `posture` is `autonomous` if the issue carries `posture:autonomous` AND no
+    other `posture:*` label, else the safe `standard` default — unlabeled and
+    legacy issues resolve to `standard` for free, matching the writer's
+    asymmetric label vocabulary (POSTURE_LABELS has no entry for `standard`, so
+    its absence IS the value).
 
     Safe-wins on conflict. A ticket carrying both `posture:autonomous` and some
     other `posture:*` label (a hand-added `posture:standard`, a value from a
@@ -1579,13 +1583,23 @@ def resolve_posture(labels: "list[str]") -> str:
     thing a human reaches for to de-escalate a ticket in the GitHub UI — grant
     hands-off execution instead of denying it.
 
+    `posture_source` is the bit `posture` alone cannot carry. `standard` comes
+    back both for a ticket that carries NO posture label and for one that
+    carries a posture label resolving that way, but only the first may fall
+    back to the repository `delivery_mode` default. Collapsing the two would,
+    in a `delivery_mode: autonomous` repo, grant autonomy to a ticket that
+    declined it — so ANY `posture:*` label (recognized, unrecognized, or
+    conflicting) makes the ticket authoritative (`ticket`) and suppresses that
+    fallback. `unset` is the only value that permits it.
+
     The namespace scan is case-insensitive for the same reason the writer's is:
     a hand-typed `Posture:Standard` is a label a human can really create, and
     matching case-sensitively would skip it and hand back `autonomous`."""
     known = POSTURE_LABELS["autonomous"]
     posture_labels = [lbl.lower() for lbl in labels
                       if lbl.lower().startswith(POSTURE_LABEL_PREFIX)]
-    return "autonomous" if posture_labels == [known] else "standard"
+    return {"posture": "autonomous" if posture_labels == [known] else "standard",
+            "posture_source": "ticket" if posture_labels else "unset"}
 
 
 # --------------------------------------------------------------------------
@@ -1806,10 +1820,28 @@ def verb_groom_verify(issue: int, ctx: RepoContext, runner: GhRunner,
     reports the EXACT sub-issue and
     with-dependency counts (from the parent's own sub-issue nodes — the
     `.subIssues | length`-style miscount is structurally impossible here).
-    Also reports the resolved delivery posture (`resolve_posture` off the
-    issue's own labels) so one call answers both halves of the downstream
-    gate: is this attested (`groomed`) and is it cleared (`posture`).
-    `groomed` is false, and the CLI exits 1, if either assertion fails.
+    Also fuses both halves of the downstream gate into ONE value: `cleared` is
+    `groomed and posture == "autonomous"` — attested AND cleared, the exact
+    conjunction that authorizes hands-off execution. It exists so the routing
+    boundary reads one field instead of reassembling the conjunction from
+    labels plus Status, which is a safety property that drifts when it lives in
+    two languages at once.
+
+    `cleared` is deliberately LABEL-DERIVED ONLY. This verb sees neither the
+    repository `delivery_mode` default (owned by workflow-repo-preflight.py)
+    nor per-invocation argument tokens, so it cannot answer the full precedence
+    chain. Read it accordingly:
+
+      * `cleared: true` is SUFFICIENT authority — attested and ticket-cleared.
+      * `cleared: false` is NOT a denial when `posture_source` is `"unset"`;
+        the repo default still applies. It IS a denial when `posture_source`
+        is `"ticket"` — the ticket decided, and the repo default must not
+        override it.
+
+    A consumer that reads only `cleared` therefore fails SAFE (more
+    restrictive), never open. `posture` and `posture_source` come from
+    `resolve_clearance` off the issue's own labels; `groomed` is false, and the
+    CLI exits 1, if either assertion fails.
 
     Also best-effort de-boards each OPEN sub-issue (the Project tracks the
     parent) and surfaces any that were on the board as `warnings`. Board
@@ -1842,8 +1874,11 @@ def verb_groom_verify(issue: int, ctx: RepoContext, runner: GhRunner,
                 "comment": f"sub-issue #{sub['number']} was on the board, but the Project "
                            f"tracks the parent #{issue} — {detail}; the reconciler's rule 6 "
                            "converges either way"})
-    return {"issue": issue, "groomed": not failures, "stage": state.stage,
-            "posture": resolve_posture(state.labels),
+    groomed = not failures
+    clearance = resolve_clearance(state.labels)
+    return {"issue": issue, "groomed": groomed, "stage": state.stage,
+            **clearance,
+            "cleared": groomed and clearance["posture"] == "autonomous",
             "sub_issue_count": len(subs), "sub_issues_with_dependencies": blocked,
             "failures": failures, "warnings": warnings}
 

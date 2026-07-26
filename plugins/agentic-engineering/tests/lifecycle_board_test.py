@@ -978,6 +978,53 @@ class PostureLabelWriterTest(unittest.TestCase):
         self.assertEqual(caught.exception.code, "issue_not_found")
 
 
+class ResolveClearanceTest(unittest.TestCase):
+    """The pure read-side core. `posture` answers "what did this resolve to";
+    `posture_source` answers the question `posture` alone cannot — "did the
+    ticket say anything at all", which is the ONLY thing that licenses a
+    fallback to the repository `delivery_mode` default."""
+
+    # (labels, expected posture, expected posture_source, why)
+    TRUTH_TABLE = [
+        ([], "standard", "unset",
+         "no posture label — the only state that may fall back to the repo default"),
+        (["complexity:high", "status:in-progress"], "standard", "unset",
+         "other namespaces are not posture labels"),
+        (["posture:autonomous"], "autonomous", "ticket",
+         "the one recognized grant"),
+        (["complexity:high", "posture:autonomous"], "autonomous", "ticket",
+         "an unrelated namespace does not disturb the grant"),
+        (["posture:standard"], "standard", "ticket",
+         "hand-added de-escalation: outside the writer's vocabulary, but the "
+         "ticket HAS spoken — the repo default must not override it"),
+        (["posture:autonomous", "posture:standard"], "standard", "ticket",
+         "the #304 conflict case — ambiguous clearance is not clearance"),
+        (["posture:supervised"], "standard", "ticket",
+         "a value from a future vocabulary is never read as permission"),
+        (["Posture:Autonomous"], "autonomous", "ticket",
+         "the namespace scan is case-insensitive"),
+        (["posture:autonomous", "Posture:Standard"], "standard", "ticket",
+         "case-variant conflict still fails toward standard"),
+    ]
+
+    def test_truth_table(self) -> None:
+        for labels, posture, source, why in self.TRUTH_TABLE:
+            with self.subTest(labels=labels, why=why):
+                self.assertEqual(lb.resolve_clearance(labels),
+                                 {"posture": posture, "posture_source": source})
+
+    def test_any_posture_label_suppresses_the_repo_default_fallback(self) -> None:
+        # The property stated as one invariant rather than read off the table:
+        # `unset` is reachable ONLY with zero `posture:*` labels. Everything
+        # else — recognized, unrecognized, or conflicting — is `ticket`, so a
+        # `delivery_mode: autonomous` repo can never re-grant what a ticket
+        # declined.
+        for labels, _posture, source, why in self.TRUTH_TABLE:
+            with self.subTest(labels=labels, why=why):
+                has_posture_label = any(l.lower().startswith("posture:") for l in labels)
+                self.assertEqual(source, "ticket" if has_posture_label else "unset")
+
+
 class ConfigTest(unittest.TestCase):
     def test_parse_origin_forms(self) -> None:
         self.assertEqual(lb.parse_origin("git@github.com:a/b.git"), ("a", "b"))
@@ -2664,15 +2711,64 @@ class GroomVerifyVerbTest(unittest.TestCase):
             self.assertTrue(any("expected >= planned" in f for f in out["failures"]))
 
     def test_reports_standard_posture_when_unlabeled(self) -> None:
-        # Unlabeled (and legacy) issues resolve to the safe `standard` default.
+        # Unlabeled (and legacy) issues resolve to the safe `standard` default,
+        # and `unset` marks them as the one state where a consumer may fall back
+        # to the repository `delivery_mode` default.
         with tempfile.TemporaryDirectory() as d:
             out = self._run(Path(d), "planned", [])
             self.assertEqual(out["posture"], "standard")
+            self.assertEqual(out["posture_source"], "unset")
+            self.assertFalse(out["cleared"])
 
     def test_reports_autonomous_posture_from_the_label(self) -> None:
         with tempfile.TemporaryDirectory() as d:
             out = self._run(Path(d), "planned", [], labels=["posture:autonomous"])
             self.assertEqual(out["posture"], "autonomous")
+            self.assertEqual(out["posture_source"], "ticket")
+
+    def test_cleared_fuses_attestation_and_clearance(self) -> None:
+        # The whole point of the field: hands-off execution needs BOTH halves,
+        # and the routing boundary should read one value instead of
+        # reassembling the conjunction from labels plus Status.
+        with tempfile.TemporaryDirectory() as d:
+            out = self._run(Path(d), "planned", [], labels=["posture:autonomous"])
+            self.assertTrue(out["groomed"])
+            self.assertTrue(out["cleared"])
+
+    def test_clearance_without_attestation_is_not_cleared(self) -> None:
+        # A posture label on an un-groomed issue grants nothing. This is the
+        # half that label-add privilege alone cannot satisfy: Project Status is
+        # a separate write scope, and that separation IS the defense.
+        with tempfile.TemporaryDirectory() as d:
+            out = self._run(Path(d), "stub", [], labels=["posture:autonomous"])
+            self.assertFalse(out["groomed"])
+            self.assertEqual(out["posture"], "autonomous")
+            self.assertFalse(out["cleared"])
+
+    def test_explicitly_standard_is_distinguishable_from_unset(self) -> None:
+        # The distinction #306 exists for: both resolve `standard`, but only the
+        # unlabeled one may inherit a `delivery_mode: autonomous` repo default.
+        with tempfile.TemporaryDirectory() as d:
+            labeled = self._run(Path(d), "planned", [], labels=["posture:standard"])
+            unset = self._run(Path(d), "planned", [])
+        self.assertEqual(labeled["posture"], unset["posture"])       # both standard
+        self.assertNotEqual(labeled["posture_source"], unset["posture_source"])
+        self.assertEqual(labeled["posture_source"], "ticket")
+        self.assertEqual(unset["posture_source"], "unset")
+
+    def test_ambiguous_clearance_never_reports_cleared(self) -> None:
+        # Safe-wins survives the fusion: every ambiguous label state resolves
+        # `standard` AND `cleared: false`, even on an attested issue.
+        ambiguous = [["posture:autonomous", "posture:standard"],
+                     ["posture:autonomous", "Posture:Standard"],
+                     ["posture:experimental"]]
+        with tempfile.TemporaryDirectory() as d:
+            for labels in ambiguous:
+                with self.subTest(labels=labels):
+                    out = self._run(Path(d), "planned", [], labels=labels)
+                    self.assertTrue(out["groomed"])
+                    self.assertEqual(out["posture"], "standard")
+                    self.assertFalse(out["cleared"])
 
     def test_conflicting_posture_labels_resolve_standard(self) -> None:
         # Regression (review of PR #304): a ticket carrying `posture:autonomous`
