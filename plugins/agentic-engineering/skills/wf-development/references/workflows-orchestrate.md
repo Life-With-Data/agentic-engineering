@@ -144,7 +144,11 @@ Use the GitHub issue/project state and explicitly supplied artifacts.
 Only the "Planned, unclaimed work" and "Ungroomed request" branches above
 depend on the [resolved posture](#delivery-posture) and its
 attestation-AND-clearance gate. Resolve them against all four combinations of
-groomed/un-groomed input and cleared/not-cleared posture:
+groomed/un-groomed input and cleared/not-cleared posture. The **Clearance**
+column below is the *ticket's* clearance (`posture`), not the fused `cleared`
+field — `cleared` already folds in the attestation, so it is necessarily
+`false` on both un-groomed rows. Reading only `cleared` still routes those rows
+correctly, to the human:
 
 | Input | Clearance | Behavior |
 |-------|-----------|----------|
