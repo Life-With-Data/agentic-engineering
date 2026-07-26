@@ -1547,7 +1547,12 @@ def apply_posture_label(issue: int, posture: str, ctx: RepoContext, runner: GhRu
     # unremovable through this writer, and, since `resolve_posture` below reads
     # `posture:autonomous` positively, resolving toward MORE autonomy. Clearance
     # must never fail open, so any other `posture:*` label is removed here.
-    present = [lbl for lbl in current if lbl.startswith(POSTURE_LABEL_PREFIX)]
+    # Case-insensitive, because a human adds labels by typing them: GitHub treats
+    # label names case-insensitively for uniqueness, so `Posture:Standard` is a
+    # real label a person can create, and a case-sensitive scan would miss it and
+    # fail open. Sorted so a multi-label removal argv is deterministic.
+    present = sorted(lbl for lbl in current
+                     if lbl.lower().startswith(POSTURE_LABEL_PREFIX))
     remove = [lbl for lbl in present if lbl != target]
     add = [] if (target is None or target in current) else ["--add-label", target]
     if add or remove:
@@ -1572,9 +1577,14 @@ def resolve_posture(labels: "list[str]") -> str:
     clearance is not a clearance: it resolves `standard` until a human or the
     writer settles it. Resolving the other way would let a stray label — the one
     thing a human reaches for to de-escalate a ticket in the GitHub UI — grant
-    hands-off execution instead of denying it."""
+    hands-off execution instead of denying it.
+
+    The namespace scan is case-insensitive for the same reason the writer's is:
+    a hand-typed `Posture:Standard` is a label a human can really create, and
+    matching case-sensitively would skip it and hand back `autonomous`."""
     known = POSTURE_LABELS["autonomous"]
-    posture_labels = [lbl for lbl in labels if lbl.startswith(POSTURE_LABEL_PREFIX)]
+    posture_labels = [lbl.lower() for lbl in labels
+                      if lbl.lower().startswith(POSTURE_LABEL_PREFIX)]
     return "autonomous" if posture_labels == [known] else "standard"
 
 

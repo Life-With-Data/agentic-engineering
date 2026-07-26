@@ -920,6 +920,31 @@ class PostureLabelWriterTest(unittest.TestCase):
         result = lb.apply_posture_label(11, "autonomous", self.ctx, runner)
         self.assertEqual(result["removed_labels"], ["posture:standard"])
 
+    def test_case_variant_stray_label_is_stripped(self) -> None:
+        # Second review pass on PR #304: the namespace scan was case-SENSITIVE,
+        # so a hand-typed `Posture:Standard` was invisible to it. GitHub treats
+        # label names case-insensitively for uniqueness, so that label is one a
+        # human can really create — and missing it made clearance fail OPEN.
+        runner = FakeRunner([
+            (["issue", "view", "13", "--repo", "acme/widget", "--json", "labels"],
+             self._view(["Posture:Standard"])),
+            (["label", "create", "posture:autonomous", "--repo", "acme/widget"], _ok("")),
+            (["issue", "edit", "13", "--repo", "acme/widget",
+              "--add-label", "posture:autonomous",
+              "--remove-label", "Posture:Standard"], _ok("")),
+        ])
+        result = lb.apply_posture_label(13, "autonomous", self.ctx, runner)
+        self.assertEqual(result["removed_labels"], ["Posture:Standard"])
+
+    def test_vocabulary_and_prefix_cannot_drift(self) -> None:
+        # POSTURE_LABEL_PREFIX is what both the writer and the reader police; if
+        # it ever stopped matching the label POSTURE_LABELS actually writes, the
+        # scan would match nothing and autonomy would silently never engage.
+        for label in lb.POSTURE_LABELS.values():
+            self.assertTrue(label.startswith(lb.POSTURE_LABEL_PREFIX), label)
+        for label in lb.ALL_POSTURE_LABELS:
+            self.assertTrue(label.startswith(lb.POSTURE_LABEL_PREFIX), label)
+
     def test_stray_posture_label_is_removable_via_standard(self) -> None:
         # Same regression, the other direction: applying `standard` to an issue
         # carrying only a stray `posture:*` label used to issue NO edit at all,
@@ -2658,6 +2683,15 @@ class GroomVerifyVerbTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             out = self._run(Path(d), "planned", [],
                             labels=["posture:standard", "posture:autonomous"])
+            self.assertEqual(out["posture"], "standard")
+
+    def test_case_variant_conflict_resolves_standard(self) -> None:
+        # The read-side twin of the writer regression: a case-sensitive scan saw
+        # only `posture:autonomous` here and answered `autonomous`, handing
+        # hands-off clearance to a ticket a human had just de-escalated.
+        with tempfile.TemporaryDirectory() as d:
+            out = self._run(Path(d), "planned", [],
+                            labels=["posture:autonomous", "Posture:Standard"])
             self.assertEqual(out["posture"], "standard")
 
     def test_unknown_posture_label_alone_resolves_standard(self) -> None:

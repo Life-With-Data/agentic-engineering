@@ -392,8 +392,12 @@ describe("workflow skill architecture", () => {
       path.join(SKILLS, "wf-development", "references", "workflows-orchestrate.md"),
       "utf8",
     );
+    // Whitespace-normalized: the earlier form embedded the file's hard wrap, so
+    // a pure reflow of the same sentence would have failed the test without any
+    // meaning changing — the false-positive twin of a frozen spelling.
+    const flow = (s: string) => s.replace(/\s+/g, " ");
     expect(orchestrate).toContain("only `posture:*` label");
-    expect(orchestrate).toContain("fails\ntoward `standard`");
+    expect(flow(orchestrate)).toContain("fails toward `standard`");
 
     // Grooming must not claim that declining an offer revokes an existing
     // clearance — omitting `posture` leaves a cleared ticket cleared.
@@ -402,7 +406,27 @@ describe("workflow skill architecture", () => {
       "utf8",
     );
     expect(plan).toContain("Revoking takes an explicit write");
-    expect(plan).not.toContain("silence or a no writes\n  nothing, which resolves to `standard`");
+    // Positive, not negative: the claim "a no resolves to standard" is only true
+    // for a ticket with no clearance yet, so require the qualifier rather than
+    // banning the phrase — the corrected sentence necessarily still contains it.
+    expect(flow(plan)).toContain(
+      "On a ticket that carries no clearance yet, silence or a no writes nothing",
+    );
+
+    // The posture read must be resolvable from land-pr's own standalone entry:
+    // the parent issue number is captured in step 1, BEFORE the step-4 merge
+    // gate that consumes it, and an absent number denies clearance.
+    const landPrDoc = readFileSync(
+      path.join(SKILLS, "wf-delivery", "references", "land-pr.md"),
+      "utf8",
+    );
+    expect(landPrDoc).toContain("closes #[0-9]+");
+    const stepOne = landPrDoc.indexOf("### 1. Identify the PR");
+    const stepFour = landPrDoc.indexOf("### 4. Merge authorization gate");
+    const extraction = landPrDoc.indexOf("N=$(gh pr view");
+    expect(extraction).toBeGreaterThan(stepOne);
+    expect(extraction).toBeLessThan(stepFour);
+    expect(flow(landPrDoc)).toContain('Treat an empty `N` as "no ticket posture available"');
 
     // The escalation contract must not whitelist the tracker as a trusted
     // source of instructions, and must be honest about where (a) is enforced.
@@ -411,7 +435,12 @@ describe("workflow skill architecture", () => {
       "utf8",
     );
     expect(contract).not.toContain("not the user or the tracker");
-    expect(contract).toContain("Where this is machine-enforced, and where it is not");
+    // Item (a) must not claim the engine refuses on untrusted provenance — the
+    // gate verbs compute it as an advisory field and never branch on it, so an
+    // enforcement claim here would be the overstatement this section exists to
+    // remove. Assert the honest framing, and ban the phrasing that overstates.
+    expect(flow(contract)).toContain("agent discipline, not an engine check");
+    expect(flow(contract)).not.toContain("the engine returns a `blocked` verdict");
   });
 
   test("autonomous-mode-owning skills reference the shared escalation contract", () => {
@@ -546,6 +575,16 @@ describe("workflow skill architecture", () => {
     expect(chainOccurrences).toBe(1);
 
     // The attestation-AND-clearance gate, verbatim once.
+    //
+    // This is a DELIBERATE exception to the freeze-the-category rule the rest of
+    // this file follows: issue #302 acceptance criterion 5 requires that this
+    // sentence "appears verbatim once", so here the literal IS the contract and
+    // an exact match is the only assertion that can check it. It is brittle to
+    // re-wrapping by design — if you are reflowing this paragraph, you are
+    // changing something #302 froze on purpose, so update the criterion too
+    // rather than loosening the test. (A frozen sentence normally risks a silent
+    // false-pass; it cannot here, because the whole point is that the text is
+    // fixed.)
     const GATE =
       "Hands-off execution requires **both** grooming attestation (`Status >=\n" +
       "planned`, verifiable with `--groom-verify N`) **and** the ticket's autonomous\n" +

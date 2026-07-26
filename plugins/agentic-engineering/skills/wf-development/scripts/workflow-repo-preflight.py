@@ -25,6 +25,7 @@ command explicitly invokes `lifecycle_board.py --reconcile`.
 
 from __future__ import annotations
 
+import functools
 import importlib.util
 import json
 import pathlib
@@ -162,6 +163,110 @@ def get_pr_context(origin_slug: str = "") -> dict[str, Any]:
     }
 
 
+_LOCAL_CONFIG_NAME = "agentic-engineering.local.md"
+
+# Same flat `key: value` shape lifecycle_board.parse_frontmatter/config_registry
+# use for agentic-engineering.local.md (and the committed board config): a bare
+# identifier key, then everything up to trailing whitespace as the raw value.
+# Keeping this identical (rather than a per-key regex baked around the
+# expected value shape) is what fixes P3-2 -- the reader no longer has its own
+# opinion about what a value may look like, so a quoted or commented value
+# parses the same way config_registry.py already parses it.
+_FLAT_KEY_RE = re.compile(r"^\s*([A-Za-z_][\w-]*)\s*:\s*(.+?)\s*$")
+
+
+@functools.lru_cache(maxsize=None)
+def _load_local_config(repo_root: str) -> Optional[dict[str, str]]:
+    """Read agentic-engineering.local.md's frontmatter for `repo_root`, once.
+
+    Returns the flat key -> raw-value mapping, or None when the file is
+    absent, unreadable, has no parseable frontmatter block, or is *tracked*
+    in git (see the security invariant below) -- any of these is "no local
+    config available" to every caller.
+
+    Value parsing mirrors config_registry.parse_frontmatter exactly: strip a
+    trailing ` # comment`, then strip one layer of surrounding double or
+    single quotes. Values are returned case-preserved; callers lowercase for
+    their own vocabulary comparisons.
+
+    Caching invariant (fixes P3-3): issue_tracker and delivery_mode both live
+    in this one file, so resolving both must not cost two `git ls-files`
+    subprocesses, two file reads, and two near-identical "tracked, ignoring"
+    warnings for the same underlying fact. `lru_cache` keys on `repo_root`
+    and this function only executes once per unique root within a process,
+    so the tracked-file check, the read, and the warning below each happen
+    at most once no matter how many keys are looked up against it.
+
+    Security invariant (same gate as lifecycle_board.read_board_config): a
+    .local.md that is *tracked* in git would ride a PR, letting the PR pin
+    overrides for every clone and steer workflow dispatch. A tracked copy is
+    ignored with a warning; every key falls back to auto-detect/defaults.
+    """
+    config_path = pathlib.Path(repo_root) / _LOCAL_CONFIG_NAME
+    if not config_path.is_file():
+        return None
+
+    tracked = subprocess.run(
+        ["git", "-C", repo_root, "ls-files", "--error-unmatch", config_path.name],
+        text=True,
+        capture_output=True,
+    )
+    if tracked.returncode == 0:
+        print(
+            f"warning: {config_path.name} is tracked in git — a PR must not carry it; "
+            "ignoring its local overrides (issue_tracker, delivery_mode) and falling "
+            "back to auto-detect/defaults",
+            file=sys.stderr,
+        )
+        return None
+
+    try:
+        text = config_path.read_text(encoding="utf-8")
+    except OSError:
+        return None
+    if not text.startswith("---"):
+        return None
+    # Extract frontmatter block between leading --- and the next ---.
+    match = re.match(r"^---\s*\n(.*?)\n---\s*(?:\n|$)", text, re.DOTALL)
+    if not match:
+        return None
+
+    values: dict[str, str] = {}
+    for line in match.group(1).splitlines():
+        line = re.sub(r"\s+#.*$", "", line)  # strip a trailing ` # comment`
+        km = _FLAT_KEY_RE.match(line)
+        if km:
+            values[km.group(1)] = km.group(2).strip().strip('"').strip("'")
+    return values
+
+
+def _read_local_config_key(
+    repo_root: str,
+    key: str,
+    valid_values: "set[str]",
+) -> tuple[Optional[str], Optional[str]]:
+    """Resolve one frontmatter key from agentic-engineering.local.md.
+
+    Returns (valid_value, invalid_raw_value): at most one is non-None. A key
+    that is present but whose (lowercased) value is outside `valid_values`
+    -- including one that failed to parse into any recognizable value --
+    surfaces via the second element rather than being reported as absent, so
+    callers can warn the user their override did not take effect. Absent
+    entirely (missing file, no frontmatter, tracked-and-ignored, or the key
+    just isn't in the block) is (None, None).
+    """
+    values = _load_local_config(repo_root)
+    if values is None:
+        return (None, None)
+    raw = values.get(key)
+    if raw is None:
+        return (None, None)
+    value = raw.lower()
+    if value in valid_values:
+        return (value, None)
+    return (None, value)
+
+
 # The only supported tracker mode today; more trackers may be added later.
 VALID_TRACKERS = {"github-project"}
 
@@ -172,42 +277,11 @@ def read_local_config_tracker(repo_root: str) -> tuple[Optional[str], Optional[s
     Returns (valid_value, invalid_raw_value). An unrecognized value (e.g. a
     stale ``linear``/``none`` override from a retired mode) is surfaced as the
     second element instead of being silently ignored, so callers can tell the
-    user their pinned tracker no longer resolves.
-
-    Security invariant (same gate as lifecycle_board.read_board_config): a
-    .local.md that is *tracked* in git would ride a PR, letting the PR pin
-    ``issue_tracker:`` for every clone and steer the workflow's tracker
-    dispatch. A tracked copy is ignored with a warning; resolution falls back
-    to auto-detect.
+    user their pinned tracker no longer resolves. See `_read_local_config_key`
+    and `_load_local_config` for parsing and the tracked-file security
+    invariant, shared with read_local_config_delivery_mode below.
     """
-    config_path = pathlib.Path(repo_root) / "agentic-engineering.local.md"
-    if not config_path.is_file():
-        return (None, None)
-    tracked = subprocess.run(["git", "-C", repo_root, "ls-files", "--error-unmatch", config_path.name], text=True, capture_output=True)
-    if tracked.returncode == 0:
-        print(
-            f"warning: {config_path.name} is tracked in git — a PR must not carry it; " "ignoring its issue_tracker override and falling back to auto-detect",
-            file=sys.stderr,
-        )
-        return (None, None)
-    try:
-        text = config_path.read_text(encoding="utf-8")
-    except OSError:
-        return (None, None)
-    if not text.startswith("---"):
-        return (None, None)
-    # Extract frontmatter block between leading --- and the next ---.
-    match = re.match(r"^---\s*\n(.*?)\n---\s*(?:\n|$)", text, re.DOTALL)
-    if not match:
-        return (None, None)
-    for line in match.group(1).splitlines():
-        m = re.match(r"^\s*issue_tracker\s*:\s*([A-Za-z][A-Za-z-]*)\s*$", line)
-        if m:
-            value = m.group(1).lower()
-            if value in VALID_TRACKERS:
-                return (value, None)
-            return (None, value)
-    return (None, None)
+    return _read_local_config_key(repo_root, "issue_tracker", VALID_TRACKERS)
 
 
 # The only supported delivery-posture defaults today; more may follow the
@@ -218,41 +292,13 @@ VALID_DELIVERY_MODES = {"standard", "autonomous"}
 def read_local_config_delivery_mode(repo_root: str) -> tuple[Optional[str], Optional[str]]:
     """Read delivery_mode: from agentic-engineering.local.md frontmatter.
 
-    Symmetric to read_local_config_tracker above: same (valid, invalid) return
-    shape, and the same tracked-file security invariant (a .local.md that is
-    *tracked* in git would ride a PR, letting the PR pin every clone's default
-    delivery posture; a tracked copy is ignored with a warning and resolution
-    falls back to the safe `standard` default).
+    Symmetric to read_local_config_tracker above: same (valid, invalid)
+    return shape, same shared parser, same tracked-file security invariant
+    (a .local.md that is *tracked* in git would ride a PR, letting the PR pin
+    every clone's default delivery posture; a tracked copy is ignored with a
+    warning and resolution falls back to the safe `standard` default).
     """
-    config_path = pathlib.Path(repo_root) / "agentic-engineering.local.md"
-    if not config_path.is_file():
-        return (None, None)
-    tracked = subprocess.run(["git", "-C", repo_root, "ls-files", "--error-unmatch", config_path.name], text=True, capture_output=True)
-    if tracked.returncode == 0:
-        print(
-            f"warning: {config_path.name} is tracked in git — a PR must not carry it; "
-            "ignoring its delivery_mode override and falling back to standard",
-            file=sys.stderr,
-        )
-        return (None, None)
-    try:
-        text = config_path.read_text(encoding="utf-8")
-    except OSError:
-        return (None, None)
-    if not text.startswith("---"):
-        return (None, None)
-    # Extract frontmatter block between leading --- and the next ---.
-    match = re.match(r"^---\s*\n(.*?)\n---\s*(?:\n|$)", text, re.DOTALL)
-    if not match:
-        return (None, None)
-    for line in match.group(1).splitlines():
-        m = re.match(r"^\s*delivery_mode\s*:\s*([A-Za-z][A-Za-z-]*)\s*$", line)
-        if m:
-            value = m.group(1).lower()
-            if value in VALID_DELIVERY_MODES:
-                return (value, None)
-            return (None, value)
-    return (None, None)
+    return _read_local_config_key(repo_root, "delivery_mode", VALID_DELIVERY_MODES)
 
 
 def resolve_delivery_mode(repo_root: str) -> dict[str, Any]:

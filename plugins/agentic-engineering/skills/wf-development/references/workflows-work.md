@@ -119,8 +119,8 @@ When `verdict == no_board`, the repo has no configured Projects board — lifecy
      `standard`. That reference also owns the full precedence chain and the
      attestation-AND-clearance gate; do not re-derive either here.
    - **Standard posture, or un-groomed input:** if anything material is still
-     unclear, ask clarifying questions now and get approval before proceeding —
-     better to ask than build the wrong thing.
+     unclear, ask clarifying questions now and get approval before proceeding.
+     **Do not skip this** — better to ask than build the wrong thing.
    - **Autonomous posture on a groomed issue:** do **not** re-open a general
      approval gate. If genuine *residual* ambiguity remains that the issue and
      repo cannot resolve, escalate it through the blocker path
