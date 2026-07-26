@@ -172,13 +172,19 @@ ready*; `posture:autonomous` says *this may run unattended*. Both are written
 by the same `--decompose` call, at the same moment, from the same human
 decision. Do not turn the planned attestation into a hard posture gate.
 
-`--decompose` returns the value it wrote as `parent_posture`, and
-`--groom-verify` separately reports the resolved posture alongside its
-`planned`-stage check, so one call answers both halves of the downstream
-gate: is this attested, and is it cleared to run unattended. That resolved
-posture is what
+`--decompose` returns the value it wrote as `parent_posture`. `--groom-verify`
+then reports the **ticket's own** clearance alongside its `planned`-stage
+check — `posture`, `posture_source` (`ticket` when the issue carries any
+`posture:*` label, `unset` when it carries none), and the fused `cleared`
+boolean — so one call answers both halves of the downstream gate: is this
+attested, and does the ticket clear it to run unattended.
+
+It reports the ticket's posture, not the repository-resolved one. The
+`delivery_mode` default and any per-invocation tokens are resolved by the
+consumer, which is why `posture_source` matters: only `unset` licenses falling
+back to the repository default.
 [wf-development's orchestration entry point](../../wf-development/references/workflows-orchestrate.md)
-consumes at dispatch.
+consumes that clearance read at dispatch.
 
 **Revoking takes an explicit write.** Re-grooming an already-`autonomous`
 ticket down to `posture: standard` is not a no-op: it actively **revokes** the

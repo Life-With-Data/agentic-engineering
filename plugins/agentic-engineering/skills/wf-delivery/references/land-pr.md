@@ -178,11 +178,13 @@ waive the final compounding gate in step 5:
   or the ticket's resolved delivery posture is autonomous)** — resolve that posture from the parent
   issue `N` captured in step 1:
   ```bash
-  gh issue view "$N" --repo "$ORIGIN" --json labels
+  # Guard the empty-`N` case from step 1: no ticket means no clearance to read.
+  [ -n "$N" ] && python3 "<skill-directory>/scripts/lifecycle_board.py" --groom-verify "$N"
   ```
-  cleared only when `posture:autonomous` is present and no other `posture:*` label is
+  Cleared when it reports `cleared: true`; treat anything else — including an empty
+  `N`, a non-zero exit, or `cleared: false` — as not cleared
   ([delivery posture](../../wf-development/references/workflows-orchestrate.md#delivery-posture) owns
-  the resolution rule and the precedence chain). Then merge
+  the resolution rule and the precedence chain — do not re-derive either here). Then merge
   without asking **once and only once** all conditions hold. This is the point of autonomous mode: do not bounce a
   "say the word and I'll merge" back to the user when the PR is already green, reviewed, and
   mergeable — just merge. If a condition is genuinely unmet (CI stuck red after retries,

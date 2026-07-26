@@ -277,7 +277,11 @@ describe("workflow skill architecture", () => {
     expect(planningRoute).toContain("delivery_mode_resolved");
     expect(planningRoute).toContain("posture:autonomous");
     expect(planningRoute).toContain("parent_posture");
-    expect(planningRoute).toContain("resolved posture");
+    // Issue #306: the verb reports the TICKET's clearance, not the
+    // repository-resolved posture, so the route must name the three-state
+    // surface rather than the old "resolved posture" claim it displaced.
+    expect(planningRoute).toContain("posture_source");
+    expect(planningRoute).toContain("`cleared`");
 
     const publicWorkflowDocs = [
       path.join(PLUGIN, "README.md"),
@@ -382,12 +386,13 @@ describe("workflow skill architecture", () => {
   });
 
   test("posture clearance is documented as failing toward standard", () => {
-    // Review of PR #304. The engine's resolve_posture is safe-wins (cleared only
-    // when `posture:autonomous` is the ONLY `posture:*` label), but the read the
-    // plugin actually prescribes at the routing boundary is a model-interpreted
-    // `gh issue view --json labels` — so the resolution rule has to be stated in
-    // prose too, or the Python fix never reaches the boundary that gates
-    // autonomy. Category-level: assert the rule is present, not its wording.
+    // Review of PR #304, revised by #306. The engine's resolve_clearance is
+    // safe-wins, and the routing boundary now READS that verdict (`cleared` /
+    // `posture_source` off --groom-verify) instead of re-deriving it from
+    // labels in prose. So the assertion moved with it: the doc must name the
+    // machine-read surface and keep stating the safe-wins property, but it must
+    // NOT restate the label-resolution rule — that duplication is the defect.
+    // Category-level: assert the rule is present, not its wording.
     const orchestrate = readFileSync(
       path.join(SKILLS, "wf-development", "references", "workflows-orchestrate.md"),
       "utf8",
@@ -396,8 +401,14 @@ describe("workflow skill architecture", () => {
     // a pure reflow of the same sentence would have failed the test without any
     // meaning changing — the false-positive twin of a frozen spelling.
     const flow = (s: string) => s.replace(/\s+/g, " ");
-    expect(orchestrate).toContain("only `posture:*` label");
+    expect(orchestrate).toContain("--groom-verify");
+    expect(orchestrate).toContain("posture_source");
+    expect(orchestrate).toContain("`cleared: true`");
     expect(flow(orchestrate)).toContain("fails toward `standard`");
+    // `cleared: false` is label-derived, so it must never be documented as a
+    // denial on its own — that misread would block work an autonomous-mode repo
+    // legitimately clears.
+    expect(flow(orchestrate)).toContain("not by itself a denial");
 
     // Grooming must not claim that declining an offer revokes an existing
     // clearance — omitting `posture` leaves a cleared ticket cleared.
@@ -420,6 +431,22 @@ describe("workflow skill architecture", () => {
       path.join(SKILLS, "wf-delivery", "references", "land-pr.md"),
       "utf8",
     );
+    // Issue #306: the label-resolution rule is owned by the engine and must not
+    // be restated in prose anywhere — three copies (orchestrate, land-pr, the
+    // Python docstring) is what let a safety property drift. Detect the rule by
+    // its load-bearing shape ("only/no other `posture:*` label"), not by any one
+    // spelling, across every skill doc that discusses posture.
+    const postureDocs = [
+      path.join(SKILLS, "wf-development", "references", "workflows-orchestrate.md"),
+      path.join(SKILLS, "wf-development", "references", "escalation-contract.md"),
+      path.join(SKILLS, "wf-delivery", "references", "land-pr.md"),
+      path.join(SKILLS, "wf-grooming", "references", "workflows-plan.md"),
+    ];
+    const restatements = postureDocs.filter((file) =>
+      /(only|no other)[^.]{0,40}`posture:\*` label/.test(flow(readFileSync(file, "utf8"))),
+    );
+    expect(restatements).toEqual([]);
+
     expect(landPrDoc).toContain("closes #[0-9]+");
     const stepOne = landPrDoc.indexOf("### 1. Identify the PR");
     const stepFour = landPrDoc.indexOf("### 4. Merge authorization gate");
@@ -594,7 +621,15 @@ describe("workflow skill architecture", () => {
 
     // Reading the posture: parent, claim/routing boundary, once per work item,
     // fixed for the run, ReadyItem does not carry labels, preflight fallback.
-    expect(orchestrate).toContain("gh issue view <parent> --repo <origin> --json labels");
+    //
+    // Issue #306 replaced the model-interpreted `gh issue view --json labels`
+    // read with the engine's fused verdict, so the assertion tracks the SURFACE
+    // (the verb plus the fields the boundary branches on), not the command
+    // string that happened to carry it.
+    expect(orchestrate).toContain("--groom-verify <parent>");
+    expect(orchestrate).toContain("`cleared: true`");
+    expect(orchestrate).toContain('`posture_source: "unset"`');
+    expect(orchestrate).toContain('`posture_source: "ticket"`');
     expect(orchestrate).toContain("the **parent** at the claim / routing boundary");
     expect(orchestrate).toContain("once per work item");
     expect(orchestrate).toContain("Posture is fixed for the run at that read");
@@ -602,6 +637,18 @@ describe("workflow skill architecture", () => {
     expect(orchestrate).toContain("`ReadyItem` is\n  `{number, title, priority, repo}`");
     expect(orchestrate).toContain("merge_ready_legs");
     expect(orchestrate).toContain("delivery_mode_resolved");
+
+    // Issue #306: the trust boundary must be named — label-add privilege IS the
+    // authority to grant unattended execution, and the two standard escalation
+    // paths that must never attach the label are called out. Asserted by
+    // category token (the template key, the Actions scope), never by sentence.
+    expect(orchestrate).toContain("Who may grant clearance");
+    expect(orchestrate).toContain("`labels:` key");
+    expect(orchestrate).toContain("`issues: write`");
+    // Whitespace-normalized so a pure reflow of the paragraph cannot fail this.
+    expect(orchestrate.replace(/\s+/g, " ")).toContain(
+      "Adding `posture:autonomous` to an issue is the act of authorizing unattended execution",
+    );
 
     // Queue drains: no separate opt-in, heterogeneous drains are intended.
     expect(orchestrate).toContain("`/loop` and scheduled queue drains get no separate posture opt-in");

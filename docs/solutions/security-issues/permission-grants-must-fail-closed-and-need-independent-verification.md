@@ -94,12 +94,25 @@ return "autonomous" if posture_labels == [known] else "standard"
 be the *only* thing in the namespace. An unknown value from a future vocabulary, a case variant, a
 conflicting pair — each resolves `standard`.
 
-**A safety rule read through prose is implemented in the prose too.** The routing boundary does not
-call `resolve_posture`; the plugin instructs an agent to run `gh issue view <parent> --json labels`
-and interpret the result. So a Python-only fix would never have reached the boundary that actually
-gates autonomy. The resolution rule had to be written into `workflows-orchestrate.md` as well, and
-the two must be kept consistent — the code is not the single source of truth when a model is the
-interpreter.
+**A safety rule read through prose is implemented in the prose too — but that is a stopgap, not the
+fix.** At #304 the routing boundary did not call the resolver at all; the plugin instructed an agent
+to run `gh issue view <parent> --json labels` and interpret the result. A Python-only fix would
+never have reached the boundary that actually gates autonomy, so the resolution rule was written
+into `workflows-orchestrate.md` as well, leaving two copies that had to be kept consistent.
+
+> **Superseded by #306 (PR #312).** Mirroring the rule into prose was the right *immediate* move and
+> the wrong *resting place*: a safety property maintained in Python and Markdown at once is a
+> property that drifts, and by #306 it had spread to three prose copies. The structural fix is to
+> stop asking the model to apply the rule and give it a **machine-computed verdict** instead —
+> `--groom-verify` now emits `cleared` (`groomed and posture == "autonomous"`) plus `posture_source`,
+> and the boundary branches on those fields. The rule itself now lives in exactly one place,
+> `resolve_clearance` in `lifecycle_board.py` (the `resolve_posture` named in the historical
+> examples above was folded into it and removed). A guardrail in
+> `tests/workflow-skill-architecture.test.ts` fails CI if any skill doc restates the rule again.
+>
+> The durable lesson is the ordering: mirror the rule into prose only while no machine-readable
+> verdict is reachable, and treat that mirroring as debt to be repaid by computing the answer the
+> model would otherwise have to derive.
 
 **Verify safety fixes through a channel that did not produce them.** Every defect above was found by
 an independent reviewer and missed by the author's own verification, twice.
@@ -139,6 +152,11 @@ an independent reviewer and missed by the author's own verification, twice.
 - **Freeze categories, not spellings — and document the exceptions.** Repo policy is to assert the
   category. Where an external criterion genuinely requires verbatim text, say so in the test with a
   pointer to that criterion, so the brittleness reads as intentional.
+- **Compute the verdict rather than restating the rule.** When a policy decision is made by a model
+  reading a document, the fix is not a better-worded document — it is a field the engine emits that
+  the model can branch on without re-deriving anything. Ask what single value the boundary actually
+  needs, emit that, and let the prose point at it. Mirrored rules are a bridge to that, and a
+  bridge left standing becomes the drift.
 
 ## Resources
 

@@ -40,26 +40,37 @@ by relative path rather than restating it.
 
 ### Reading the posture
 
-Use the same kind of read the complexity dispatch above already prescribes — a
-single `gh issue view` call read once and trusted rather than re-derived — but
-at a different boundary. Read it with:
+Both halves of the gate come from **one** call, already machine-fused — do not
+reassemble the conjunction from labels plus Status by hand:
 
 ```bash
-gh issue view <parent> --repo <origin> --json labels
+python3 "<skill-directory>/scripts/lifecycle_board.py" --groom-verify <parent>
 ```
 
-**How to resolve those labels — clearance is a positive grant, so it fails
-toward `standard` in every ambiguous case.** The ticket is cleared when
-`posture:autonomous` is present **and it is the only `posture:*` label on the
-issue**. Anything else resolves `standard`: no posture label at all, an
-unlabeled or legacy issue, an unrecognized `posture:*` value from a newer
-vocabulary, or `posture:autonomous` sitting alongside some other `posture:*`
-label. That last case is the one worth naming — a human de-escalating a ticket
-in the GitHub UI is more likely to *add* a `posture:standard` label than to
-delete the autonomous one, and a conflicting pair must never read as
-permission. The engine's `resolve_posture` applies exactly this rule; the
-`--decompose` writer keeps the invariant true by stripping every other
-`posture:*` label whenever it writes.
+Branch on its output. Each row reads one field; none re-derives what a
+`posture:*` label means:
+
+| Read | Meaning |
+|------|---------|
+| `cleared: true` | Attested **and** ticket-cleared. Sufficient authority to proceed hands-off. |
+| `cleared: false`, `posture_source: "ticket"` | The ticket decided. Standard posture; the repository default does **not** apply. |
+| `cleared: false`, `posture_source: "unset"` | The ticket said nothing. Fall back to the preflight JSON's `delivery_mode_resolved` — and only when `groomed` is true. |
+
+**`cleared: false` is not by itself a denial.** It is label-derived: the engine
+sees neither the repository default nor per-invocation tokens, so a consumer
+that reads only `cleared` fails *safe* — more restrictive, never more
+permissive. That is intended.
+
+**The engine owns the label-resolution rule; this document does not restate
+it.** Clearance is a positive grant that fails toward `standard` in every
+ambiguous case, and `resolve_clearance` in `scripts/lifecycle_board.py` is the
+one place that rule is written down. A reader who needs the exact semantics
+reads it there. Restating it here is what let a safety property drift between
+two languages.
+
+`--groom-verify` also best-effort de-boards open sub-issues, so it is not a
+pure read. That is safe at this boundary: the write is idempotent and the
+reconciler's rule 6 converges on the same state either way.
 
 Deliberate differences from the complexity read:
 
@@ -69,14 +80,46 @@ Deliberate differences from the complexity read:
   posture it started with. Mid-run revocation is out of scope: removing the
   label takes effect the next time the item is claimed or routed, not at stage
   boundaries within a run already in flight.
-- `--ready-work` does **not** carry labels — `ReadyItem` is
+- `--ready-work` does **not** carry labels or clearance — `ReadyItem` is
   `{number, title, priority, repo}`, populated by `merge_ready_legs` from the
-  board item list. A queue drain therefore resolves each item's posture with
-  the same one-issue `gh issue view --json labels` call at the claim boundary,
-  where several calls already happen. Widening `ReadyItem` is out of scope.
+  board item list. A queue drain therefore resolves each item's clearance with
+  the same one-issue `--groom-verify` call at the claim boundary, where several
+  calls already happen. Widening `ReadyItem` is out of scope.
 
-Fall back to the preflight JSON's `delivery_mode_resolved` only when the
-ticket carries no posture label.
+### Who may grant clearance
+
+**Adding `posture:autonomous` to an issue is the act of authorizing unattended
+execution.** Anyone who can write labels on the repository can perform it. That
+is the trust boundary, and it is worth stating plainly because nothing about a
+label *looks* like a privilege grant.
+
+**The conjunction is the defense.** A label alone grants nothing: hands-off
+execution also requires `Status >= planned`, and Project Status is a separate
+write scope from repository labels. Label-add privilege plus the grooming
+attestation is the pair — which is exactly what the engine reports fused as
+`cleared`.
+
+Two standard escalation paths must therefore **never** attach
+`posture:autonomous`:
+
+- **An issue template's `labels:` key.** It applies its labels for *any*
+  creator, including a drive-by external contributor who never held
+  label-write privilege. A template that pre-attaches a posture label converts
+  "can open an issue" into "can request unattended execution".
+- **Any Action running with `issues: write`.** That token can attach the label;
+  combined with a workflow triggered by untrusted input, it is a path from an
+  external event to a clearance grant. Scope Actions to `permissions: {}` or
+  read-only unless a label write is the workflow's actual purpose.
+
+Neither path is open in this repository today — there is no
+`.github/ISSUE_TEMPLATE/`, and no workflow holds `issues: write` — so this is a
+boundary to preserve, not a finding to fix.
+
+**De-escalating** takes an explicit write: `--decompose` with
+`posture: standard` strips every `posture:*` label (a pure removal — the label
+vocabulary has no `standard` entry). A hand-added `posture:standard` beside
+`posture:autonomous` also revokes clearance on read, by the safe-wins rule the
+engine owns.
 
 ### Queue drains need no separate opt-in
 
@@ -101,7 +144,11 @@ Use the GitHub issue/project state and explicitly supplied artifacts.
 Only the "Planned, unclaimed work" and "Ungroomed request" branches above
 depend on the [resolved posture](#delivery-posture) and its
 attestation-AND-clearance gate. Resolve them against all four combinations of
-groomed/un-groomed input and cleared/not-cleared posture:
+groomed/un-groomed input and cleared/not-cleared posture. The **Clearance**
+column below is the *ticket's* clearance (`posture`), not the fused `cleared`
+field — `cleared` already folds in the attestation, so it is necessarily
+`false` on both un-groomed rows. Reading only `cleared` still routes those rows
+correctly, to the human:
 
 | Input | Clearance | Behavior |
 |-------|-----------|----------|
