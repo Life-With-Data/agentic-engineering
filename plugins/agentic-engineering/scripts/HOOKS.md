@@ -19,6 +19,7 @@ script changes). Wiring differs per platform:
 | `prevent-main-commit.py` | Ships | Ships | Ships | Safety net |
 | `block-slack-webhook.py` | Ships (Bash + Write/Edit/MultiEdit) | Ships (shell + `preToolUse` Write) | Ships (Bash + `apply_patch`) | Safety net; Cursor has no MultiEdit matcher |
 | `block-db-push.py` | Ships | Ships | Ships | Safety net |
+| `check-node-version.py` | Ships | Ships | Ships | Safety net; no-op unless the repo pins a Node major |
 | `block-beads-jsonl-stage.py` | Ships | Claude-only | Claude-only | Claude-primary |
 | `nudge-todowrite-to-tracker.py` | Ships (`TodoWrite`) | N/A | N/A | No TodoWrite equivalent on Cursor/Codex |
 | `sdd-cache-pre.py` / `sdd-cache-post.py` | Ships (`WebFetch`, opt-in) | N/A | N/A | WebFetch-specific; opt-in via `AGENTIC_SDD_CACHE=1` |
@@ -128,6 +129,37 @@ commands are untouched.
 
 **Correct alternative:** `prisma migrate dev --name <migration-name>` (or the
 repo's wrapper), which records a migration that keeps the DB and history in sync.
+
+## `check-node-version.py` — PreToolUse (Bash) / beforeShellExecution
+
+**Blocks** a package-manager command (`pnpm`/`npm`/`yarn`/`npx`/`turbo`
+run/dev/build/test/exec forms) when the active Node.js **major** differs from
+the version the repo pins in `.nvmrc` or `package.json` `engines.node`. The
+message names both majors and prints the exact `nvm`/`fnm` switch command, then
+the original command to retry.
+
+**Why:** Running project tooling on the wrong Node major fails cryptically —
+native-module ABI mismatches, `engines` refusals, subtly wrong behavior — and
+the same break resurfaces in CI, wasting a turn locally and CI minutes later.
+When a login shell defaults to a different Node than the project needs, this is
+easy to hit repeatedly. This is the DX sibling of the `block-db-push` /
+`prevent-main-commit` guards: it turns a late, confusing failure into an early,
+actionable one. It is **advisory** — it rewrites and mutates nothing, it just
+refuses the run and explains the one-line fix.
+
+**Precision:** It fires only when all of these hold, so the common case pays
+only a cheap regex and a non-Node repo pays nothing: the tool is Bash, the
+command actually runs a package manager (`install` is excluded — it is
+version-tolerant, and matching it would over-block), the repo declares a
+required major, and the active major differs. Only then does it spawn
+`node --version`. Quoted mentions of a command (a commit message, an `echo`,
+`grep`) are stripped, same as the other guards, so they never fire.
+
+**No-op unless relevant:** a repo that pins no Node version — including any
+non-Node repo — is never affected.
+
+**Opt out:** set `AGENTIC_NODE_VERSION_CHECK=0` to disable the hook (a
+per-machine environment choice, matching `worktree-session` / `sdd-cache`).
 
 ## `nudge-todowrite-to-tracker.py` — PreToolUse (TodoWrite) — Claude-only
 

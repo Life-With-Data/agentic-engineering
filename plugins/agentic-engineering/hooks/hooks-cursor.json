@@ -17,6 +17,10 @@
       {
         "command": "python3 ./scripts/block-db-push.py",
         "failClosed": true
+      },
+      {
+        "command": "python3 ./scripts/check-node-version.py",
+        "failClosed": true
       }
     ],
     "preToolUse": [
