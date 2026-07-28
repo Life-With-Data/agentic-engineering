@@ -664,6 +664,12 @@ class SetStatusGateTest(unittest.TestCase):
             "---\ngithub_project_owner: acme\ngithub_project_number: 1\n---\n", encoding="utf-8")
         self.ctx = lb.RepoContext(root=root, main_root=root, origin_owner="acme",
                                   origin_repo="widget", default_branch="main")
+        # Restore on teardown: leaking these globally lets one class's patch mask
+        # a real cache-I/O dependency in another class, which is exactly how a
+        # decompose preflight bug reached CI green locally.
+        _real_load, _real_save = lb.load_cache, lb.save_cache
+        self.addCleanup(lambda: setattr(lb, "load_cache", _real_load))
+        self.addCleanup(lambda: setattr(lb, "save_cache", _real_save))
         lb.load_cache = lambda _ctx: {}
         lb.save_cache = lambda _ctx, _cache: None
         self._field_list = _ok(json.dumps({"fields": [{"name": "Status", "id": "F",
@@ -733,6 +739,12 @@ class SetStatusReadyForWorkGateTest(unittest.TestCase):
             "---\ngithub_project_owner: acme\ngithub_project_number: 1\n---\n", encoding="utf-8")
         self.ctx = lb.RepoContext(root=root, main_root=root, origin_owner="acme",
                                   origin_repo="widget", default_branch="main")
+        # Restore on teardown: leaking these globally lets one class's patch mask
+        # a real cache-I/O dependency in another class, which is exactly how a
+        # decompose preflight bug reached CI green locally.
+        _real_load, _real_save = lb.load_cache, lb.save_cache
+        self.addCleanup(lambda: setattr(lb, "load_cache", _real_load))
+        self.addCleanup(lambda: setattr(lb, "save_cache", _real_save))
         lb.load_cache = lambda _ctx: {}
         lb.save_cache = lambda _ctx, _cache: None
         self._field_list = _ok(json.dumps({"fields": [{"name": "Status", "id": "F",
@@ -787,6 +799,12 @@ class ClaimVerbTest(unittest.TestCase):
         self.ctx = lb.RepoContext(root=root, main_root=root, origin_owner="acme",
                                   origin_repo="widget", default_branch="main")
         _orig_load, _orig_save = lb.load_cache, lb.save_cache
+        # Restore on teardown: leaking these globally lets one class's patch mask
+        # a real cache-I/O dependency in another class, which is exactly how a
+        # decompose preflight bug reached CI green locally.
+        _real_load, _real_save = lb.load_cache, lb.save_cache
+        self.addCleanup(lambda: setattr(lb, "load_cache", _real_load))
+        self.addCleanup(lambda: setattr(lb, "save_cache", _real_save))
         lb.load_cache = lambda _ctx: {}
         lb.save_cache = lambda _ctx, _cache: None
         self.addCleanup(lambda: (setattr(lb, "load_cache", _orig_load),
@@ -932,6 +950,12 @@ class ReadyWorkVerbTest(unittest.TestCase):
             "---\ngithub_project_owner: acme\ngithub_project_number: 1\n---\n", encoding="utf-8")
         self.ctx = lb.RepoContext(root=root, main_root=root, origin_owner="acme",
                                   origin_repo="widget", default_branch="main")
+        # Restore on teardown: leaking these globally lets one class's patch mask
+        # a real cache-I/O dependency in another class, which is exactly how a
+        # decompose preflight bug reached CI green locally.
+        _real_load, _real_save = lb.load_cache, lb.save_cache
+        self.addCleanup(lambda: setattr(lb, "load_cache", _real_load))
+        self.addCleanup(lambda: setattr(lb, "save_cache", _real_save))
         lb.load_cache = lambda _ctx: {}
         lb.save_cache = lambda _ctx, _cache: None
 

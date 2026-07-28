@@ -1765,11 +1765,12 @@ def verb_decompose(issue: Optional[int], spec_path: str, ctx: RepoContext, runne
     # HERE, with the other preflights, so a board missing a lifecycle option fails
     # before the parent and every sub-issue have already been created — a partial
     # decomposition that no retry can repair, because re-running the same spec
-    # creates duplicates. Persisted to the cache so step 5's own resolve is a hit,
-    # not a second field-list call.
-    _schema_cache = load_cache(ctx)
-    resolve_schema(board, ctx, runner, _schema_cache)
-    save_cache(ctx, _schema_cache)
+    # creates duplicates. Deliberately resolved WITHOUT the on-disk cache: this is
+    # a preflight, and it must not depend on Git's common directory being
+    # resolvable. Step 5 resolves again through the normal cached path; one extra
+    # field-list on a verb that already makes N issue-creates is a fair price for
+    # a precondition that cannot half-write.
+    resolve_schema(board, ctx, runner, {})
 
     # 1. Parent: create from the plan, or update an existing parent's body.
     if issue is None:
@@ -2246,10 +2247,9 @@ def verb_ready_work(ctx: RepoContext, runner: GhRunner) -> dict:
         # such column", violating _item_list's own rule that a failed query must
         # never read as an empty work list. Only an empty result is ambiguous: a
         # non-empty one proves the option exists, so the hot path keeps its 2-call
-        # budget and only the ambiguous path pays for the (TTL-cached) schema read.
-        _schema_cache = load_cache(ctx)
-        resolve_schema(board, ctx, runner, _schema_cache)
-        save_cache(ctx, _schema_cache)
+        # budget and only the ambiguous path pays for the schema read. Resolved
+        # without the on-disk cache so a read-only verb needs no cache I/O.
+        resolve_schema(board, ctx, runner, {})
     # Scope BEFORE the batch: only origin-repo issue numbers may enter the
     # per-number blockedBy query (foreign/PR items would hard-fail it).
     numbers = [n for n in (_origin_issue_number(i, ctx.slug) for i in items) if n is not None]
