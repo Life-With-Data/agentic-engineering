@@ -15,9 +15,8 @@ Does not contain: repository test commands, fixture credentials, device setup, a
 
 ## Start here
 
-Resolve `<skill-directory>` to the directory containing this `SKILL.md`. All
-scripts used by this workflow are bundled there; do not resolve them through a
-plugin root.
+Scripts are bundled beside this `SKILL.md`; resolve `<skill-directory>` to that
+directory, never through a plugin root.
 
 ```bash
 python3 <skill-directory>/scripts/repository-context.py \
@@ -39,16 +38,11 @@ Platform-specific device and build mechanics come from repository capability tar
 
 ## Sub-agent delegation
 
-The session's default agent orchestrates and validates testing; it delegates
-the authoring. Dispatch focused sub-agents to write tests per surface and to
-analyze failures. The orchestrator retains test strategy, evidence
-sufficiency, and the ready/not-ready verdict, and independently reruns the
-decisive checks rather than trusting a sub-agent's report. Set each
-sub-agent's model explicitly at dispatch — hosts otherwise inherit the
-session's model — choosing the lowest tier the task allows: an economy tier
-for running prescribed checks and reporting output, a standard tier for test
-authoring against clear criteria, the strongest available tier only for
-flaky-failure or cross-layer analysis. Hosts without a sub-agent mechanism run the same steps inline.
+Delegate test authoring per surface and failure analysis to focused sub-agents;
+the orchestrator retains test strategy, evidence sufficiency, the
+ready/not-ready verdict, and an independent rerun of the decisive checks.
+Roles, dispatch, per-unit model selection, and verification are owned by
+[sub-agent delegation](../wf-development/references/subagent-delegation.md).
 
 ## Evidence ladder
 

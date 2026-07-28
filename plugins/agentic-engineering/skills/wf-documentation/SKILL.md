@@ -15,9 +15,8 @@ Does not contain: repository documentation layout, site commands, publication cr
 
 ## Start here
 
-Resolve `<skill-directory>` to the directory containing this `SKILL.md`. All
-scripts used by this workflow are bundled there; do not resolve them through a
-plugin root.
+Scripts are bundled beside this `SKILL.md`; resolve `<skill-directory>` to that
+directory, never through a plugin root.
 
 ```bash
 python3 <skill-directory>/scripts/repository-context.py \
@@ -38,17 +37,11 @@ Stop on contract failure. Read the primary target for both required capabilities
 
 ## Sub-agent delegation
 
-The session's default agent orchestrates and validates documentation work; it
-delegates the drafting. Dispatch focused sub-agents for first drafts and
-per-document review passes. The orchestrator retains accuracy validation
-against the current source, placement decisions, and publication, and never
-publishes a delegated draft it has not verified. Set each sub-agent's model
-explicitly at dispatch — hosts otherwise inherit the session's model —
-choosing the lowest tier the task allows: an economy tier for regenerating
-derived documentation, a standard tier for drafting from settled material,
-the strongest available tier only for distilling ambiguous or cross-cutting
-knowledge. Hosts without a
-sub-agent mechanism run the same steps inline.
+Delegate first drafts and per-document review passes to focused sub-agents; the
+orchestrator retains accuracy validation against the current source, placement
+decisions, and publication, and never publishes an unverified delegated draft.
+Roles, dispatch, per-unit model selection, and verification are owned by
+[sub-agent delegation](../wf-development/references/subagent-delegation.md).
 
 ## Completion boundary
 
@@ -56,7 +49,7 @@ Documentation is complete when it is accurate against the current source, placed
 
 ## Wrong-layer recovery
 
-Style, paths, publication commands, and decisions about whether durable knowledge
-belongs in a document or repository skill come from the mapped repository assets.
-If a reference conflicts with them, the repository capability wins. Return here
-to apply review and completion policy.
+When a reference conflicts with the mapped repository assets on mechanics —
+including whether durable knowledge belongs in a document or a repository
+skill — the repository capability wins. Return here to apply review and
+completion policy.

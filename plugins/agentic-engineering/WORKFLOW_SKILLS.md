@@ -149,9 +149,9 @@ Former standalone skills retained as internal references:
   `reproduce-bug`, `triage`, `workflows-brainstorm`, `workflows-groom`,
   `workflows-plan`
 - `wf-development`: `agent-native-architecture`, `api-and-interface-design`,
-  `debugging-and-error-recovery`, `frontend-design`, `git-worktree`,
-  `observability-and-instrumentation`, `resolve-parallel`,
-  `workflows-orchestrate`, `workflows-work`
+  `debugging-and-error-recovery`, `git-worktree`,
+  `observability-and-instrumentation`, `workflows-orchestrate`,
+  `workflows-work`
 - `wf-testing`: `test-browser`, `test-driven-development`,
   `test-strategy-reviewer`, `verification-loop`
 - `wf-review`: `agent-native-audit`, `doubt-driven-development`,

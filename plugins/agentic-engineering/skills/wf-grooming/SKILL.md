@@ -19,9 +19,8 @@ Does not contain: repository architecture details, tracker credentials, local co
 
 Validate the repository contract before reading repository guidance:
 
-Resolve `<skill-directory>` to the directory containing this `SKILL.md`. All
-scripts used by this workflow are bundled there; do not resolve them through a
-plugin root.
+Scripts are bundled beside this `SKILL.md`; resolve `<skill-directory>` to that
+directory, never through a plugin root.
 
 ```bash
 python3 <skill-directory>/scripts/repository-context.py \
@@ -57,16 +56,11 @@ Load only the references needed for the active route.
 
 ## Sub-agent delegation
 
-The session's default agent orchestrates and validates grooming; it delegates
-the legwork. Dispatch focused sub-agents for codebase reconnaissance,
-prior-art and learnings research, and reproduction attempts, then verify their
-reports before relying on them. The orchestrator retains scope decisions, user
-interviews, plan readiness, and all issue writes. Set each sub-agent's model
-explicitly at dispatch — hosts otherwise inherit the session's model — choosing
-the lowest tier the task allows: an economy tier for mechanical searches, a
-standard tier for scoped research and summarization, the strongest available
-tier only for ambiguous reproduction or architectural analysis. Hosts without a sub-agent
-mechanism run the same steps inline.
+Delegate codebase reconnaissance, prior-art and learnings research, and
+reproduction attempts to focused sub-agents; the orchestrator retains scope
+decisions, user interviews, plan readiness, and all issue writes. Roles,
+dispatch, per-unit model selection, and verification are owned by
+[sub-agent delegation](../wf-development/references/subagent-delegation.md).
 
 ## Completion boundary
 

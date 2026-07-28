@@ -17,9 +17,8 @@ Does not contain: CI provider configuration, release commands, production creden
 
 ## Start here
 
-Resolve `<skill-directory>` to the directory containing this `SKILL.md`. All
-scripts used by this workflow are bundled there; do not resolve them through a
-plugin root.
+Scripts are bundled beside this `SKILL.md`; resolve `<skill-directory>` to that
+directory, never through a plugin root.
 
 ```bash
 python3 <skill-directory>/scripts/repository-context.py \
@@ -41,17 +40,12 @@ Artifact transports and release-media tooling come from repository capability ta
 
 ## Sub-agent delegation
 
-The session's default agent orchestrates and validates delivery; it delegates
-the diagnosis and drafting. Dispatch focused sub-agents for per-job CI-failure
-diagnosis and for release-note and PR-body drafting. The orchestrator retains
-merge decisions, every PR and tracker state write, and release evidence, and
-verifies each delegated result against the actual CI and repository state.
-Set each sub-agent's model explicitly at dispatch — hosts otherwise inherit
-the session's model — choosing the lowest tier the task allows: an economy
-tier for mechanical log collection and drafting from templates, a standard
-tier for single-job failure diagnosis, the strongest available tier only for
-cross-job or flaky-infrastructure analysis. Hosts without a sub-agent mechanism run the
-same steps inline.
+Delegate per-job CI-failure diagnosis and release-note or PR-body drafting to
+focused sub-agents; the orchestrator retains merge decisions, every PR and
+tracker state write, release evidence, and verification of each delegated
+result against actual CI and repository state. Roles, dispatch, per-unit model
+selection, and verification are owned by
+[sub-agent delegation](../wf-development/references/subagent-delegation.md).
 
 ## Delivery gates
 
@@ -70,4 +64,4 @@ Delivery is complete only when the issue is closed and the board reads `Status =
 
 ## Wrong-layer recovery
 
-If a delivery reference guesses a CI provider, deploy command, versioning convention, or credential flow, stop and use the mapped repository assets. The workflow decides when delivery is allowed; the repository decides how it is performed.
+If a delivery reference guesses any of the mechanics above, stop and use the mapped repository assets. The workflow decides when delivery is allowed; the repository decides how it is performed.

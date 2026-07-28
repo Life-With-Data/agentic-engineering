@@ -15,9 +15,8 @@ Does not contain: repository build commands, framework-specific setup, infrastru
 
 ## Start here
 
-Resolve `<skill-directory>` to the directory containing this `SKILL.md`. All
-scripts used by this workflow are bundled there; do not resolve them through a
-plugin root.
+Scripts are bundled beside this `SKILL.md`; resolve `<skill-directory>` to that
+directory, never through a plugin root.
 
 ```bash
 python3 <skill-directory>/scripts/repository-context.py \
@@ -35,10 +34,10 @@ Stop on contract failure. Read each required capability's primary target, then s
 - Diagnose a reproduced bug, establish root cause, and recover safely: read [debugging and error recovery](references/debugging-and-error-recovery.md). Require `bug-reproduction` and, for production or integration failures, `observability`.
 - Drive the complete cross-stage pipeline: read [workflow orchestrate](references/workflows-orchestrate.md), loading other `wf-*` skills at their boundaries.
 - Work in an isolated checkout: read [git worktree](references/git-worktree.md).
-- Resolve independent implementation items: read [resolve parallel](references/resolve-parallel.md).
+- Resolve pull-request review threads in parallel: use `wf-review`'s review-comment-resolution route, which owns that procedure and its bundled scripts.
 - Design an API or interface: read [API and interface design](references/api-and-interface-design.md).
 - Build agent-native software: read [agent-native architecture](references/agent-native-architecture.md).
-- Build a frontend: read [frontend design](references/frontend-design.md).
+- Build a frontend: treat "frontend design" as a semantic runtime requirement, not a fixed skill name — resolve visual direction, typography, and component mechanics from the mapped repository assets and the host's available skill metadata. Report a missing-capability note when none is available; this workflow does not prescribe aesthetics.
 - Add instrumentation while building: read [observability and instrumentation](references/observability-and-instrumentation.md); require `observability` if it needs repository systems.
 
 Load only the selected reference. Framework, language, vendor, and tool-specific
@@ -47,17 +46,11 @@ installed capabilities; this workflow does not prescribe them.
 
 ## Sub-agent delegation
 
-The session's default agent is the orchestrator and validator for this
-workflow, not the worker. Delegate each planned implementation unit and each
-isolated diagnosis experiment to a focused sub-agent; the orchestrator keeps
-decomposition, diff verification, gate reruns, and every tracker write. Set
-each sub-agent's model explicitly at dispatch — hosts otherwise inherit the
-session's model — choosing the lowest tier the unit's complexity allows:
-economy tiers for mechanical work, standard tiers for well-scoped
-implementation, the strongest available tier only for ambiguous or
-high-blast-radius work — per
-[sub-agent delegation](references/subagent-delegation.md). Hosts without a
-sub-agent mechanism run the same sequence inline.
+Delegate each planned implementation unit and each isolated diagnosis
+experiment to a focused sub-agent; the orchestrator retains decomposition, diff
+verification, gate reruns, and every tracker write. Roles, dispatch, per-unit
+model selection, and verification are owned by
+[sub-agent delegation](references/subagent-delegation.md).
 
 ## Quality handoffs
 

@@ -15,9 +15,8 @@ Does not contain: repository conventions, production access, test commands, or d
 
 ## Start here
 
-Resolve `<skill-directory>` to the directory containing this `SKILL.md`. All
-scripts used by this workflow are bundled there; do not resolve them through a
-plugin root.
+Scripts are bundled beside this `SKILL.md`; resolve `<skill-directory>` to that
+directory, never through a plugin root.
 
 ```bash
 python3 <skill-directory>/scripts/repository-context.py \
@@ -39,16 +38,12 @@ Document-specific review policy lives in `wf-documentation`; testing sufficiency
 
 ## Sub-agent delegation
 
-The session's default agent orchestrates and validates the review; it
-delegates the reading. Dispatch one focused reviewer sub-agent per selected
-review lens, in parallel when lenses are independent. The orchestrator retains
-lens selection, deduplication, severity classification, fix/defer decisions,
-and the final verdict, and spot-checks findings against the diff before
-accepting them. Set each reviewer's model explicitly at dispatch — hosts
-otherwise inherit the session's model — choosing the lowest tier the lens
-allows: a standard tier for convention and conformance passes, the strongest
-available tier only for security, architecture, and data-integrity judgment. Hosts without a
-sub-agent mechanism run the same lenses inline, sequentially.
+Delegate one focused reviewer per selected review lens, in parallel when the
+lenses are independent; the orchestrator retains lens selection, deduplication,
+severity classification, fix/defer decisions, the final verdict, and a
+spot-check of every finding against the diff. Roles, dispatch, per-unit model
+selection, and verification are owned by
+[sub-agent delegation](../wf-development/references/subagent-delegation.md).
 
 ## Review contract
 
