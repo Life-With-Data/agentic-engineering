@@ -1,6 +1,6 @@
 # Adopt the GitHub Projects lifecycle
 
-This is the authoritative setup journey for the seven-value GitHub Projects
+This is the authoritative setup journey for the eight-value GitHub Projects
 lifecycle. Run it only after the repository capability contract passes. The
 commands use scripts bundled with `wf-setup`; resolve `<skill-directory>` to the
 directory containing its `SKILL.md`.
@@ -97,8 +97,10 @@ The command supports these inputs:
 
 - no configured Project: create one for the origin owner;
 - a fresh Project with GitHub's default Status options: convert it to the
-  canonical seven values;
-- an already canonical Project: verify and repair it idempotently;
+  canonical eight values;
+- an already canonical Project, including one bootstrapped before
+  `ready_for_work` existed: verify and repair it idempotently, adding any
+  missing canonical option without renumbering the existing ones;
 - the plugin's legacy nine-value lifecycle or an interrupted migration from it:
   migrate items to `done` with a rollback snapshot in Git's common directory.
 
@@ -196,7 +198,7 @@ assign readiness: newly added items still require the appropriate lifecycle Stat
 In the Project UI, create and save a view filtered by:
 
 ```text
-status:planned no:assignee
+status:ready_for_work no:assignee
 ```
 
 Sort it by `Priority`. GitHub's view filter cannot express "has no open
@@ -223,7 +225,7 @@ Lifecycle setup is complete only when:
 
 1. bootstrap returned `ok: true`, its probe passed and cleaned up, and every
    warning has been resolved or explicitly accepted by the operator;
-2. the canonical seven Status options, Priority field, repository link, and
+2. the canonical eight Status options, Priority field, repository link, and
    built-in Item-closed workflow pass doctor;
 3. the chosen forward binding is configured and live-verified (`none` requires
    an explicit manual-operating decision);

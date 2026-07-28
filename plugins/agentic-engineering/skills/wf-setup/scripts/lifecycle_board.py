@@ -24,7 +24,7 @@ CLI verbs (used by workflow commands; humans/CI may call them directly):
                                  blocked-by check -> Status=in_progress)
   --set-status <N> <stage>       the four-ID item-edit flow (sanctioned
                                  operator primitive for deliberate moves)
-  --ready-work                   planned ∧ unassigned ∧ unblocked, Priority-
+  --ready-work                   ready_for_work ∧ unassigned ∧ unblocked, Priority-
                                  sorted, <= 2 API calls at any board size
   --reconcile [--issue N] [--force]  scoped drift repair (TTL-cached)
   --doctor                       all A/B-class checks, report-everything mode
@@ -35,8 +35,10 @@ CLI verbs (used by workflow commands; humans/CI may call them directly):
                                  verdict (the model decides only crisp-vs-vague)
   --decompose <N> --spec FILE    create/update the canonical parent issue, create
                                  each sub-issue, wire dependencies, Status=planned
-  --groom-verify <N>             groom postcondition: assert stage >= planned; emit the exact
-                                 sub-issue + blocked counts and the clearance read
+  --groom-verify <N>             groom postcondition: assert stage >= planned — grooming's
+                                 ceiling; entering work additionally requires the
+                                 ready_for_work approval stamp. Emits the exact sub-issue +
+                                 blocked counts and the clearance read
                                  (cleared/posture/posture_source); exit 1 if not groomed
   --materialize-packet <N>       refresh generated issue context under git-common-dir
   --delete-packet <N>            delete that exact packet after done/abandoned
@@ -65,28 +67,34 @@ STAGES = (
     "stub",
     "brainstormed",
     "planned",
+    "ready_for_work",
     "in_progress",
     "in_review",
     "done",
     "abandoned",
 )
 # Total order for gate comparisons. `abandoned` is an off-ramp, not part of
-# the forward order.
+# the forward order. `planned` is grooming's ceiling; `ready_for_work` is the
+# human approval stamp and the floor every work-entry gate compares against.
 _ORDER = {
     "stub": 0,
     "brainstormed": 1,
     "planned": 2,
-    "in_progress": 3,
-    "in_review": 4,
-    "done": 5,
+    "ready_for_work": 3,
+    "in_progress": 4,
+    "in_review": 5,
+    "done": 6,
     "abandoned": -1,
 }
 TERMINAL_STAGES = {"done"}
 TRUSTED_ASSOCIATIONS = {"OWNER", "MEMBER", "COLLABORATOR"}
 PRIORITY_ORDER = {"p1": 0, "p2": 1, "p3": 2}
 
-# Gate verdicts emitted by evaluate_gate. `route_to_work`/`route_to_plan` are
-# routes, not verdicts; claim_conflict/blocked are claim-only outcomes.
+# Gate verdicts emitted by evaluate_gate. `route_to_work`/`route_to_plan`/
+# `approval` are routes, not verdicts; claim_conflict/blocked are claim-only
+# outcomes. `approval` carries `already_done` on a `planned` item: planning is
+# finished and the one remaining action — a human stamping `ready_for_work` —
+# is performed by no route of this engine.
 # `sub_issue` fires when the gated issue is an OPEN native sub-issue: the board
 # tracks the PARENT, so every gate reroutes the child to the parent (carrying
 # `parent: N`) instead of consulting the child's own — noise — board stage.
@@ -926,8 +934,15 @@ def evaluate_gate(command: str, stage: Optional[str], has_issue: bool,
             return gr("already_done", "none", "item abandoned")
         if stage in TERMINAL_STAGES:
             return gr("already_done", "none", f"already {stage}")
-        if stage_at_least(stage, "planned"):
+        if stage_at_least(stage, "ready_for_work"):
             return gr("already_done", "route_to_work", "Status attests the issue is implementation-ready")
+        if stage == "planned":
+            # Loop-freedom: `work` sends a planned item here, so this arm must NOT
+            # send it back to work. Planning is finished; the one open action is a
+            # human approval, which no route of this engine performs.
+            return gr("already_done", "approval",
+                      "planning is complete — Status is planned, awaiting a human approval "
+                      "stamp (ready_for_work) before work may start")
         return gr("proceed", "plan", "ready for planning")
 
     if command == "work":
@@ -935,8 +950,13 @@ def evaluate_gate(command: str, stage: Optional[str], has_issue: bool,
             return gr("already_done", "none", "item abandoned")
         if stage in TERMINAL_STAGES:
             return gr("already_done", "none", f"already {stage}")
-        if not stage_at_least(stage, "planned"):
-            return gr("route_to_plan", "plan", "work requires >= planned; groom first (hotfixes bypass the board)")
+        if stage == "planned":
+            return gr("route_to_plan", "plan",
+                      "groomed but not approved — Status is planned, not ready_for_work; "
+                      "a human must stamp the approval before work starts")
+        if not stage_at_least(stage, "ready_for_work"):
+            return gr("route_to_plan", "plan",
+                      "work requires >= ready_for_work; groom first (hotfixes bypass the board)")
         return gr("proceed", "work", f"Status is {stage} — claim (or resume) next")
 
     if command == "compound":
@@ -1016,7 +1036,9 @@ def route_for_groom(has_issue: bool, stage: Optional[str], plan_doc: Optional[st
         return GroomRoute("plan", "brainstormed — plan directly from the canonical issue")
     if stage == "planned":
         return GroomRoute("already_planned", "already groomed — Status is planned")
-    if stage in ("in_progress", "in_review"):
+    if stage in ("ready_for_work", "in_progress", "in_review"):
+        # ready_for_work is an APPROVED item: past grooming, so it must never fall
+        # through to the `intake` catch-all and get re-groomed.
         return GroomRoute("past", f"already {stage} — past grooming; resume via the `wf-development` orchestration route")
     if stage in TERMINAL_STAGES:
         return GroomRoute("terminal", f"already {stage} — complete")
@@ -2165,7 +2187,7 @@ def _batched_parent_numbers(numbers: "list[int]", ctx: RepoContext,
 
 def verb_ready_work(ctx: RepoContext, runner: GhRunner) -> dict:
     board = _require_board(ctx)
-    items = _item_list(board, runner, "status:planned no:assignee")   # call 1
+    items = _item_list(board, runner, "status:ready_for_work no:assignee")   # call 1
     # Scope BEFORE the batch: only origin-repo issue numbers may enter the
     # per-number blockedBy query (foreign/PR items would hard-fail it).
     numbers = [n for n in (_origin_issue_number(i, ctx.slug) for i in items) if n is not None]
@@ -2211,7 +2233,8 @@ def verb_reconcile(ctx: RepoContext, runner: GhRunner, issue: Optional[int] = No
         # correctness (convergence for the primary rule-6 population) requires it.
         for query in ("status:in_progress", "status:in_review", "status:done",
                       "status:abandoned", "no:status", "status:stub",
-                      "status:brainstormed", "status:planned"):
+                      "status:brainstormed", "status:planned",
+                      "status:ready_for_work"):
             for item in _item_list(board, runner, query, RECONCILE_ITEM_LIMIT):
                 number = _origin_issue_number(item, ctx.slug)  # foreign items: never examined
                 if number is not None:
@@ -2886,7 +2909,7 @@ def verb_doctor(ctx: RepoContext, runner: GhRunner) -> dict:
                   "Ask the Project owner for write access, then re-run")
         try:
             schema = resolve_schema(board, ctx, runner, {})
-            check("status_options", "PASS", "all 7 lifecycle options present")
+            check("status_options", "PASS", f"all {len(STAGES)} lifecycle options present")
             check("priority_field", "PASS" if schema.priority_field_id else "FAIL",
                   "Priority field present" if schema.priority_field_id else "no Priority field",
                   "" if schema.priority_field_id else "Re-run bootstrap to add it")

@@ -85,6 +85,7 @@ _STAGE_COLOR = {
     "stub": "GRAY",
     "brainstormed": "BLUE",
     "planned": "BLUE",
+    "ready_for_work": "PURPLE",
     "in_progress": "YELLOW",
     "in_review": "ORANGE",
     "done": "GREEN",
@@ -93,7 +94,8 @@ _STAGE_COLOR = {
 _STAGE_DESCRIPTION = {
     "stub": "New/un-groomed work item",
     "brainstormed": "Requirements explored",
-    "planned": "Trusted readiness attestation; ready to work",
+    "planned": "Groomed and trusted as complete; not yet approved for work",
+    "ready_for_work": "Human-approved for work; claimable",
     "in_progress": "Claimed and being implemented",
     "in_review": "PR open, under review",
     "done": "Accepted repository work merged and issue closed",
@@ -110,6 +112,12 @@ _DEFAULT_TO_CANONICAL = {
 }
 _DEFAULT_OPTION_NAMES = frozenset(_DEFAULT_TO_CANONICAL)          # {Todo, In Progress, Done}
 _CANONICAL_OPTION_NAMES = frozenset(STAGES)
+# The canonical set as it stood before `ready_for_work` was introduced. A board
+# on this shape is one of ours, not a customized team board: it is migrated by
+# the ordinary ID-preserving replace-all (every existing option keeps its id,
+# the new option is appended id-less). Nothing is removed and no item moves, so
+# this needs none of `migrate_legacy_status`'s snapshot/relocation machinery.
+_PRE_READY_WORK_OPTION_NAMES = _CANONICAL_OPTION_NAMES - {"ready_for_work"}
 LEGACY_STAGES = (
     "stub", "brainstormed", "planned", "in_progress", "in_review",
     "shipped", "deployed", "compounded", "abandoned",
@@ -292,7 +300,7 @@ def assert_fresh_or_canonical(status: StatusField) -> str:
     exact_options = len(names) == len(nameset) and all(ids) and len(ids) == len(set(ids))
     if exact_options and nameset == _DEFAULT_OPTION_NAMES:
         return "default"
-    if exact_options and nameset == _CANONICAL_OPTION_NAMES:
+    if exact_options and nameset in (_CANONICAL_OPTION_NAMES, _PRE_READY_WORK_OPTION_NAMES):
         return "canonical"
     if exact_options and nameset == _LEGACY_OPTION_NAMES:
         return "legacy"
@@ -346,12 +354,14 @@ UPDATE_FIELD_MUTATION = (
 
 
 def build_option_mapping(status: StatusField, kind: str) -> "list[dict]":
-    """The full seven-option list in STAGES order, preserving safe IDs.
+    """The full option list in STAGES order, preserving safe IDs.
     option id where one can be preserved.
 
     - kind == "default": map Todo->stub, In Progress->in_progress, Done->done.
-    - kind == "canonical": every option already exists by its canonical name,
-      so every one keeps its id (idempotent re-run — never a partial/id-less list).
+    - kind == "canonical": every option that exists keeps its id by name. On an
+      already-current board that is every option (idempotent re-run — never a
+      partial/id-less list); on a board predating a newly added stage the new
+      option is simply appended id-less, and nothing existing is renumbered.
     """
     if kind in ("canonical", "legacy-final"):
         by_name = {o["name"]: o["id"] for o in status.options}

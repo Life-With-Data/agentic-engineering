@@ -45,14 +45,28 @@ def _pr(number=10, state="MERGED", merged=True, base="main", author="me"):
 
 class StageOrderTest(unittest.TestCase):
     def test_exact_lifecycle(self) -> None:
-        self.assertEqual(lb.STAGES, ("stub", "brainstormed", "planned", "in_progress",
-                                    "in_review", "done", "abandoned"))
+        self.assertEqual(lb.STAGES, ("stub", "brainstormed", "planned", "ready_for_work",
+                                    "in_progress", "in_review", "done", "abandoned"))
 
     def test_stage_at_least(self) -> None:
         self.assertTrue(lb.stage_at_least("in_review", "planned"))
         self.assertFalse(lb.stage_at_least("stub", "planned"))
         self.assertFalse(lb.stage_at_least(None, "stub"))
         self.assertFalse(lb.stage_at_least("abandoned", "stub"))
+
+    def test_order_is_the_single_total_order_over_stages(self) -> None:
+        # One ordering, covering exactly STAGES — a parallel ordering would let
+        # gate comparisons disagree with each other.
+        self.assertEqual(set(lb._ORDER), set(lb.STAGES))
+        forward = [s for s in lb.STAGES if s != "abandoned"]
+        self.assertEqual(sorted(forward, key=lambda s: lb._ORDER[s]), forward)
+        self.assertEqual(lb._ORDER["abandoned"], -1)
+
+    def test_ready_for_work_sits_above_planned(self) -> None:
+        # Approval is a stage the groomed item has NOT yet reached.
+        self.assertFalse(lb.stage_at_least("planned", "ready_for_work"))
+        self.assertTrue(lb.stage_at_least("ready_for_work", "planned"))
+        self.assertTrue(lb.stage_at_least("in_progress", "ready_for_work"))
 
 
 class GateTest(unittest.TestCase):
@@ -82,25 +96,39 @@ class GateTest(unittest.TestCase):
                 self.assertNotEqual(g.verdict, "repair_needed")
 
     def test_plan_already_done_offers_work(self) -> None:
-        g = lb.evaluate_gate("plan", "planned", True, "docs/plans/x.md", None)
+        g = lb.evaluate_gate("plan", "ready_for_work", True, "docs/plans/x.md", None)
         self.assertEqual((g.verdict, g.route), ("already_done", "route_to_work"))
 
-    def test_plan_treats_planned_as_readiness_attestation(self) -> None:
-        g = lb.evaluate_gate("plan", "planned", True, None, None)
+    def test_plan_treats_ready_for_work_as_readiness_attestation(self) -> None:
+        g = lb.evaluate_gate("plan", "ready_for_work", True, None, None)
         self.assertEqual((g.verdict, g.route), ("already_done", "route_to_work"))
+
+    def test_plan_on_planned_routes_to_approval_never_back_to_work(self) -> None:
+        # Planning is finished, but the item is not work-ready. Routing to work
+        # here is what would make plan<->work an infinite bounce.
+        g = lb.evaluate_gate("plan", "planned", True, "docs/plans/x.md", None)
+        self.assertEqual((g.verdict, g.route), ("already_done", "approval"))
 
     def test_plan_stops_on_done(self) -> None:
         g = lb.evaluate_gate("plan", "done", True, None, None)
         self.assertEqual((g.verdict, g.route), ("already_done", "none"))
 
-    def test_work_requires_at_least_planned(self) -> None:
+    def test_work_requires_at_least_ready_for_work(self) -> None:
         g = lb.evaluate_gate("work", "brainstormed", True, None, None)
         self.assertEqual((g.verdict, g.route), ("route_to_plan", "plan"))
 
-    def test_work_gate_depends_on_status_not_artifact(self) -> None:
-        g = lb.evaluate_gate("work", "planned", True, None, None)
-        self.assertEqual(g.verdict, "proceed")
+    def test_work_on_planned_names_the_missing_approval(self) -> None:
         g = lb.evaluate_gate("work", "planned", True, "docs/plans/x.md", None)
+        self.assertEqual(g.verdict, "route_to_plan")
+        # The message must be actionable: a groomed item needs approval, NOT
+        # another grooming pass.
+        self.assertIn("approv", g.reason)
+        self.assertNotIn("groom first", g.reason)
+
+    def test_work_gate_depends_on_status_not_artifact(self) -> None:
+        g = lb.evaluate_gate("work", "ready_for_work", True, None, None)
+        self.assertEqual(g.verdict, "proceed")
+        g = lb.evaluate_gate("work", "ready_for_work", True, "docs/plans/x.md", None)
         self.assertEqual(g.verdict, "proceed")
 
     def test_work_resume_reason_names_actual_stage(self) -> None:
@@ -127,6 +155,99 @@ class GateTest(unittest.TestCase):
     def test_untrusted_author_is_surfaced(self) -> None:
         g = lb.evaluate_gate("plan", "stub", True, None, None, author_association="NONE")
         self.assertEqual(g.provenance, "untrusted")
+
+
+# Every stage the gate can observe, including the no-board `None`.
+_ALL_GATE_STAGES = (None,) + lb.STAGES
+
+# The whole decision table by CATEGORY (verdict, route) — never by reason text,
+# which is prose and may be reworded without changing a single decision.
+_GATE_TABLE = {
+    "brainstorm": {
+        None: ("proceed", "brainstorm"),
+        "stub": ("proceed", "brainstorm"),
+        "brainstormed": ("already_done", "route_to_plan"),
+        "planned": ("already_done", "route_to_plan"),
+        "ready_for_work": ("already_done", "none"),
+        "in_progress": ("already_done", "none"),
+        "in_review": ("already_done", "none"),
+        "done": ("already_done", "none"),
+        "abandoned": ("already_done", "none"),
+    },
+    "plan": {
+        None: ("proceed", "plan"),
+        "stub": ("proceed", "plan"),
+        "brainstormed": ("proceed", "plan"),
+        "planned": ("already_done", "approval"),
+        "ready_for_work": ("already_done", "route_to_work"),
+        "in_progress": ("already_done", "route_to_work"),
+        "in_review": ("already_done", "route_to_work"),
+        "done": ("already_done", "none"),
+        "abandoned": ("already_done", "none"),
+    },
+    "work": {
+        None: ("route_to_plan", "plan"),
+        "stub": ("route_to_plan", "plan"),
+        "brainstormed": ("route_to_plan", "plan"),
+        "planned": ("route_to_plan", "plan"),
+        "ready_for_work": ("proceed", "work"),
+        "in_progress": ("proceed", "work"),
+        "in_review": ("proceed", "work"),
+        "done": ("already_done", "none"),
+        "abandoned": ("already_done", "none"),
+    },
+    "compound": {s: ("proceed", "compound") for s in _ALL_GATE_STAGES
+                 if s != "abandoned"},
+    "orchestrate": {s: ("proceed", "orchestrate") for s in _ALL_GATE_STAGES},
+}
+_GATE_TABLE["compound"]["abandoned"] = ("already_done", "none")
+
+
+class GateTableTest(unittest.TestCase):
+    """The complete gate decision table, one row per (command, stage). Asserted
+    by verdict/route category — the reason string is prose, not a contract."""
+
+    def test_every_command_and_stage(self) -> None:
+        for command, rows in _GATE_TABLE.items():
+            self.assertEqual(set(rows), set(_ALL_GATE_STAGES),
+                             f"{command} table must cover every stage")
+            for stage, expected in rows.items():
+                with self.subTest(command=command, stage=stage):
+                    g = lb.evaluate_gate(command, stage, stage is not None, None, None)
+                    self.assertEqual((g.verdict, g.route), expected)
+
+    def test_every_verdict_is_declared(self) -> None:
+        for verdict, _route in (v for rows in _GATE_TABLE.values() for v in rows.values()):
+            self.assertIn(verdict, lb.VERDICTS)
+
+
+class GateLoopFreedomTest(unittest.TestCase):
+    """`plan` and `work` must never point at each other. Before `ready_for_work`
+    existed, a `planned` item was `route_to_work` from plan and (after the work
+    floor moved) `route_to_plan` from work — an orchestrator following routes
+    would bounce forever. This asserts the absence of that 2-cycle directly,
+    for EVERY stage, rather than pinning the two gates independently."""
+
+    # Which command a route sends the caller to. Routes not naming a command
+    # (none/approval/brainstorm/...) terminate the walk and cannot form a cycle.
+    _ROUTE_TARGET = {
+        "plan": "plan",
+        "route_to_plan": "plan",
+        "work": "work",
+        "route_to_work": "work",
+    }
+
+    def test_plan_and_work_never_route_to_each_other(self) -> None:
+        for stage in _ALL_GATE_STAGES:
+            with self.subTest(stage=stage):
+                has_issue = stage is not None
+                plan_to = self._ROUTE_TARGET.get(
+                    lb.evaluate_gate("plan", stage, has_issue, None, None).route)
+                work_to = self._ROUTE_TARGET.get(
+                    lb.evaluate_gate("work", stage, has_issue, None, None).route)
+                self.assertFalse(
+                    plan_to == "work" and work_to == "plan",
+                    f"stage {stage!r}: plan -> work and work -> plan is an infinite bounce")
 
 
 class ClaimTest(unittest.TestCase):
@@ -473,7 +594,7 @@ class CallBudgetTest(unittest.TestCase):
 
         # _require_board reads config from disk; call the legs directly with
         # the injected runner instead.
-        got_items = lb._item_list(board, runner, "status:planned no:assignee")
+        got_items = lb._item_list(board, runner, "status:ready_for_work no:assignee")
         numbers = [i["content"]["number"] for i in got_items]
         blocked = lb._batched_blocked_counts(numbers, ctx, runner)
         ready, truncated = lb.merge_ready_legs(got_items, blocked, "o/r")
@@ -488,7 +609,7 @@ class CallBudgetTest(unittest.TestCase):
             (["project", "item-list"], subprocess.CompletedProcess([], 1, "", "boom")),
         ])
         with self.assertRaises(lb.BoardError) as caught:
-            lb._item_list(board, runner, "status:planned no:assignee")
+            lb._item_list(board, runner, "status:ready_for_work no:assignee")
         self.assertEqual(caught.exception.code, "ready_work_failed")
 
 
@@ -1741,7 +1862,11 @@ class FixtureReplayTest(unittest.TestCase):
     def _load(self, name: str):
         return json.loads((self.FIXTURES / name).read_text(encoding="utf-8"))
 
-    def test_project_field_list_resolves_all_seven_stages(self) -> None:
+    def test_project_field_list_resolves_every_stage(self) -> None:
+        # NOTE: the recording predates `ready_for_work`; that one Status option
+        # was hand-added to the fixture in the same option shape, because the
+        # board migration is an operator action and this repository's own board
+        # is shared tracker state. A re-record after migration supersedes it.
         payload = self._load("project_field_list.json")
         status, priority = lb.parse_field_list(payload)
         self.assertIsNotNone(status)
@@ -1819,6 +1944,32 @@ class GroomRouteTest(unittest.TestCase):
     def test_in_flight_stages_are_past(self) -> None:
         self.assertEqual(self._route(stage="in_progress").route, "past")
         self.assertEqual(self._route(stage="in_review").route, "past")
+
+    def test_ready_for_work_is_past_grooming_never_intake(self) -> None:
+        # An approved item falling through to `intake` would re-groom work a
+        # human already signed off on.
+        r = self._route(stage="ready_for_work")
+        self.assertEqual(r.route, "past")
+        self.assertNotEqual(r.route, "intake")
+
+    def test_every_stage_has_a_declared_route(self) -> None:
+        # One row per stage — a newly added stage must not silently land in the
+        # unrecognized-stage `intake` catch-all.
+        expected = {
+            "stub": "intake",
+            "brainstormed": "plan",
+            "planned": "already_planned",
+            "ready_for_work": "past",
+            "in_progress": "past",
+            "in_review": "past",
+            "done": "terminal",
+            "abandoned": "abandoned",
+        }
+        self.assertEqual(set(expected), set(lb.STAGES))
+        for stage, route in expected.items():
+            with self.subTest(stage=stage):
+                self.assertEqual(self._route(stage=stage).route, route)
+                self.assertIn(route, lb.GROOM_ROUTES)
 
     def test_terminal_and_abandoned(self) -> None:
         self.assertEqual(self._route(stage="done").route, "terminal")
@@ -2249,6 +2400,7 @@ class SubIssueDeboardReconcileTest(unittest.TestCase):
             leg("status:stub", []),
             leg("status:brainstormed", []),
             leg("status:planned", []),
+            leg("status:ready_for_work", []),
             (["api", "graphql"], _ok(_subissue_payload(item=True))),
             (["project", "item-archive", "1", "--owner", "o", "--id", "IT_9"], _ok("{}")),
             (["issue", "comment", "263", "--repo", "o/r", "--body"], _ok("")),

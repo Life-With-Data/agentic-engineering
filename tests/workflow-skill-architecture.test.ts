@@ -337,7 +337,7 @@ describe("workflow skill architecture", () => {
     expect(bootstrap).toContain("--backfill");
     expect(bootstrap).toContain("--doctor");
     expect(bootstrap).toContain("--probe-only");
-    expect(bootstrap).toContain("status:planned no:assignee");
+    expect(bootstrap).toContain("status:ready_for_work no:assignee");
     expect(bootstrap).toContain("default branch");
     expect(bootstrap).toContain("doctor `--live`");
 

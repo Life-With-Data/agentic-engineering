@@ -107,10 +107,18 @@ _DEFAULT_FIELD = bs.StatusField(field_id="FIELD_STATUS", options=[
     {"id": "opt_done", "name": "Done"},
 ])
 
-# A board already carrying the canonical 9 (a prior bootstrap's output).
+# A board already carrying the current canonical option set (a prior bootstrap's output).
 _CANONICAL_FIELD = bs.StatusField(
     field_id="FIELD_STATUS",
     options=[{"id": f"opt_{s}", "name": s} for s in bs.STAGES])
+
+# A board bootstrapped before `ready_for_work` existed: one of ours, one option
+# short. Adding a stage removes nothing and moves no item, so this is an
+# ordinary ID-preserving replace-all, NOT the legacy snapshot/relocation path.
+_PRE_READY_WORK_FIELD = bs.StatusField(
+    field_id="FIELD_STATUS",
+    options=[{"id": f"opt_{s}", "name": s} for s in bs.STAGES
+             if s != "ready_for_work"])
 
 _LEGACY_FIELD = bs.StatusField(
     field_id="FIELD_STATUS",
@@ -125,9 +133,9 @@ _TRANSITION_FIELD = bs.StatusField(
 class OptionMappingTest(unittest.TestCase):
     """Golden assertions on build_option_mapping — the id-preserving core."""
 
-    def test_fresh_default_preserves_three_ids_adds_four(self) -> None:
+    def test_fresh_default_preserves_three_ids_adds_the_rest(self) -> None:
         options = bs.build_option_mapping(_DEFAULT_FIELD, "default")
-        # 7 options, in STAGES order, every one named + colored + described.
+        # Every stage, in STAGES order, each named + colored + described.
         self.assertEqual([o["name"] for o in options], list(bs.STAGES))
         for o in options:
             self.assertIn("color", o)
@@ -138,18 +146,34 @@ class OptionMappingTest(unittest.TestCase):
             "in_progress": "opt_inprogress",
             "done": "opt_done",
         })
-        # The other four carry NO id (they are genuinely new options).
+        # The others carry NO id (they are genuinely new options).
         id_less = [o["name"] for o in options if "id" not in o]
         self.assertEqual(sorted(id_less),
                          sorted(set(bs.STAGES) - {"stub", "in_progress", "done"}))
 
-    def test_canonical_rerun_preserves_all_seven_ids(self) -> None:
+    def test_canonical_rerun_preserves_all_ids(self) -> None:
         options = bs.build_option_mapping(_CANONICAL_FIELD, "canonical")
         self.assertEqual([o["name"] for o in options], list(bs.STAGES))
         # Idempotency: EVERY option keeps its id — never a partial/id-less list.
         self.assertTrue(all("id" in o for o in options))
         self.assertEqual({o["name"]: o["id"] for o in options},
                          {s: f"opt_{s}" for s in bs.STAGES})
+
+    def test_pre_ready_for_work_board_gains_the_option_id_preservingly(self) -> None:
+        options = bs.build_option_mapping(_PRE_READY_WORK_FIELD, "canonical")
+        self.assertEqual([o["name"] for o in options], list(bs.STAGES))
+        # Every option that already existed keeps its exact id — nothing is
+        # renumbered, so no board item is orphaned.
+        self.assertEqual({o["name"]: o["id"] for o in options if "id" in o},
+                         {s: f"opt_{s}" for s in bs.STAGES if s != "ready_for_work"})
+        # Only the genuinely new option is id-less.
+        self.assertEqual([o["name"] for o in options if "id" not in o],
+                         ["ready_for_work"])
+
+    def test_ready_for_work_sits_between_planned_and_in_progress(self) -> None:
+        names = [o["name"] for o in bs.build_option_mapping(_CANONICAL_FIELD, "canonical")]
+        self.assertEqual(names[names.index("planned") + 1], "ready_for_work")
+        self.assertEqual(names[names.index("ready_for_work") + 1], "in_progress")
 
     def test_colors_are_valid_enum_values(self) -> None:
         valid = {"GRAY", "BLUE", "GREEN", "YELLOW", "ORANGE", "RED", "PINK", "PURPLE"}
@@ -192,7 +216,7 @@ class MutationDocumentTest(unittest.TestCase):
         self.assertIn("color: GRAY", query)
         self.assertNotIn('color: "', query)
 
-    def test_canonical_rerun_sends_seven_ids(self) -> None:
+    def test_canonical_rerun_sends_every_id(self) -> None:
         runner = FakeRunner([
             (["api", "graphql"], _ok(json.dumps(
                 {"data": {"updateProjectV2Field": {"projectV2Field": {
@@ -202,8 +226,8 @@ class MutationDocumentTest(unittest.TestCase):
         bs.apply_status_options(_CANONICAL_FIELD, options, runner)
 
         query = runner.graphql_calls()[0]["query"]
-        # Idempotency guard: NOT a partial or id-less list — all seven ids sent.
-        self.assertEqual(query.count("id: "), 7)
+        # Idempotency guard: NOT a partial or id-less list — every id sent.
+        self.assertEqual(query.count("id: "), len(bs.STAGES))
         for s in bs.STAGES:
             self.assertIn(f'id: "opt_{s}", name: "{s}"', query)
 
@@ -240,6 +264,20 @@ class FreshProjectGuardTest(unittest.TestCase):
 
     def test_canonical_option_set_is_accepted(self) -> None:
         self.assertEqual(bs.assert_fresh_or_canonical(_CANONICAL_FIELD), "canonical")
+
+    def test_pre_ready_for_work_option_set_is_migratable_not_customized(self) -> None:
+        # A board on the option set that predates `ready_for_work` is ours, not a
+        # team's customized board — it must NOT hard-stop as unrecognized.
+        self.assertEqual(bs.assert_fresh_or_canonical(_PRE_READY_WORK_FIELD), "canonical")
+
+    def test_pre_ready_for_work_set_never_enters_the_legacy_migration(self) -> None:
+        # Adding an option removes nothing and moves no item; the snapshot /
+        # item-relocation machinery must stay out of this path.
+        with self.assertRaises(bs.BoardError) as caught:
+            bs.migrate_legacy_status(
+                bs.Project(number=1, id="P", created=False), _PRE_READY_WORK_FIELD,
+                None, lambda *a, **k: None)
+        self.assertEqual(caught.exception.code, "migration_state_invalid")
 
     def test_exact_legacy_option_set_is_accepted_for_migration(self) -> None:
         self.assertEqual(bs.assert_fresh_or_canonical(_LEGACY_FIELD), "legacy")
