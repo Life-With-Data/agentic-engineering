@@ -68,8 +68,8 @@ must change and why; repository operational assets supply exact commands.
 
 Once the tasks are drafted and before persisting them, dispatch the
 `scope-skeptic` agent against the concrete units to argue which ones earn their
-place. Set the sub-agent's model explicitly at dispatch. The agent reports; the
-orchestrator still owns every scope decision and every tracker write.
+place. The agent reports; the orchestrator still owns every scope decision and
+every tracker write.
 
 Skip this dispatch when the item already carries a recorded scope challenge from
 [workflow groom](workflows-groom.md) and the plan did not materially widen what

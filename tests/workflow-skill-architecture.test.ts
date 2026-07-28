@@ -769,4 +769,47 @@ describe("workflow skill architecture", () => {
 
     expect(dangling).toEqual([]);
   });
+
+  test("grooming challenges scope before it is settled or persisted", () => {
+    // The scope challenge is the only YAGNI force grooming has, and it lives in
+    // prose -- so a future reword can delete the dispatch and grooming silently
+    // returns to having no challenge at all, which is the state it was added to
+    // fix, with nothing failing. The "every agent name cited in skill prose
+    // resolves to a shipped agent" test above proves the name is real; it
+    // cannot see the name go missing from these two files.
+    //
+    // Category-level per repo guardrail policy: assert the agent is dispatched
+    // in the right SECTION of each route, never a frozen sentence.
+    const AGENT = "scope-skeptic";
+
+    const before = (source: string, heading: string) => {
+      const end = source.indexOf(heading);
+      // A renamed heading must fail loudly, not slice the whole file and pass.
+      expect(end).toBeGreaterThan(-1);
+      return source.slice(0, end);
+    };
+
+    // Groom route: challenged while resolving scope, before grooming completes.
+    const groom = readFileSync(
+      path.join(SKILLS, "wf-grooming", "references", "workflows-groom.md"),
+      "utf8",
+    );
+    expect(before(groom, "## Completion")).toContain(AGENT);
+
+    // Plan route: challenged against the drafted units, before the --decompose
+    // write that is the readiness attestation. A ready request reaches planning
+    // through the groom route gate without passing Resolve scope, so for that
+    // item this dispatch is the only challenge it will ever get.
+    const plan = readFileSync(
+      path.join(SKILLS, "wf-grooming", "references", "workflows-plan.md"),
+      "utf8",
+    );
+    const beforePersist = before(plan, "## Persist and track");
+    expect(beforePersist).toContain(AGENT);
+
+    // ...and carries a dedup condition, so covering both routes does not buy a
+    // duplicate dispatch on unchanged scope. Concept tokens with slack between
+    // them, not a pinned phrase.
+    expect(beforePersist).toMatch(/\bskip\b[\s\S]{0,300}\balready\b/i);
+  });
 });
