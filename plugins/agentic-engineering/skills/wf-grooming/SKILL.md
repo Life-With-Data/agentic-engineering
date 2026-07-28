@@ -59,8 +59,9 @@ Load only the references needed for the active route.
 Delegate codebase reconnaissance, prior-art and learnings research, and
 reproduction attempts to focused sub-agents; the orchestrator retains scope
 decisions, user interviews, plan readiness, and all issue writes. Roles,
-dispatch, per-unit model selection, and verification are owned by
-[sub-agent delegation](../wf-development/references/subagent-delegation.md).
+dispatch, per-unit model selection, verification, and the inline fallback for
+hosts without a sub-agent mechanism are owned by [sub-agent
+delegation](../wf-development/references/subagent-delegation.md).
 
 ## Completion boundary
 

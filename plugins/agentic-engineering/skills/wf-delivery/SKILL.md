@@ -44,8 +44,9 @@ Delegate per-job CI-failure diagnosis and release-note or PR-body drafting to
 focused sub-agents; the orchestrator retains merge decisions, every PR and
 tracker state write, release evidence, and verification of each delegated
 result against actual CI and repository state. Roles, dispatch, per-unit model
-selection, and verification are owned by
-[sub-agent delegation](../wf-development/references/subagent-delegation.md).
+selection, verification, and the inline fallback for hosts without a sub-agent
+mechanism are owned by [sub-agent
+delegation](../wf-development/references/subagent-delegation.md).
 
 ## Delivery gates
 
@@ -64,4 +65,4 @@ Delivery is complete only when the issue is closed and the board reads `Status =
 
 ## Wrong-layer recovery
 
-If a delivery reference guesses any of the mechanics above, stop and use the mapped repository assets. The workflow decides when delivery is allowed; the repository decides how it is performed.
+If a delivery reference guesses a CI provider, deploy command, versioning convention, or credential flow, stop and use the mapped repository assets. The workflow decides when delivery is allowed; the repository decides how it is performed.

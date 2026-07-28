@@ -39,11 +39,12 @@ Document-specific review policy lives in `wf-documentation`; testing sufficiency
 ## Sub-agent delegation
 
 Delegate one focused reviewer per selected review lens, in parallel when the
-lenses are independent; the orchestrator retains lens selection, deduplication,
-severity classification, fix/defer decisions, the final verdict, and a
-spot-check of every finding against the diff. Roles, dispatch, per-unit model
-selection, and verification are owned by
-[sub-agent delegation](../wf-development/references/subagent-delegation.md).
+lenses are independent; the orchestrator retains lens selection,
+deduplication, severity classification, fix/defer decisions, the final
+verdict, and a spot-check of every finding against the diff. Roles, dispatch,
+per-unit model selection, verification, and the inline fallback for hosts
+without a sub-agent mechanism are owned by [sub-agent
+delegation](../wf-development/references/subagent-delegation.md).
 
 ## Review contract
 

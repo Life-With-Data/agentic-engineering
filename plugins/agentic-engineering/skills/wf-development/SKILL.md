@@ -34,10 +34,10 @@ Stop on contract failure. Read each required capability's primary target, then s
 - Diagnose a reproduced bug, establish root cause, and recover safely: read [debugging and error recovery](references/debugging-and-error-recovery.md). Require `bug-reproduction` and, for production or integration failures, `observability`.
 - Drive the complete cross-stage pipeline: read [workflow orchestrate](references/workflows-orchestrate.md), loading other `wf-*` skills at their boundaries.
 - Work in an isolated checkout: read [git worktree](references/git-worktree.md).
-- Resolve pull-request review threads in parallel: use `wf-review`'s review-comment-resolution route, which owns that procedure and its bundled scripts.
+- Resolve independent implementation units in parallel waves: read [workflow work](references/workflows-work.md). Pull-request review threads are out of scope here; `wf-review` owns them through its "Resolve review comments" route and the bundled scripts behind it.
 - Design an API or interface: read [API and interface design](references/api-and-interface-design.md).
 - Build agent-native software: read [agent-native architecture](references/agent-native-architecture.md).
-- Build a frontend: treat "frontend design" as a semantic runtime requirement, not a fixed skill name — resolve visual direction, typography, and component mechanics from the mapped repository assets and the host's available skill metadata. Report a missing-capability note when none is available; this workflow does not prescribe aesthetics.
+- Build a frontend: treat "frontend design" as a semantic runtime requirement, not a fixed skill name — resolve visual direction, typography, and component mechanics from the mapped repository assets and the host's available skill metadata. This plugin's `design-iterator` and `figma-design-sync` agents cover iterative refinement and design-to-implementation comparison when a design source exists. Report a missing-capability note when nothing resolves; this workflow does not prescribe aesthetics.
 - Add instrumentation while building: read [observability and instrumentation](references/observability-and-instrumentation.md); require `observability` if it needs repository systems.
 
 Load only the selected reference. Framework, language, vendor, and tool-specific
@@ -47,10 +47,11 @@ installed capabilities; this workflow does not prescribe them.
 ## Sub-agent delegation
 
 Delegate each planned implementation unit and each isolated diagnosis
-experiment to a focused sub-agent; the orchestrator retains decomposition, diff
-verification, gate reruns, and every tracker write. Roles, dispatch, per-unit
-model selection, and verification are owned by
-[sub-agent delegation](references/subagent-delegation.md).
+experiment to a focused sub-agent; the orchestrator retains decomposition,
+diff verification, gate reruns, and every tracker write. Roles, dispatch,
+per-unit model selection, verification, and the inline fallback for hosts
+without a sub-agent mechanism are owned by [sub-agent
+delegation](references/subagent-delegation.md).
 
 ## Quality handoffs
 

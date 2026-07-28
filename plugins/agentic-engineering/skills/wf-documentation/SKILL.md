@@ -37,10 +37,11 @@ Stop on contract failure. Read the primary target for both required capabilities
 
 ## Sub-agent delegation
 
-Delegate first drafts and per-document review passes to focused sub-agents; the
-orchestrator retains accuracy validation against the current source, placement
-decisions, and publication, and never publishes an unverified delegated draft.
-Roles, dispatch, per-unit model selection, and verification are owned by
+Delegate first drafts and per-document review passes to focused sub-agents;
+the orchestrator retains accuracy validation against the current source,
+placement decisions, and publication, and never publishes an unverified
+delegated draft. Roles, dispatch, per-unit model selection, verification, and
+the inline fallback for hosts without a sub-agent mechanism are owned by
 [sub-agent delegation](../wf-development/references/subagent-delegation.md).
 
 ## Completion boundary
@@ -49,7 +50,7 @@ Documentation is complete when it is accurate against the current source, placed
 
 ## Wrong-layer recovery
 
-When a reference conflicts with the mapped repository assets on mechanics —
-including whether durable knowledge belongs in a document or a repository
-skill — the repository capability wins. Return here to apply review and
-completion policy.
+Style, paths, publication commands, and the decision whether durable knowledge
+belongs in a document or a repository skill come from the mapped repository
+assets. If a reference conflicts with them, the repository capability wins.
+Return here to apply review and completion policy.

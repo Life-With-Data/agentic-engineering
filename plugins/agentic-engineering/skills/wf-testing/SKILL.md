@@ -38,11 +38,12 @@ Platform-specific device and build mechanics come from repository capability tar
 
 ## Sub-agent delegation
 
-Delegate test authoring per surface and failure analysis to focused sub-agents;
-the orchestrator retains test strategy, evidence sufficiency, the
+Delegate test authoring per surface and failure analysis to focused
+sub-agents; the orchestrator retains test strategy, evidence sufficiency, the
 ready/not-ready verdict, and an independent rerun of the decisive checks.
-Roles, dispatch, per-unit model selection, and verification are owned by
-[sub-agent delegation](../wf-development/references/subagent-delegation.md).
+Roles, dispatch, per-unit model selection, verification, and the inline
+fallback for hosts without a sub-agent mechanism are owned by [sub-agent
+delegation](../wf-development/references/subagent-delegation.md).
 
 ## Evidence ladder
 
