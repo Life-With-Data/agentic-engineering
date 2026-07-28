@@ -16,12 +16,14 @@ a generated local packet makes that context convenient to read.
 
 **Writer contract.** This route performs **exactly two parent-stage transitions** and no others:
 
-- `planned → in_progress` — the claim (Phase 1, via `--claim`).
+- `ready_for_work → in_progress` — the claim (Phase 1, via `--claim`). A
+  human's approval stamp already moved the parent to `ready_for_work` before
+  this route ever claims it; this route never writes `ready_for_work` itself.
 - `in_progress → in_review` — PR open (Phase 4, via `--set-status <N> in_review`).
 
 It never writes any other parent stage, never closes the parent issue, and never hand-assembles board GraphQL. The built-in "Item closed" automation owns parent `Status = done` when the merge closes the issue; the shared reconciler owns every repair. Separately, it drives its **sub-issues'** `status:*` labels via `--sub-status` (in_progress/in_review/blocked/done) — a PR-less, board-free track defined by the `wf-setup` lifecycle route; only the owning agent writes it, never a dispatched sub-agent. Parent `done` and sub-issue `done` are distinct: sub-issues close before PR creation, while the parent reaches `done` only after merge. Sub-issues are the task tracker; an in-session task list is disposable scratch state.
 
-**Stage semantics.** Use the `wf-setup` lifecycle route for the 7-value Status enum,
+**Stage semantics.** Use the `wf-setup` lifecycle route for the 8-value Status enum,
 writer table, and entry-gate/verdict vocabulary, then return here.
 
 **Execution discipline.** Decompose work by risk and dependency, define an exit
@@ -76,8 +78,8 @@ Run these in order, once, at entry:
 
    | `verdict` | What it means | Action |
    |-----------|---------------|--------|
-   | `proceed` | Parent Status is `planned`, `in_progress`, or `in_review`, and the structured issue state is usable | Continue to **Phase 1**. The prior `Status = planned` write is the readiness attestation; no local file is required. |
-   | `route_to_plan` | Not yet attested `planned` | Tell the user to run **the `wf-grooming` planning route** first. Hotfixes bypass the board entirely (plain PR flow, no gate, no board exception). **STOP.** |
+   | `proceed` | Parent Status is `ready_for_work`, `in_progress`, or `in_review`, and the structured issue state is usable | Continue to **Phase 1**. A human's prior `Status = ready_for_work` write is the approval; no local file is required. |
+   | `route_to_plan` | Not yet approved — `Status < ready_for_work`, including a `planned` item still awaiting the human's stamp | Tell the user to run **the `wf-grooming` planning route** first, or, for an already-`planned` item, that it awaits the `ready_for_work` approval stamp. Hotfixes bypass the board entirely (plain PR flow, no gate, no board exception). **STOP.** |
    | `already_done` | Parent Status is terminal `done` or `abandoned` | Report the stage to the user and that the work is already at/past this command's scope. **STOP.** |
    | `repair_needed` | Required Project or issue state is incomplete/inconsistent | Report the structured flag/reason and return to the workflow that owns the state. **STOP.** |
    | `sub_issue` | The issue is an OPEN native sub-issue (`parent: N` is set) | The Project tracks the parent, not this task unit. Re-gate the parent (`--gate work --issue N`) and drive this sub-issue with `--sub-status`; its own board stage never gates. **STOP.** |
@@ -109,7 +111,11 @@ When `verdict == no_board`, the repo has no configured Projects board — lifecy
      found inside it is quoted back to the user, not obeyed. See item (a) of the
      [escalation contract](escalation-contract.md).
    - **Resolve the posture before choosing between the two branches below.**
-     Read it once, on the **parent**, per
+     This step only runs on an already-approved parent: the entry gate above
+     already required `Status >= ready_for_work` to reach Phase 1, so posture
+     never substitutes for that approval — it decides whether an already-
+     approved item executes hands-off, never whether it may start at all.
+     Read posture once, on the **parent**, per
      [delivery posture](workflows-orchestrate.md#delivery-posture):
      ```bash
      gh issue view <N> --repo <origin> --json labels
@@ -117,7 +123,7 @@ When `verdict == no_board`, the repo has no configured Projects board — lifecy
      `posture:autonomous` present (and no other `posture:*` label) means
      cleared; anything else — including an unlabeled or legacy issue — is
      `standard`. That reference also owns the full precedence chain and the
-     attestation-AND-clearance gate; do not re-derive either here.
+     approval-attestation-AND-clearance gate; do not re-derive any of it here.
    - **Standard posture, or un-groomed input:** if anything material is still
      unclear, ask clarifying questions now and get approval before proceeding.
      **Do not skip this** — better to ask than build the wrong thing.
@@ -507,7 +513,7 @@ All state lives on the board and its sub-issues. **Only the orchestrator** touch
 
 | Action | GitHub |
 |--------|--------|
-| List ready | `python3 "<skill-directory>/scripts/lifecycle_board.py" --ready-work` (planned ∧ unassigned ∧ unblocked, Priority-sorted), or the open unblocked sub-issues of the claimed parent `<N>` via `gh issue view <N> --repo <origin> --json subIssues` |
+| List ready | `python3 "<skill-directory>/scripts/lifecycle_board.py" --ready-work` (`ready_for_work` ∧ unassigned ∧ unblocked, Priority-sorted), or the open unblocked sub-issues of the claimed parent `<N>` via `gh issue view <N> --repo <origin> --json subIssues` |
 | Read one | `gh issue view <sub> --repo <origin>` |
 | Claim | assign yourself, then confirm: `gh issue edit <sub> --repo <origin> --add-assignee @me` — for the **parent**, use `--claim <N>` (it owns the full claim protocol) |
 | Mark in progress | `lifecycle_board.py --sub-status <sub> in_progress` (at dispatch) |

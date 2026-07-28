@@ -296,9 +296,9 @@ describe("workflow skill architecture", () => {
       "utf8",
     );
     const statuses = [
-      "stub", "brainstormed", "planned", "in_progress", "in_review", "done", "abandoned",
+      "stub", "brainstormed", "planned", "ready_for_work", "in_progress", "in_review", "done", "abandoned",
     ];
-    expect(lifecycle).toContain("## The 7 Status values");
+    expect(lifecycle).toContain("## The 8 Status values");
     statuses.forEach((status, index) => {
       expect(lifecycle).toContain(`${index + 1}. \`${status}\``);
     });
@@ -337,7 +337,7 @@ describe("workflow skill architecture", () => {
     expect(bootstrap).toContain("--backfill");
     expect(bootstrap).toContain("--doctor");
     expect(bootstrap).toContain("--probe-only");
-    expect(bootstrap).toContain("status:planned no:assignee");
+    expect(bootstrap).toContain("status:ready_for_work no:assignee");
     expect(bootstrap).toContain("default branch");
     expect(bootstrap).toContain("doctor `--live`");
 
@@ -601,22 +601,31 @@ describe("workflow skill architecture", () => {
     );
     expect(chainOccurrences).toBe(1);
 
-    // The attestation-AND-clearance gate, verbatim once.
+    // The approval-attestation-AND-clearance gate, verbatim once.
     //
     // This is a DELIBERATE exception to the freeze-the-category rule the rest of
-    // this file follows: issue #302 acceptance criterion 5 requires that this
+    // this file follows: issue #302 acceptance criterion 5 required that this
     // sentence "appears verbatim once", so here the literal IS the contract and
-    // an exact match is the only assertion that can check it. It is brittle to
-    // re-wrapping by design — if you are reflowing this paragraph, you are
-    // changing something #302 froze on purpose, so update the criterion too
-    // rather than loosening the test. (A frozen sentence normally risks a silent
-    // false-pass; it cannot here, because the whole point is that the text is
-    // fixed.)
+    // an exact match is the only assertion that can check it. Issue #324
+    // (epic #319) superseded the two-part framing #302 froze with a three-part
+    // one — a human approval stamp (`ready_for_work`) is now a third
+    // independent precondition alongside attestation and clearance.
+    //
+    // Be honest about what now backs this: #302 mandated its sentence verbatim,
+    // which is what justified a byte-exact assertion. #324 mandated only the
+    // three-part SEMANTICS, not this exact wording — so the string below is the
+    // repository's own prose, and the guardrail is that the three preconditions
+    // stay stated together in one place, not that these bytes are sacred. It
+    // still cannot silently false-pass (a reword breaks the exact match), but a
+    // future reflow should update this assertion rather than treat it as a
+    // frozen external contract. If this paragraph is reworded again, keep the
+    // three named preconditions and re-pin.
     const GATE =
-      "Hands-off execution requires **both** grooming attestation (`Status >=\n" +
-      "planned`, verifiable with `--groom-verify N`) **and** the ticket's autonomous\n" +
-      "clearance (a `posture:autonomous` label, or an overriding per-invocation\n" +
-      "token). Either one alone is not enough.";
+      "Hands-off execution requires **all three**: a human's approval stamp\n" +
+      "(`Status >= ready_for_work`, verifiable as `approved` on `--groom-verify N`),\n" +
+      "grooming attestation (`Status >= planned`, verifiable as `groomed` on the same\n" +
+      "call), **and** the ticket's autonomous clearance (a `posture:autonomous`\n" +
+      "label, or an overriding per-invocation token). Any one missing is not enough.";
     expect(orchestrate).toContain(GATE);
 
     // Reading the posture: parent, claim/routing boundary, once per work item,
@@ -654,16 +663,20 @@ describe("workflow skill architecture", () => {
     expect(orchestrate).toContain("`/loop` and scheduled queue drains get no separate posture opt-in");
     expect(orchestrate).toContain("heterogeneous");
 
-    // The four-cell routing table: {groomed, un-groomed} x {cleared, not cleared}.
-    expect(orchestrate).toContain("Groomed (`Status >= planned`) | cleared");
-    expect(orchestrate).toContain("Groomed | not cleared");
-    expect(orchestrate).toContain("Un-groomed | cleared");
-    expect(orchestrate).toContain("Un-groomed | not cleared");
+    // The four-cell routing table: {approved, not approved} x {cleared, not
+    // cleared}. Issue #324 moved this from a {groomed, un-groomed} axis to an
+    // {approved, not approved} one — a `planned`-but-unapproved item now
+    // shares the "not approved" row with an ungroomed item instead of
+    // proceeding hands-off on grooming attestation alone.
+    expect(orchestrate).toContain("Approved (`Status >= ready_for_work`) | cleared");
+    expect(orchestrate).toContain("Approved | not cleared");
+    expect(orchestrate).toContain("Not approved (ungroomed, or `planned` awaiting the approval stamp) | cleared");
+    expect(orchestrate).toContain("Not approved | not cleared");
     expect(orchestrate).toContain("Proceed hands-off through implementation -> review -> delivery");
     expect(orchestrate).toContain("Standard: plan approval, findings triage, merge `[y/N]`");
-    expect(orchestrate).toContain("Clearance does not survive a missing contract");
-    expect(orchestrate).toContain("Route to `wf-grooming` with the human (today's behavior)");
-    expect(orchestrate).toContain("Un-groomed input routes to the human regardless of posture");
+    expect(orchestrate).toContain("Clearance does not survive a missing approval");
+    expect(orchestrate).toContain("Route to the human the same way (today's behavior)");
+    expect(orchestrate).toContain("Not-yet-approved input routes to the human regardless of posture");
 
     // land-pr: resolved posture is a third autonomous trigger, in both the merge
     // gate intro and the merge-decision bullet, referencing this section back.

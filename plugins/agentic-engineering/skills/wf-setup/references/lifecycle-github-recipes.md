@@ -61,7 +61,7 @@ gh issue view 41 --repo owner/repo --json blockedBy,blocking,parent
 The ready-work board leg filters server-side:
 
 ```
-status:planned no:assignee
+status:ready_for_work no:assignee
 ```
 
 Create this as a saved view in the Projects UI (there is no API for view creation), sorted by Priority. **The filter over-shows blocked items** — it cannot express "unblocked," so the engine computes the unblocked leg agent-side with a batched `blockedBy` query. Before starting any card from this view, check its Blocked-by list.

@@ -24,7 +24,7 @@ CLI verbs (used by workflow commands; humans/CI may call them directly):
                                  blocked-by check -> Status=in_progress)
   --set-status <N> <stage>       the four-ID item-edit flow (sanctioned
                                  operator primitive for deliberate moves)
-  --ready-work                   planned ∧ unassigned ∧ unblocked, Priority-
+  --ready-work                   ready_for_work ∧ unassigned ∧ unblocked, Priority-
                                  sorted, <= 2 API calls at any board size
   --reconcile [--issue N] [--force]  scoped drift repair (TTL-cached)
   --doctor                       all A/B-class checks, report-everything mode
@@ -35,9 +35,12 @@ CLI verbs (used by workflow commands; humans/CI may call them directly):
                                  verdict (the model decides only crisp-vs-vague)
   --decompose <N> --spec FILE    create/update the canonical parent issue, create
                                  each sub-issue, wire dependencies, Status=planned
-  --groom-verify <N>             groom postcondition: assert stage >= planned; emit the exact
-                                 sub-issue + blocked counts and the clearance read
-                                 (cleared/posture/posture_source); exit 1 if not groomed
+  --groom-verify <N>             groom postcondition: assert stage >= planned — grooming's
+                                 ceiling; entering work additionally requires the
+                                 ready_for_work approval stamp, reported as `approved`.
+                                 Emits the exact sub-issue + blocked counts, `approved`,
+                                 and the clearance read (cleared/posture/posture_source);
+                                 exit 1 if not groomed
   --materialize-packet <N>       refresh generated issue context under git-common-dir
   --delete-packet <N>            delete that exact packet after done/abandoned
 """
@@ -65,28 +68,34 @@ STAGES = (
     "stub",
     "brainstormed",
     "planned",
+    "ready_for_work",
     "in_progress",
     "in_review",
     "done",
     "abandoned",
 )
 # Total order for gate comparisons. `abandoned` is an off-ramp, not part of
-# the forward order.
+# the forward order. `planned` is grooming's ceiling; `ready_for_work` is the
+# human approval stamp and the floor every work-entry gate compares against.
 _ORDER = {
     "stub": 0,
     "brainstormed": 1,
     "planned": 2,
-    "in_progress": 3,
-    "in_review": 4,
-    "done": 5,
+    "ready_for_work": 3,
+    "in_progress": 4,
+    "in_review": 5,
+    "done": 6,
     "abandoned": -1,
 }
 TERMINAL_STAGES = {"done"}
 TRUSTED_ASSOCIATIONS = {"OWNER", "MEMBER", "COLLABORATOR"}
 PRIORITY_ORDER = {"p1": 0, "p2": 1, "p3": 2}
 
-# Gate verdicts emitted by evaluate_gate. `route_to_work`/`route_to_plan` are
-# routes, not verdicts; claim_conflict/blocked are claim-only outcomes.
+# Gate verdicts emitted by evaluate_gate. `route_to_work`/`route_to_plan`/
+# `approval` are routes, not verdicts; claim_conflict/blocked are claim-only
+# outcomes. `approval` carries `already_done` on a `planned` item: planning is
+# finished and the one remaining action — a human stamping `ready_for_work` —
+# is performed by no route of this engine.
 # `sub_issue` fires when the gated issue is an OPEN native sub-issue: the board
 # tracks the PARENT, so every gate reroutes the child to the parent (carrying
 # `parent: N`) instead of consulting the child's own — noise — board stage.
@@ -168,7 +177,7 @@ POSTURE_LABEL_META = {
     "posture:autonomous": (
         "5319E7",
         "Delivery posture: cleared to run implementation -> review -> delivery "
-        "hands-off once Status >= planned",
+        "hands-off once Status >= ready_for_work",
     ),
 }
 
@@ -672,8 +681,10 @@ def resolve_schema(board: BoardConfig, ctx: RepoContext, runner: GhRunner,
         raise BoardError(
             "option_missing",
             f"Status field is missing lifecycle options: {', '.join(missing)}",
-            "Re-run the setup bootstrap (it updates options ID-preservingly); "
-            "someone may have renamed options in the project UI",
+            "Usually the plugin added a lifecycle stage and this board predates it "
+            "(less often, an option was renamed in the Projects UI). Re-run "
+            "`python3 <wf-setup skill dir>/scripts/bootstrap_lifecycle_board.py` — it "
+            "adds missing options ID-preservingly and moves no items",
         )
     project_id = payload.get("projectId") or status.get("projectId") or ""
     if not project_id:
@@ -926,8 +937,15 @@ def evaluate_gate(command: str, stage: Optional[str], has_issue: bool,
             return gr("already_done", "none", "item abandoned")
         if stage in TERMINAL_STAGES:
             return gr("already_done", "none", f"already {stage}")
-        if stage_at_least(stage, "planned"):
+        if stage_at_least(stage, "ready_for_work"):
             return gr("already_done", "route_to_work", "Status attests the issue is implementation-ready")
+        if stage == "planned":
+            # Loop-freedom: `work` sends a planned item here, so this arm must NOT
+            # send it back to work. Planning is finished; the one open action is a
+            # human approval, which no route of this engine performs.
+            return gr("already_done", "approval",
+                      "planning is complete — Status is planned, awaiting a human approval "
+                      "stamp (ready_for_work) before work may start")
         return gr("proceed", "plan", "ready for planning")
 
     if command == "work":
@@ -935,8 +953,13 @@ def evaluate_gate(command: str, stage: Optional[str], has_issue: bool,
             return gr("already_done", "none", "item abandoned")
         if stage in TERMINAL_STAGES:
             return gr("already_done", "none", f"already {stage}")
-        if not stage_at_least(stage, "planned"):
-            return gr("route_to_plan", "plan", "work requires >= planned; groom first (hotfixes bypass the board)")
+        if stage == "planned":
+            return gr("route_to_plan", "plan",
+                      "groomed but not approved — Status is planned, not ready_for_work; "
+                      "a human must stamp the approval before work starts")
+        if not stage_at_least(stage, "ready_for_work"):
+            return gr("route_to_plan", "plan",
+                      "work requires >= ready_for_work; groom first (hotfixes bypass the board)")
         return gr("proceed", "work", f"Status is {stage} — claim (or resume) next")
 
     if command == "compound":
@@ -1016,7 +1039,9 @@ def route_for_groom(has_issue: bool, stage: Optional[str], plan_doc: Optional[st
         return GroomRoute("plan", "brainstormed — plan directly from the canonical issue")
     if stage == "planned":
         return GroomRoute("already_planned", "already groomed — Status is planned")
-    if stage in ("in_progress", "in_review"):
+    if stage in ("ready_for_work", "in_progress", "in_review"):
+        # ready_for_work is an APPROVED item: past grooming, so it must never fall
+        # through to the `intake` catch-all and get re-groomed.
         return GroomRoute("past", f"already {stage} — past grooming; resume via the `wf-development` orchestration route")
     if stage in TERMINAL_STAGES:
         return GroomRoute("terminal", f"already {stage} — complete")
@@ -1369,8 +1394,9 @@ def verb_set_status(issue: int, stage: str, ctx: RepoContext, runner: GhRunner,
     # so an agent that skips the Phase-4 check cannot advance the parent and
     # bury the unfinished sub-issues under the merge → done automation. The
     # data is already in `state`; the reconciler and deliberate operator moves
-    # pass force=True. Only `in_review` is gated — the agent-driven transition
-    # that precedes the burying merge.
+    # pass force=True. This is the `in_review` half of the seam — the
+    # agent-driven transition that precedes the burying merge; `ready_for_work`
+    # is gated separately below.
     if stage == "in_review" and not force and state.open_sub_issues:
         raise BoardError(
             "open_sub_issues",
@@ -1378,6 +1404,15 @@ def verb_set_status(issue: int, stage: str, ctx: RepoContext, runner: GhRunner,
             "in_review until they are terminal",
             "Finish and `--sub-status <sub> done` each open sub-issue (or re-parent/close "
             "out-of-scope ones), then retry. Deliberate override: --force")
+    # Seam gate: `ready_for_work` is the human approval stamp — no agent-driven
+    # path may write it. Mirrors the `in_review` gate above: same shape, same
+    # `--force` escape for the reconciler and deliberate operator moves.
+    if stage == "ready_for_work" and not force:
+        raise BoardError(
+            "approval_required",
+            f"Issue #{issue} cannot be set to ready_for_work by an agent-driven path",
+            "A human drags the card to the `ready_for_work` column in the Projects "
+            "UI, or re-runs with --force")
     item_id = state.item_id
     if item_id is None:
         # An archived item now parses as absent (item_id None), so this reaches
@@ -1725,6 +1760,18 @@ def verb_decompose(issue: Optional[int], spec_path: str, ctx: RepoContext, runne
                              "Write every sub-issue body file before decomposing")
         sub_body_paths.append(sub_body)
 
+    # The board schema is a precondition of step 5's Status write, but it is read
+    # for the first time thousands of lines of GitHub mutation later. Resolve it
+    # HERE, with the other preflights, so a board missing a lifecycle option fails
+    # before the parent and every sub-issue have already been created — a partial
+    # decomposition that no retry can repair, because re-running the same spec
+    # creates duplicates. Deliberately resolved WITHOUT the on-disk cache: this is
+    # a preflight, and it must not depend on Git's common directory being
+    # resolvable. Step 5 resolves again through the normal cached path; one extra
+    # field-list on a verb that already makes N issue-creates is a fair price for
+    # a precondition that cannot half-write.
+    resolve_schema(board, ctx, runner, {})
+
     # 1. Parent: create from the plan, or update an existing parent's body.
     if issue is None:
         res = _run_gh_retry(runner, ["issue", "create", "--repo", ctx.slug,
@@ -1820,12 +1867,23 @@ def verb_groom_verify(issue: int, ctx: RepoContext, runner: GhRunner,
     reports the EXACT sub-issue and
     with-dependency counts (from the parent's own sub-issue nodes — the
     `.subIssues | length`-style miscount is structurally impossible here).
-    Also fuses both halves of the downstream gate into ONE value: `cleared` is
-    `groomed and posture == "autonomous"` — attested AND cleared, the exact
-    conjunction that authorizes hands-off execution. It exists so the routing
-    boundary reads one field instead of reassembling the conjunction from
-    labels plus Status, which is a safety property that drifts when it lives in
-    two languages at once.
+
+    Reports two independent safety properties, never fused:
+
+      * `approved` = `stage_at_least(stage, "ready_for_work")` — the
+        work-entry authority. It answers "has a human stamped this ready to
+        start?" and is the field a work-entry gate reads. A groomed-but-not-
+        yet-approved item (freshly `--decompose`d, still at `planned`) is
+        normal and expected: `groomed: true, approved: false`.
+      * `cleared` is `groomed and posture == "autonomous"` — the unattended-
+        execution authority. It fuses attestation with *posture*, an
+        orthogonal axis, and answers "may this run hands-off once it starts?"
+
+    A consumer needs BOTH: `approved` to enter work, `cleared` to run it
+    without a human in the loop. Folding `approved` into `cleared` (or vice
+    versa) would overload one field with two independent safety properties —
+    the exact failure mode `cleared`'s own semantics below already guard
+    against.
 
     `cleared` is deliberately LABEL-DERIVED ONLY. This verb sees neither the
     repository `delivery_mode` default (owned by workflow-repo-preflight.py)
@@ -1876,7 +1934,9 @@ def verb_groom_verify(issue: int, ctx: RepoContext, runner: GhRunner,
                            "converges either way"})
     groomed = not failures
     clearance = resolve_clearance(state.labels)
-    return {"issue": issue, "groomed": groomed, "stage": state.stage,
+    return {"issue": issue, "groomed": groomed,
+            "approved": stage_at_least(state.stage, "ready_for_work"),
+            "stage": state.stage,
             **clearance,
             "cleared": groomed and clearance["posture"] == "autonomous",
             "sub_issue_count": len(subs), "sub_issues_with_dependencies": blocked,
@@ -2027,6 +2087,20 @@ def verb_claim(issue: int, ctx: RepoContext, runner: GhRunner) -> dict:
             f"Issue #{issue} is a sub-issue of #{state.parent_number} — sub-issues are not "
             "claimed or worked directly; the parent owns the board stage and PR",
             f"Claim and work the parent #{state.parent_number} instead")
+    # Work-entry floor. The approval seam is only real if it binds the verb that
+    # actually ENTERS work: refusing the `ready_for_work` write in verb_set_status
+    # while leaving --claim unguarded would let --decompose -> planned -> --claim
+    # reach in_progress with no human and no --force, which is the exact
+    # self-approval loop this stage exists to close. Refused BEFORE any assignment
+    # write, like the sub-issue refusal above, so an unapproved issue is never
+    # touched. stage_at_least admits in_progress/in_review, so resuming a claim
+    # still works.
+    if not stage_at_least(state.stage, "ready_for_work"):
+        raise BoardError(
+            "approval_required",
+            f"Issue #{issue} is at {state.stage!r} — work requires Status >= ready_for_work",
+            "A human approves it by dragging the card to the `ready_for_work` column in "
+            "the Projects UI, or running --set-status <N> ready_for_work --force")
     if state.assignees and me not in state.assignees:
         decision = decide_claim(state.assignees, me, state.blocked_by_count)
         return {"issue": issue, "claimed": False, "verdict": "claim_conflict", "reason": decision.reason}
@@ -2165,7 +2239,17 @@ def _batched_parent_numbers(numbers: "list[int]", ctx: RepoContext,
 
 def verb_ready_work(ctx: RepoContext, runner: GhRunner) -> dict:
     board = _require_board(ctx)
-    items = _item_list(board, runner, "status:planned no:assignee")   # call 1
+    items = _item_list(board, runner, "status:ready_for_work no:assignee")   # call 1
+    if not items:
+        # GitHub's item-list filter does NOT error on an unknown status token — it
+        # returns an empty page, exit 0. On a board that predates a lifecycle stage
+        # that makes "no work is ready" indistinguishable from "this board has no
+        # such column", violating _item_list's own rule that a failed query must
+        # never read as an empty work list. Only an empty result is ambiguous: a
+        # non-empty one proves the option exists, so the hot path keeps its 2-call
+        # budget and only the ambiguous path pays for the schema read. Resolved
+        # without the on-disk cache so a read-only verb needs no cache I/O.
+        resolve_schema(board, ctx, runner, {})
     # Scope BEFORE the batch: only origin-repo issue numbers may enter the
     # per-number blockedBy query (foreign/PR items would hard-fail it).
     numbers = [n for n in (_origin_issue_number(i, ctx.slug) for i in items) if n is not None]
@@ -2211,7 +2295,8 @@ def verb_reconcile(ctx: RepoContext, runner: GhRunner, issue: Optional[int] = No
         # correctness (convergence for the primary rule-6 population) requires it.
         for query in ("status:in_progress", "status:in_review", "status:done",
                       "status:abandoned", "no:status", "status:stub",
-                      "status:brainstormed", "status:planned"):
+                      "status:brainstormed", "status:planned",
+                      "status:ready_for_work"):
             for item in _item_list(board, runner, query, RECONCILE_ITEM_LIMIT):
                 number = _origin_issue_number(item, ctx.slug)  # foreign items: never examined
                 if number is not None:
@@ -2886,7 +2971,7 @@ def verb_doctor(ctx: RepoContext, runner: GhRunner) -> dict:
                   "Ask the Project owner for write access, then re-run")
         try:
             schema = resolve_schema(board, ctx, runner, {})
-            check("status_options", "PASS", "all 7 lifecycle options present")
+            check("status_options", "PASS", f"all {len(STAGES)} lifecycle options present")
             check("priority_field", "PASS" if schema.priority_field_id else "FAIL",
                   "Priority field present" if schema.priority_field_id else "no Priority field",
                   "" if schema.priority_field_id else "Re-run bootstrap to add it")

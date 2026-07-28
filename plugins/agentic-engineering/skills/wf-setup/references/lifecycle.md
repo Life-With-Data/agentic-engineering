@@ -16,7 +16,7 @@ Branch on `error_code`, not error prose. See
 [GitHub recipes](lifecycle-github-recipes.md) for the underlying `gh`
 operations.
 
-## The 7 Status values
+## The 8 Status values
 
 GitHub Project's existing `Status` field is the canonical lifecycle field. Its
 option names match `lifecycle_board.STAGES` exactly, in snake_case:
@@ -30,14 +30,21 @@ there is no second lifecycle field or synchronization process.
 3. `planned` — a trusted Project writer attests that the current issue and its
    sub-issues contain implementation-ready scope, acceptance and validation
    criteria, dependencies, and applicable security and provenance handling.
-4. `in_progress` — a sole assignee has claimed the issue and is implementing it.
-5. `in_review` — a PR is open with `Closes #N`; the parent issue remains open.
-6. `done` — the accepted repository work merged and the parent issue closed.
-7. `abandoned` — the parent issue closed as not planned; this is an off-ramp,
+   This is grooming's ceiling, not work-readiness: `planned` is *groomed*,
+   not yet *claimable*.
+4. `ready_for_work` — a human has approved the groomed issue for work. This is
+   the work-entry floor every `--gate work`/`--claim` check compares against;
+   no agent path emits it (see [agent write scope](#agent-write-scope-and-the-approval-seam)
+   below).
+5. `in_progress` — a sole assignee has claimed the issue and is implementing it.
+6. `in_review` — a PR is open with `Closes #N`; the parent issue remains open.
+7. `done` — the accepted repository work merged and the parent issue closed.
+8. `abandoned` — the parent issue closed as not planned; this is an off-ramp,
    not part of the forward order.
 
-That definition of `planned` is the sole readiness attestation. Issue bodies
-and generated packets contain requirements, but neither can set readiness by
+That definition of `planned` is grooming's sole readiness attestation; it is
+not the work-entry authority — `ready_for_work` is. Issue bodies and generated
+packets contain requirements, but neither can set readiness or approval by
 itself. A material scope or acceptance change after planning returns the item
 to `brainstormed` until a trusted Project writer re-verifies it.
 
@@ -56,6 +63,7 @@ hand-assemble Project mutations.
 | -> `stub` | `wf-grooming` triage, repository maintenance, humans | Create issue, add to Project, `--set-status stub` |
 | -> `brainstormed` | `wf-grooming` brainstorm route | Complete the issue's brainstorm and resolve open questions |
 | -> `planned` | `wf-grooming` planning route | Verify issue/sub-issues, then attest readiness with `--set-status planned` |
+| -> `ready_for_work` | A human — the sole approver; no agent path emits this | Drag the card to the `ready_for_work` column in the Projects UI, or run `--set-status <N> ready_for_work --force` |
 | -> `in_progress` | `wf-development` work route | `--claim` |
 | -> `in_review` | `wf-development` work route | Open a closing PR, then `--set-status in_review` |
 | -> `done` | Built-in "Item closed" automation | Merge closes the parent issue through `Closes #N` |
@@ -88,6 +96,45 @@ The reconciler's closed repair set is:
 Every repair posts a one-line issue comment. Report-only flags surface unsafe
 or ambiguous state without fighting a human's deliberate Project edit.
 
+## Agent write scope and the approval seam
+
+**Projects v2 access is project-level only** — Admin / Write / Read / None,
+per user or team. There is no per-field and no per-option permission: an
+identity that can set `Status` at all can set it to every option, including
+`ready_for_work`. "An agent may write `in_progress` but not `ready_for_work`"
+is not an expressible GitHub permission.
+
+An agent therefore holds Projects **Write**, because the engine needs it for
+four transitions: `--decompose` -> `planned`
+(`scripts/lifecycle_board.py:1820`), `--claim` -> `in_progress`
+(`scripts/lifecycle_board.py:2152`), `--set-status` -> `in_review`
+(gated at `scripts/lifecycle_board.py:1400`; every Status write lands through
+the single item-edit at `scripts/lifecycle_board.py:1433`), and reconciler
+repairs (`scripts/lifecycle_board.py:2349`). Only `-> done` has a non-agent
+writer — GitHub's native "Item closed" automation
+(`scripts/lifecycle_board.py:2980`).
+
+**So `ready_for_work` is not withheld by permission. It is withheld by the
+engine.** `verb_set_status` raises `approval_required` on any agent-driven
+write to `ready_for_work` (`scripts/lifecycle_board.py:1410`), and `--claim`
+refuses to enter work below that floor
+(`scripts/lifecycle_board.py:2097`) — so neither the stamp nor the transition
+it guards can be reached by an agent path. `--force`
+makes a deliberate bypass a visible, logged act rather than a silent one.
+This is the same enforcement class as the `in_review` open-sub-issues seam
+gate (`scripts/lifecycle_board.py:1400`), which the lifecycle already relies
+on for a comparable "an agent must not advance this itself" invariant.
+
+**Do not oversell this.** An agent holding a Projects-write credential that
+goes around the engine with a raw `gh project item-edit` can still set the
+field directly. The gate is a convention the engine enforces on every
+sanctioned path, not a permission boundary that makes the write impossible.
+Say so plainly rather than implying otherwise.
+
+There is exactly one approver role for `ready_for_work`, and it is not an
+agent — see the writer table above. No delegated or automated approver
+exists in this plugin.
+
 ## Entry-gate pattern
 
 Every command runs one idempotent entry gate:
@@ -105,18 +152,26 @@ the workflow ladder.
 |---|---|---|
 | `proceed` | Ready for this command's owned transition | Continue. |
 | `already_done` | This stage or a later one is already reached | Stop and follow `route`. |
-| `route_to_plan` | The item is not attested `planned` for work | Stop and hand off to planning. |
+| `route_to_plan` | The item is not yet approved for work (`Status < ready_for_work`) — includes an un-groomed item and a `planned`-but-unapproved one | Stop and hand off to planning (or, for a `planned` item, report that it awaits the human's approval stamp). |
 | `repair_needed` | Required Project/issue state is incomplete or inconsistent | Report the structured reason and repair through the owning workflow. |
 | `sub_issue` | The gated issue is an OPEN native sub-issue | Re-gate the parent carried in `parent`; the Project tracks the parent, so the child's own board stage never gates. Drive the sub-issue with `--sub-status`. |
 | `no_board` | The repository is unconfigured (no Project board yet) | Direct the user to this skill's lifecycle bootstrap to configure a board. Work may still proceed without one, but with no lifecycle claims, no Status writes, and no tracker writes. |
 
-`route_to_work` is a route carried by `already_done`, not a verdict.
+`route_to_work` and `approval` are routes carried by `already_done`, not
+verdicts. `--gate plan` on a `planned` item returns `already_done` with route
+`approval`: planning is finished and the one remaining action — a human
+stamping `ready_for_work` — is performed by no route of this engine. This
+route exists so `plan` and `work` do not route a `planned` item back and
+forth at each other: `work` sends it to `plan` (`route_to_plan`), and `plan`
+must not send it back to `work`.
 `claim_conflict` and `blocked` come only from `--claim`.
 
 Universal rules:
 
-- **Status is the gate.** In Project mode, `Status = planned` is sufficient for
-  the work gate; no repository plan file, frontmatter key, or packet is a gate.
+- **Status is the gate.** In Project mode, `Status = ready_for_work` is
+  sufficient for the work gate; `Status = planned` is sufficient for
+  grooming's own completion but not for work entry. No repository plan file,
+  frontmatter key, or packet is a gate.
 - **Never fight a human drag.** Gates route from current state; they do not
   silently correct a deliberate Project edit.
 - **Hotfixes bypass the board.** A hotfix with no Project item follows the

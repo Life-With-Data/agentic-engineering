@@ -43,9 +43,16 @@ Use the narrowest relevant check while iterating, then run the full gate:
 
 ```bash
 python3 -m unittest plugins/agentic-engineering/tests/<focused_test>.py
+python3 -m unittest discover -s plugins/agentic-engineering/tests -p '*_test.py'
 bun test
 bun run typecheck
 ```
+
+The `unittest discover` line is the full Python gate and is exactly what CI
+runs. Use it for the final check rather than another runner: collection order
+differs between runners, so a suite that passes under one can fail under the
+other. See
+[leaked monkeypatches and runner ordering](../../../docs/solutions/testing-patterns/leaked-monkeypatches-and-runner-ordering-mask-real-dependencies.md).
 
 Changes to plugin components or documentation also require:
 

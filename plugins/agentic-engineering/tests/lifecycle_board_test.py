@@ -45,14 +45,28 @@ def _pr(number=10, state="MERGED", merged=True, base="main", author="me"):
 
 class StageOrderTest(unittest.TestCase):
     def test_exact_lifecycle(self) -> None:
-        self.assertEqual(lb.STAGES, ("stub", "brainstormed", "planned", "in_progress",
-                                    "in_review", "done", "abandoned"))
+        self.assertEqual(lb.STAGES, ("stub", "brainstormed", "planned", "ready_for_work",
+                                    "in_progress", "in_review", "done", "abandoned"))
 
     def test_stage_at_least(self) -> None:
         self.assertTrue(lb.stage_at_least("in_review", "planned"))
         self.assertFalse(lb.stage_at_least("stub", "planned"))
         self.assertFalse(lb.stage_at_least(None, "stub"))
         self.assertFalse(lb.stage_at_least("abandoned", "stub"))
+
+    def test_order_is_the_single_total_order_over_stages(self) -> None:
+        # One ordering, covering exactly STAGES — a parallel ordering would let
+        # gate comparisons disagree with each other.
+        self.assertEqual(set(lb._ORDER), set(lb.STAGES))
+        forward = [s for s in lb.STAGES if s != "abandoned"]
+        self.assertEqual(sorted(forward, key=lambda s: lb._ORDER[s]), forward)
+        self.assertEqual(lb._ORDER["abandoned"], -1)
+
+    def test_ready_for_work_sits_above_planned(self) -> None:
+        # Approval is a stage the groomed item has NOT yet reached.
+        self.assertFalse(lb.stage_at_least("planned", "ready_for_work"))
+        self.assertTrue(lb.stage_at_least("ready_for_work", "planned"))
+        self.assertTrue(lb.stage_at_least("in_progress", "ready_for_work"))
 
 
 class GateTest(unittest.TestCase):
@@ -82,25 +96,39 @@ class GateTest(unittest.TestCase):
                 self.assertNotEqual(g.verdict, "repair_needed")
 
     def test_plan_already_done_offers_work(self) -> None:
-        g = lb.evaluate_gate("plan", "planned", True, "docs/plans/x.md", None)
+        g = lb.evaluate_gate("plan", "ready_for_work", True, "docs/plans/x.md", None)
         self.assertEqual((g.verdict, g.route), ("already_done", "route_to_work"))
 
-    def test_plan_treats_planned_as_readiness_attestation(self) -> None:
-        g = lb.evaluate_gate("plan", "planned", True, None, None)
+    def test_plan_treats_ready_for_work_as_readiness_attestation(self) -> None:
+        g = lb.evaluate_gate("plan", "ready_for_work", True, None, None)
         self.assertEqual((g.verdict, g.route), ("already_done", "route_to_work"))
+
+    def test_plan_on_planned_routes_to_approval_never_back_to_work(self) -> None:
+        # Planning is finished, but the item is not work-ready. Routing to work
+        # here is what would make plan<->work an infinite bounce.
+        g = lb.evaluate_gate("plan", "planned", True, "docs/plans/x.md", None)
+        self.assertEqual((g.verdict, g.route), ("already_done", "approval"))
 
     def test_plan_stops_on_done(self) -> None:
         g = lb.evaluate_gate("plan", "done", True, None, None)
         self.assertEqual((g.verdict, g.route), ("already_done", "none"))
 
-    def test_work_requires_at_least_planned(self) -> None:
+    def test_work_requires_at_least_ready_for_work(self) -> None:
         g = lb.evaluate_gate("work", "brainstormed", True, None, None)
         self.assertEqual((g.verdict, g.route), ("route_to_plan", "plan"))
 
-    def test_work_gate_depends_on_status_not_artifact(self) -> None:
-        g = lb.evaluate_gate("work", "planned", True, None, None)
-        self.assertEqual(g.verdict, "proceed")
+    def test_work_on_planned_names_the_missing_approval(self) -> None:
         g = lb.evaluate_gate("work", "planned", True, "docs/plans/x.md", None)
+        self.assertEqual(g.verdict, "route_to_plan")
+        # The message must be actionable: a groomed item needs approval, NOT
+        # another grooming pass.
+        self.assertIn("approv", g.reason)
+        self.assertNotIn("groom first", g.reason)
+
+    def test_work_gate_depends_on_status_not_artifact(self) -> None:
+        g = lb.evaluate_gate("work", "ready_for_work", True, None, None)
+        self.assertEqual(g.verdict, "proceed")
+        g = lb.evaluate_gate("work", "ready_for_work", True, "docs/plans/x.md", None)
         self.assertEqual(g.verdict, "proceed")
 
     def test_work_resume_reason_names_actual_stage(self) -> None:
@@ -127,6 +155,116 @@ class GateTest(unittest.TestCase):
     def test_untrusted_author_is_surfaced(self) -> None:
         g = lb.evaluate_gate("plan", "stub", True, None, None, author_association="NONE")
         self.assertEqual(g.provenance, "untrusted")
+
+
+# Every stage the gate can observe, including the no-board `None`.
+_ALL_GATE_STAGES = (None,) + lb.STAGES
+
+# The whole decision table by CATEGORY (verdict, route) — never by reason text,
+# which is prose and may be reworded without changing a single decision.
+_GATE_TABLE = {
+    "brainstorm": {
+        None: ("proceed", "brainstorm"),
+        "stub": ("proceed", "brainstorm"),
+        "brainstormed": ("already_done", "route_to_plan"),
+        "planned": ("already_done", "route_to_plan"),
+        "ready_for_work": ("already_done", "none"),
+        "in_progress": ("already_done", "none"),
+        "in_review": ("already_done", "none"),
+        "done": ("already_done", "none"),
+        "abandoned": ("already_done", "none"),
+    },
+    "plan": {
+        None: ("proceed", "plan"),
+        "stub": ("proceed", "plan"),
+        "brainstormed": ("proceed", "plan"),
+        "planned": ("already_done", "approval"),
+        "ready_for_work": ("already_done", "route_to_work"),
+        "in_progress": ("already_done", "route_to_work"),
+        "in_review": ("already_done", "route_to_work"),
+        "done": ("already_done", "none"),
+        "abandoned": ("already_done", "none"),
+    },
+    "work": {
+        None: ("route_to_plan", "plan"),
+        "stub": ("route_to_plan", "plan"),
+        "brainstormed": ("route_to_plan", "plan"),
+        "planned": ("route_to_plan", "plan"),
+        "ready_for_work": ("proceed", "work"),
+        "in_progress": ("proceed", "work"),
+        "in_review": ("proceed", "work"),
+        "done": ("already_done", "none"),
+        "abandoned": ("already_done", "none"),
+    },
+    "compound": {s: ("proceed", "compound") for s in _ALL_GATE_STAGES
+                 if s != "abandoned"},
+    "orchestrate": {s: ("proceed", "orchestrate") for s in _ALL_GATE_STAGES},
+}
+_GATE_TABLE["compound"]["abandoned"] = ("already_done", "none")
+
+
+class GateTableTest(unittest.TestCase):
+    """The complete gate decision table, one row per (command, stage). Asserted
+    by verdict/route category — the reason string is prose, not a contract."""
+
+    def test_every_command_and_stage(self) -> None:
+        for command, rows in _GATE_TABLE.items():
+            self.assertEqual(set(rows), set(_ALL_GATE_STAGES),
+                             f"{command} table must cover every stage")
+            for stage, expected in rows.items():
+                with self.subTest(command=command, stage=stage):
+                    g = lb.evaluate_gate(command, stage, stage is not None, None, None)
+                    self.assertEqual((g.verdict, g.route), expected)
+
+    def test_every_verdict_is_declared(self) -> None:
+        for verdict, _route in (v for rows in _GATE_TABLE.values() for v in rows.values()):
+            self.assertIn(verdict, lb.VERDICTS)
+
+
+class GateLoopFreedomTest(unittest.TestCase):
+    """`plan` and `work` must never point at each other. Before `ready_for_work`
+    existed, a `planned` item was `route_to_work` from plan and (after the work
+    floor moved) `route_to_plan` from work — an orchestrator following routes
+    would bounce forever. This asserts the absence of that 2-cycle directly,
+    for EVERY stage, rather than pinning the two gates independently."""
+
+    # Which command a route sends the caller to.
+    _ROUTE_TARGET = {
+        "plan": "plan",
+        "route_to_plan": "plan",
+        "work": "work",
+        "route_to_work": "work",
+    }
+    # Routes that name no command: they terminate the walk and cannot form a
+    # cycle. Enumerated explicitly rather than defaulted, so a NEW route token
+    # fails this test loudly instead of silently dropping out of the cycle check
+    # as an unrecognized value.
+    _TERMINAL_ROUTES = frozenset({
+        "none", "approval", "brainstorm", "compound", "orchestrate", "parent",
+    })
+
+    def _target(self, route: str) -> "str | None":
+        """Resolve a route to the command it sends the caller to. An unknown
+        route is a hard failure, not a silent None — otherwise renaming a route
+        token would quietly disable this whole check."""
+        if route in self._ROUTE_TARGET:
+            return self._ROUTE_TARGET[route]
+        self.assertIn(route, self._TERMINAL_ROUTES,
+                      f"unknown gate route {route!r}: add it to _ROUTE_TARGET (if it "
+                      "names a command) or _TERMINAL_ROUTES (if it does not)")
+        return None
+
+    def test_plan_and_work_never_route_to_each_other(self) -> None:
+        for stage in _ALL_GATE_STAGES:
+            with self.subTest(stage=stage):
+                has_issue = stage is not None
+                plan_to = self._target(
+                    lb.evaluate_gate("plan", stage, has_issue, None, None).route)
+                work_to = self._target(
+                    lb.evaluate_gate("work", stage, has_issue, None, None).route)
+                self.assertFalse(
+                    plan_to == "work" and work_to == "plan",
+                    f"stage {stage!r}: plan -> work and work -> plan is an infinite bounce")
 
 
 class ClaimTest(unittest.TestCase):
@@ -473,7 +611,7 @@ class CallBudgetTest(unittest.TestCase):
 
         # _require_board reads config from disk; call the legs directly with
         # the injected runner instead.
-        got_items = lb._item_list(board, runner, "status:planned no:assignee")
+        got_items = lb._item_list(board, runner, "status:ready_for_work no:assignee")
         numbers = [i["content"]["number"] for i in got_items]
         blocked = lb._batched_blocked_counts(numbers, ctx, runner)
         ready, truncated = lb.merge_ready_legs(got_items, blocked, "o/r")
@@ -488,7 +626,7 @@ class CallBudgetTest(unittest.TestCase):
             (["project", "item-list"], subprocess.CompletedProcess([], 1, "", "boom")),
         ])
         with self.assertRaises(lb.BoardError) as caught:
-            lb._item_list(board, runner, "status:planned no:assignee")
+            lb._item_list(board, runner, "status:ready_for_work no:assignee")
         self.assertEqual(caught.exception.code, "ready_work_failed")
 
 
@@ -526,6 +664,12 @@ class SetStatusGateTest(unittest.TestCase):
             "---\ngithub_project_owner: acme\ngithub_project_number: 1\n---\n", encoding="utf-8")
         self.ctx = lb.RepoContext(root=root, main_root=root, origin_owner="acme",
                                   origin_repo="widget", default_branch="main")
+        # Restore on teardown: leaking these globally lets one class's patch mask
+        # a real cache-I/O dependency in another class, which is exactly how a
+        # decompose preflight bug reached CI green locally.
+        _real_load, _real_save = lb.load_cache, lb.save_cache
+        self.addCleanup(lambda: setattr(lb, "load_cache", _real_load))
+        self.addCleanup(lambda: setattr(lb, "save_cache", _real_save))
         lb.load_cache = lambda _ctx: {}
         lb.save_cache = lambda _ctx, _cache: None
         self._field_list = _ok(json.dumps({"fields": [{"name": "Status", "id": "F",
@@ -581,6 +725,65 @@ class SetStatusGateTest(unittest.TestCase):
         self.assertEqual(result["stage"], "in_progress")
 
 
+class SetStatusReadyForWorkGateTest(unittest.TestCase):
+    """#321: the ready_for_work seam gate — verb_set_status refuses to stamp
+    the human approval stage from an agent-driven path, unless force=True.
+    Mirrors SetStatusGateTest's in_review coverage exactly."""
+
+    def setUp(self) -> None:
+        import tempfile
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        root = self._tmp.name
+        (Path(root) / "agentic-engineering.md").write_text(
+            "---\ngithub_project_owner: acme\ngithub_project_number: 1\n---\n", encoding="utf-8")
+        self.ctx = lb.RepoContext(root=root, main_root=root, origin_owner="acme",
+                                  origin_repo="widget", default_branch="main")
+        # Restore on teardown: leaking these globally lets one class's patch mask
+        # a real cache-I/O dependency in another class, which is exactly how a
+        # decompose preflight bug reached CI green locally.
+        _real_load, _real_save = lb.load_cache, lb.save_cache
+        self.addCleanup(lambda: setattr(lb, "load_cache", _real_load))
+        self.addCleanup(lambda: setattr(lb, "save_cache", _real_save))
+        lb.load_cache = lambda _ctx: {}
+        lb.save_cache = lambda _ctx, _cache: None
+        self._field_list = _ok(json.dumps({"fields": [{"name": "Status", "id": "F",
+            "projectId": "P", "options": [{"id": f"o_{s}", "name": s} for s in lb.STAGES]}]}))
+
+    def _runner_through_fetch(self):
+        return FakeRunner([
+            (["project", "field-list", "1", "--owner", "acme"], self._field_list),
+            (["api", "graphql"], _ok(json.dumps(
+                _issue_query_response(stage="planned", open_subs=[])))),
+        ])
+
+    def test_refuses_ready_for_work_without_force(self) -> None:
+        runner = self._runner_through_fetch()
+        with self.assertRaises(lb.BoardError) as caught:
+            lb.verb_set_status(5, "ready_for_work", self.ctx, runner)
+        self.assertEqual(caught.exception.code, "approval_required")
+        # Refused BEFORE any board write (no item-edit call).
+        self.assertFalse(any(c[:2] == ["project", "item-edit"] for c in runner.calls))
+
+    def test_force_bypasses_the_gate(self) -> None:
+        runner = FakeRunner([
+            (["project", "field-list", "1", "--owner", "acme"], self._field_list),
+            (["api", "graphql"], _ok(json.dumps(
+                _issue_query_response(stage="planned", open_subs=[])))),
+            (["project", "item-edit", "--id", "item5", "--project-id", "P",
+              "--field-id", "F", "--single-select-option-id", "o_ready_for_work"], _ok("{}")),
+        ])
+        result = lb.verb_set_status(5, "ready_for_work", self.ctx, runner, force=True)
+        self.assertEqual(result["stage"], "ready_for_work")
+
+    def test_error_code_distinct_from_open_sub_issues_gate(self) -> None:
+        # The two seam gates must stay independently branchable by callers.
+        runner = self._runner_through_fetch()
+        with self.assertRaises(lb.BoardError) as caught:
+            lb.verb_set_status(5, "ready_for_work", self.ctx, runner)
+        self.assertNotEqual(caught.exception.code, "open_sub_issues")
+
+
 class ClaimVerbTest(unittest.TestCase):
     """End-to-end verb_claim over a FakeRunner: win, two-winner conflict, and
     blocked-refusal. blockedBy rides the bounded node-state shape."""
@@ -596,6 +799,12 @@ class ClaimVerbTest(unittest.TestCase):
         self.ctx = lb.RepoContext(root=root, main_root=root, origin_owner="acme",
                                   origin_repo="widget", default_branch="main")
         _orig_load, _orig_save = lb.load_cache, lb.save_cache
+        # Restore on teardown: leaking these globally lets one class's patch mask
+        # a real cache-I/O dependency in another class, which is exactly how a
+        # decompose preflight bug reached CI green locally.
+        _real_load, _real_save = lb.load_cache, lb.save_cache
+        self.addCleanup(lambda: setattr(lb, "load_cache", _real_load))
+        self.addCleanup(lambda: setattr(lb, "save_cache", _real_save))
         lb.load_cache = lambda _ctx: {}
         lb.save_cache = lambda _ctx, _cache: None
         self.addCleanup(lambda: (setattr(lb, "load_cache", _orig_load),
@@ -606,9 +815,9 @@ class ClaimVerbTest(unittest.TestCase):
     def test_win_path_assigns_confirms_and_sets_status(self) -> None:
         runner = FakeRunner([
             (["api", "user"], _ok("me\n")),                                    # _gh_me
-            (["api", "graphql"], _ok(json.dumps(_issue_query_response(assignees=())))),  # initial read
+            (["api", "graphql"], _ok(json.dumps(_issue_query_response(assignees=(), stage="ready_for_work")))),  # initial read
             (["issue", "edit", "5", "--repo", "acme/widget", "--add-assignee", "@me"], _ok("")),
-            (["api", "graphql"], _ok(json.dumps(_issue_query_response(assignees=["me"])))),  # confirm sole
+            (["api", "graphql"], _ok(json.dumps(_issue_query_response(assignees=["me"], stage="ready_for_work")))),  # confirm sole
             # verb_set_status(in_progress): resolve_schema + fetch + item-edit
             (["project", "field-list", "1", "--owner", "acme"], self._field_list),
             (["api", "graphql"], _ok(json.dumps(_issue_query_response(assignees=["me"])))),
@@ -621,10 +830,10 @@ class ClaimVerbTest(unittest.TestCase):
     def test_two_winner_conflict_self_unassigns(self) -> None:
         runner = FakeRunner([
             (["api", "user"], _ok("me\n")),
-            (["api", "graphql"], _ok(json.dumps(_issue_query_response(assignees=())))),
+            (["api", "graphql"], _ok(json.dumps(_issue_query_response(assignees=(), stage="ready_for_work")))),
             (["issue", "edit", "5", "--repo", "acme/widget", "--add-assignee", "@me"], _ok("")),
             # confirm read: two winners raced in.
-            (["api", "graphql"], _ok(json.dumps(_issue_query_response(assignees=["me", "rival"])))),
+            (["api", "graphql"], _ok(json.dumps(_issue_query_response(assignees=["me", "rival"], stage="ready_for_work")))),
             (["issue", "edit", "5", "--repo", "acme/widget", "--remove-assignee", "@me"], _ok("")),
         ])
         result = lb.verb_claim(5, self.ctx, runner)
@@ -634,7 +843,7 @@ class ClaimVerbTest(unittest.TestCase):
     def test_blocked_refuses_without_assigning(self) -> None:
         runner = FakeRunner([
             (["api", "user"], _ok("me\n")),
-            (["api", "graphql"], _ok(json.dumps(_issue_query_response(assignees=(), blocked=2)))),
+            (["api", "graphql"], _ok(json.dumps(_issue_query_response(assignees=(), blocked=2, stage="ready_for_work")))),
         ])
         result = lb.verb_claim(5, self.ctx, runner)
         self.assertEqual((result["claimed"], result["verdict"]), (False, "blocked"))
@@ -686,6 +895,109 @@ class ClaimVerbTest(unittest.TestCase):
         self.assertEqual(caught.exception.code, "sub_issue_claim")
         self.assertFalse(any("--add-assignee" in c for c in runner.calls))
         self.assertFalse(any(c[:2] == ["project", "item-edit"] for c in runner.calls))
+
+    def test_refuses_every_stage_below_ready_for_work_without_writing(self) -> None:
+        """The work-entry floor. Refusing the `ready_for_work` WRITE while leaving
+        the verb that ENTERS work unguarded would let --decompose -> planned ->
+        --claim reach in_progress with no human and no --force — the exact
+        self-approval loop the stage exists to close. Asserted by category over
+        every below-floor stage, and asserted to refuse BEFORE any write."""
+        for stage in ("stub", "brainstormed", "planned"):
+            with self.subTest(stage=stage):
+                runner = FakeRunner([
+                    (["api", "user"], _ok("me\n")),
+                    (["api", "graphql"],
+                     _ok(json.dumps(_issue_query_response(assignees=(), stage=stage)))),
+                ])
+                with self.assertRaises(lb.BoardError) as caught:
+                    lb.verb_claim(5, self.ctx, runner)
+                self.assertEqual(caught.exception.code, "approval_required")
+                # Never touch an unapproved issue: no assignment, no board write.
+                self.assertFalse(any("--add-assignee" in c for c in runner.calls))
+                self.assertFalse(any(c[:2] == ["project", "item-edit"] for c in runner.calls))
+
+    def test_resuming_an_already_started_item_still_claims(self) -> None:
+        """The floor must not break resume: in_progress/in_review are above it."""
+        for stage in ("in_progress", "in_review"):
+            with self.subTest(stage=stage):
+                runner = FakeRunner([
+                    (["api", "user"], _ok("me\n")),
+                    (["api", "graphql"],
+                     _ok(json.dumps(_issue_query_response(assignees=["me"], stage=stage)))),
+                    (["api", "graphql"],
+                     _ok(json.dumps(_issue_query_response(assignees=["me"], stage=stage)))),
+                    (["project", "field-list", "1", "--owner", "acme"], self._field_list),
+                    (["api", "graphql"],
+                     _ok(json.dumps(_issue_query_response(assignees=["me"], stage=stage)))),
+                    (["project", "item-edit", "--id", "item5", "--project-id", "P",
+                      "--field-id", "F", "--single-select-option-id", "o_in_progress"], _ok("{}")),
+                ])
+                result = lb.verb_claim(5, self.ctx, runner)
+                self.assertEqual((result["claimed"], result["verdict"]), (True, "proceed"))
+
+
+class ReadyWorkVerbTest(unittest.TestCase):
+    """--ready-work reads a Status option BY NAME. GitHub's item-list filter does
+    not error on an unknown status token — it returns an empty page, exit 0 — so
+    an un-migrated board must not read as a legitimately empty queue."""
+
+    def setUp(self) -> None:
+        import tempfile
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        root = self._tmp.name
+        (Path(root) / "agentic-engineering.md").write_text(
+            "---\ngithub_project_owner: acme\ngithub_project_number: 1\n---\n", encoding="utf-8")
+        self.ctx = lb.RepoContext(root=root, main_root=root, origin_owner="acme",
+                                  origin_repo="widget", default_branch="main")
+        # Restore on teardown: leaking these globally lets one class's patch mask
+        # a real cache-I/O dependency in another class, which is exactly how a
+        # decompose preflight bug reached CI green locally.
+        _real_load, _real_save = lb.load_cache, lb.save_cache
+        self.addCleanup(lambda: setattr(lb, "load_cache", _real_load))
+        self.addCleanup(lambda: setattr(lb, "save_cache", _real_save))
+        lb.load_cache = lambda _ctx: {}
+        lb.save_cache = lambda _ctx, _cache: None
+
+    @staticmethod
+    def _field_list(stages):
+        return _ok(json.dumps({"fields": [{"name": "Status", "id": "F", "projectId": "P",
+                                           "options": [{"id": f"o_{s}", "name": s} for s in stages]}]}))
+
+    def test_queries_the_ready_for_work_leg_not_planned(self) -> None:
+        """The query string IS the behavior: it is what makes --ready-work honor the
+        approval gate. Pin the exact --query value, or a silent revert to
+        `status:planned` reintroduces the unapproved queue with every test green."""
+        items = [{"content": {"type": "Issue", "number": 7, "repository": "acme/widget",
+                              "title": "i7"}}]
+        runner = FakeRunner([
+            (["project", "item-list", "1", "--owner", "acme", "--format", "json",
+              "--limit", "50", "--query", "status:ready_for_work no:assignee"],
+             _ok(json.dumps({"items": items}))),
+            (["api", "graphql"],
+             _ok(json.dumps({"data": {"repository": {"i7": {"blockedBy": {"nodes": []}}}}}))),
+        ])
+        result = lb.verb_ready_work(self.ctx, runner)
+        self.assertEqual([r["number"] for r in result["items"]], [7])
+        # Non-empty proves the option exists: no schema read, 2-call budget intact.
+        self.assertEqual(len(runner.calls), 2)
+
+    def test_empty_result_on_an_unmigrated_board_raises_option_missing(self) -> None:
+        runner = FakeRunner([
+            (["project", "item-list", "1", "--owner", "acme"], _ok(json.dumps({"items": []}))),
+            (["project", "field-list", "1", "--owner", "acme"],
+             self._field_list([s for s in lb.STAGES if s != "ready_for_work"])),
+        ])
+        with self.assertRaises(lb.BoardError) as caught:
+            lb.verb_ready_work(self.ctx, runner)
+        self.assertEqual(caught.exception.code, "option_missing")
+
+    def test_genuinely_empty_queue_on_a_current_board_is_not_an_error(self) -> None:
+        runner = FakeRunner([
+            (["project", "item-list", "1", "--owner", "acme"], _ok(json.dumps({"items": []}))),
+            (["project", "field-list", "1", "--owner", "acme"], self._field_list(lb.STAGES)),
+        ])
+        self.assertEqual(lb.verb_ready_work(self.ctx, runner)["items"], [])
 
 
 class SubStatusVerbTest(unittest.TestCase):
@@ -1732,6 +2044,47 @@ class BackfillVerbTest(unittest.TestCase):
         self.assertFalse(any(c[:2] == ["project", "item-add"] for c in runner.calls))
 
 
+class SchemaOptionMissingTest(unittest.TestCase):
+    """The forcing function. Adding a stage deliberately hard-errors every board
+    that predates it, so an upgraded plugin can never operate on a board that
+    cannot represent the new stage. This must fail LOUDLY and name the fix —
+    it is the one behavior a consumer meets on upgrade day."""
+
+    def setUp(self) -> None:
+        self.board = lb.BoardConfig(owner="acme", number=1, source="committed")
+        self.ctx = lb.RepoContext(root=".", main_root=".", origin_owner="acme",
+                                  origin_repo="widget", default_branch="main")
+
+    def _runner(self, stages):
+        return FakeRunner([
+            (["project", "field-list", "1", "--owner", "acme"],
+             _ok(json.dumps({"fields": [{"name": "Status", "id": "F", "projectId": "P",
+                                         "options": [{"id": f"o_{s}", "name": s}
+                                                     for s in stages]}]}))),
+        ])
+
+    def test_board_missing_any_stage_raises_option_missing(self) -> None:
+        for absent in lb.STAGES:
+            with self.subTest(absent=absent):
+                runner = self._runner([s for s in lb.STAGES if s != absent])
+                with self.assertRaises(lb.BoardError) as caught:
+                    lb.resolve_schema(self.board, self.ctx, runner, {})
+                self.assertEqual(caught.exception.code, "option_missing")
+                self.assertIn(absent, str(caught.exception))
+
+    def test_the_fix_names_the_bootstrap_script(self) -> None:
+        """An operator meeting this error needs a runnable command, not a
+        diagnosis. Asserted by the script name, not the sentence around it."""
+        runner = self._runner([s for s in lb.STAGES if s != "ready_for_work"])
+        with self.assertRaises(lb.BoardError) as caught:
+            lb.resolve_schema(self.board, self.ctx, runner, {})
+        self.assertIn("bootstrap_lifecycle_board.py", caught.exception.fix)
+
+    def test_a_current_board_resolves(self) -> None:
+        schema = lb.resolve_schema(self.board, self.ctx, self._runner(lb.STAGES), {})
+        self.assertEqual(set(schema.status_options), set(lb.STAGES))
+
+
 class FixtureReplayTest(unittest.TestCase):
     """Recorded gh fixtures are load-bearing: each is replayed through its real
     engine consumer so a shape drift in a re-record breaks a test, not prod."""
@@ -1741,7 +2094,15 @@ class FixtureReplayTest(unittest.TestCase):
     def _load(self, name: str):
         return json.loads((self.FIXTURES / name).read_text(encoding="utf-8"))
 
-    def test_project_field_list_resolves_all_seven_stages(self) -> None:
+    def test_project_field_list_resolves_every_stage(self) -> None:
+        # NOTE: the recording predates `ready_for_work`; that one Status option
+        # was hand-added in the same option shape. This test pins the SHAPE the
+        # parser accepts, not live board contents — option ids are opaque
+        # strings to the engine, so a synthetic id proves exactly what a real
+        # one would. A re-record is not blocked (the configured board is already
+        # on all eight options) but would rebase every unrelated field id in the
+        # fixture, which this test does not need. The un-migrated board is
+        # covered separately, by SchemaOptionMissingTest below.
         payload = self._load("project_field_list.json")
         status, priority = lb.parse_field_list(payload)
         self.assertIsNotNone(status)
@@ -1819,6 +2180,32 @@ class GroomRouteTest(unittest.TestCase):
     def test_in_flight_stages_are_past(self) -> None:
         self.assertEqual(self._route(stage="in_progress").route, "past")
         self.assertEqual(self._route(stage="in_review").route, "past")
+
+    def test_ready_for_work_is_past_grooming_never_intake(self) -> None:
+        # An approved item falling through to `intake` would re-groom work a
+        # human already signed off on.
+        r = self._route(stage="ready_for_work")
+        self.assertEqual(r.route, "past")
+        self.assertNotEqual(r.route, "intake")
+
+    def test_every_stage_has_a_declared_route(self) -> None:
+        # One row per stage — a newly added stage must not silently land in the
+        # unrecognized-stage `intake` catch-all.
+        expected = {
+            "stub": "intake",
+            "brainstormed": "plan",
+            "planned": "already_planned",
+            "ready_for_work": "past",
+            "in_progress": "past",
+            "in_review": "past",
+            "done": "terminal",
+            "abandoned": "abandoned",
+        }
+        self.assertEqual(set(expected), set(lb.STAGES))
+        for stage, route in expected.items():
+            with self.subTest(stage=stage):
+                self.assertEqual(self._route(stage=stage).route, route)
+                self.assertIn(route, lb.GROOM_ROUTES)
 
     def test_terminal_and_abandoned(self) -> None:
         self.assertEqual(self._route(stage="done").route, "terminal")
@@ -2249,6 +2636,7 @@ class SubIssueDeboardReconcileTest(unittest.TestCase):
             leg("status:stub", []),
             leg("status:brainstormed", []),
             leg("status:planned", []),
+            leg("status:ready_for_work", []),
             (["api", "graphql"], _ok(_subissue_payload(item=True))),
             (["project", "item-archive", "1", "--owner", "o", "--id", "IT_9"], _ok("{}")),
             (["issue", "comment", "263", "--repo", "o/r", "--body"], _ok("")),
@@ -2327,6 +2715,14 @@ class DeboardSubissueHelperTest(unittest.TestCase):
         self.assertIn("error", out)
 
 
+def _decompose_field_list() -> "subprocess.CompletedProcess[str]":
+    """The `project field-list` response verb_decompose's schema preflight
+    reads before its first mutation. set_status is faked in these tests, so
+    this is the only resolve_schema call they ever make."""
+    return _ok(json.dumps({"fields": [{"name": "Status", "id": "F",
+        "projectId": "P", "options": [{"id": f"o_{s}", "name": s} for s in lb.STAGES]}]}))
+
+
 class DecomposeVerbTest(unittest.TestCase):
     """The effectful decompose verb, driven by an argv-recording FakeRunner and
     an injected set_status seam. Proves the create->wire->stamp sequence and that
@@ -2347,6 +2743,7 @@ class DecomposeVerbTest(unittest.TestCase):
             spec_path.write_text(json.dumps(spec), encoding="utf-8")
 
             runner = FakeRunner([
+                (["project", "field-list", "1", "--owner", "o"], _decompose_field_list()),
                 (["issue", "edit", "182", "--repo", "o/r", "--body-file"],
                  _ok("https://github.com/o/r/issues/182\n")),
                 (["issue", "create", "--repo", "o/r", "--parent", "182", "--title", "core"],
@@ -2396,6 +2793,7 @@ class DecomposeVerbTest(unittest.TestCase):
             spec_path = root / "spec.json"
             spec_path.write_text(json.dumps(spec), encoding="utf-8")
             runner = FakeRunner([
+                (["project", "field-list", "1", "--owner", "o"], _decompose_field_list()),
                 (["issue", "edit", "182", "--repo", "o/r", "--body-file"],
                  _ok("https://github.com/o/r/issues/182\n")),
                 (["issue", "create", "--repo", "o/r", "--parent", "182", "--title", "core"],
@@ -2464,6 +2862,7 @@ class DecomposeVerbTest(unittest.TestCase):
             spec_path.write_text(json.dumps(spec), encoding="utf-8")
 
             runner = FakeRunner([
+                (["project", "field-list", "1", "--owner", "o"], _decompose_field_list()),
                 (["issue", "edit", "182", "--repo", "o/r", "--body-file"],
                  _ok("https://github.com/o/r/issues/182\n")),
                 (["issue", "create", "--repo", "o/r", "--parent", "182", "--title", "core"],
@@ -2511,6 +2910,7 @@ class DecomposeVerbTest(unittest.TestCase):
             spec_path.write_text(json.dumps(spec), encoding="utf-8")
 
             runner = FakeRunner([
+                (["project", "field-list", "1", "--owner", "o"], _decompose_field_list()),
                 (["issue", "edit", "182", "--repo", "o/r", "--body-file"],
                  _ok("https://github.com/o/r/issues/182\n")),
                 # single-task: parent takes its own spec-level complexity
@@ -2551,6 +2951,7 @@ class DecomposeVerbTest(unittest.TestCase):
                         "removed_labels": []}
 
             runner = FakeRunner([
+                (["project", "field-list", "1", "--owner", "o"], _decompose_field_list()),
                 (["issue", "edit", "182", "--repo", "o/r", "--body-file"],
                  _ok("https://github.com/o/r/issues/182\n")),
             ])
@@ -2572,6 +2973,7 @@ class DecomposeVerbTest(unittest.TestCase):
             spec_path.write_text(json.dumps(spec), encoding="utf-8")
 
             runner = FakeRunner([
+                (["project", "field-list", "1", "--owner", "o"], _decompose_field_list()),
                 (["issue", "edit", "182", "--repo", "o/r", "--body-file"],
                  _ok("https://github.com/o/r/issues/182\n")),
             ])
@@ -2583,6 +2985,48 @@ class DecomposeVerbTest(unittest.TestCase):
                                         deboard=lambda number, board, ctx, run: {"issue": number, "deboarded": False})
             spy.assert_not_called()
             self.assertIsNone(out["parent_posture"])
+
+    def test_decompose_always_stamps_planned_never_ready_for_work(self) -> None:
+        # #321: verb_decompose must never target ready_for_work — the human
+        # approval stamp. The transition already hardcodes the "planned"
+        # string literal (no spec key reaches it); this test pins that
+        # invariant for every spec shape, including one carrying a `posture`
+        # and a `complexity`, rather than adding a runtime guard on a
+        # constant no refactor has proposed.
+        specs = [
+            {"body_file": "parent.md", "sub_issues": []},
+            {"body_file": "parent.md", "posture": "autonomous", "complexity": "high",
+             "sub_issues": []},
+        ]
+        for spec in specs:
+            with self.subTest(spec=spec):
+                with tempfile.TemporaryDirectory() as d:
+                    root = Path(d)
+                    (root / "parent.md").write_text("parent", encoding="utf-8")
+                    spec_path = root / "spec.json"
+                    spec_path.write_text(json.dumps(spec), encoding="utf-8")
+
+                    seen = {}
+
+                    def fake_set_status(parent, stage, ctx, run, force=False):
+                        seen["call"] = (parent, stage)
+                        return {"issue": parent, "stage": stage, "previous_stage": None}
+
+                    runner = FakeRunner([
+                        (["project", "field-list", "1", "--owner", "o"], _decompose_field_list()),
+                        (["issue", "edit", "182", "--repo", "o/r", "--body-file"],
+                         _ok("https://github.com/o/r/issues/182\n")),
+                    ])
+                    with mock.patch.object(
+                            lb, "read_board_config",
+                            return_value=lb.BoardConfig(owner="o", number=1, source="committed")), \
+                         mock.patch.object(lb, "apply_complexity_label"), \
+                         mock.patch.object(lb, "apply_posture_label"):
+                        lb.verb_decompose(182, str(spec_path), _ctx(str(root)), runner,
+                                          set_status=fake_set_status,
+                                          deboard=lambda number, board, ctx, run: {
+                                              "issue": number, "deboarded": False})
+                    self.assertEqual(seen["call"], (182, "planned"))
 
 
 class ComplexityLabelGuardrailTest(unittest.TestCase):
@@ -2857,6 +3301,66 @@ class GroomVerifyVerbTest(unittest.TestCase):
                 out = lb.verb_groom_verify(182, _ctx(str(d)), runner, deboard=None)
             self.assertTrue(out["groomed"])
             self.assertEqual(out["warnings"], [])
+
+    def test_approved_false_on_a_freshly_decomposed_item(self) -> None:
+        # #321: a groomed-but-not-yet-approved item (fresh --decompose, still
+        # at `planned`) is the normal, expected state — exit 0 with
+        # approved: false, not a verify failure.
+        with tempfile.TemporaryDirectory() as d:
+            out = self._run(Path(d), "planned", [])
+            self.assertTrue(out["groomed"])
+            self.assertFalse(out["approved"])
+
+    def test_approved_true_once_stamped_ready_for_work(self) -> None:
+        with tempfile.TemporaryDirectory() as d:
+            out = self._run(Path(d), "ready_for_work", [])
+            self.assertTrue(out["groomed"])
+            self.assertTrue(out["approved"])
+
+    def test_approved_true_for_every_stage_at_or_past_ready_for_work(self) -> None:
+        for stage in ("ready_for_work", "in_progress", "in_review", "done"):
+            with self.subTest(stage=stage):
+                with tempfile.TemporaryDirectory() as d:
+                    out = self._run(Path(d), stage, [])
+                    self.assertTrue(out["approved"])
+
+    def test_approved_and_cleared_are_independent_fields(self) -> None:
+        # #321: `approved` (work-entry authority) and `cleared` (unattended-
+        # execution authority) are orthogonal — pin that a ticket can be
+        # approved without being cleared (no autonomous posture label) and
+        # that `cleared`'s own posture-fusion semantics are untouched by the
+        # new field, assert by the posture category it depends on, not a
+        # frozen literal.
+        with tempfile.TemporaryDirectory() as d:
+            approved_not_cleared = self._run(Path(d), "ready_for_work", [])
+            self.assertTrue(approved_not_cleared["approved"])
+            self.assertFalse(approved_not_cleared["cleared"])
+
+            cleared_not_approved = self._run(Path(d), "planned", [],
+                                             labels=["posture:autonomous"])
+            self.assertFalse(cleared_not_approved["approved"])
+            self.assertTrue(cleared_not_approved["cleared"])
+
+    def test_cleared_semantics_unchanged_by_the_approved_field(self) -> None:
+        # Regression: `cleared` must remain `groomed and posture ==
+        # "autonomous"` — byte-identical behavior — for every stage/posture
+        # combination, now that `approved` rides alongside it. Assert by the
+        # posture category the field is documented to depend on (per repo
+        # policy: category, not a frozen literal).
+        cases = [
+            ("planned", (), False),
+            ("planned", ("posture:autonomous",), True),
+            ("ready_for_work", (), False),
+            ("ready_for_work", ("posture:autonomous",), True),
+            ("brainstormed", ("posture:autonomous",), False),  # not groomed
+        ]
+        with tempfile.TemporaryDirectory() as d:
+            for stage, labels, expected_cleared in cases:
+                with self.subTest(stage=stage, labels=labels):
+                    out = self._run(Path(d), stage, [], labels=list(labels))
+                    self.assertEqual(out["cleared"], expected_cleared)
+                    self.assertEqual(out["cleared"],
+                                     out["groomed"] and out["posture"] == "autonomous")
 
 
 class PacketVerbTest(unittest.TestCase):

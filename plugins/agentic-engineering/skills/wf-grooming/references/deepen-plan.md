@@ -16,7 +16,10 @@ improves evidence and sequencing without turning planning into implementation.
    `lifecycle_board.py --gate orchestrate --issue <N>`. If implementation has
    started (`in_progress`, `in_review`, or `done`), do not rewrite scope or
    regress Status; stop and route the proposed change through the owning
-   development/delivery workflow.
+   development/delivery workflow. If the item is at `ready_for_work`, a human
+   has already approved it: regressing it discards that approval stamp, so stop
+   and surface the proposed change to the approver rather than rewriting scope
+   unilaterally — a re-approval is required before work may start again.
 2. Classify the proposed edits. Evidence and wording improvements may retain
    `planned`; any material scope, acceptance, validation, dependency, security,
    or provenance change invalidates the existing readiness attestation. Before

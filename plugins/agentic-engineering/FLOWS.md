@@ -101,22 +101,26 @@ stateDiagram-v2
     stub --> brainstormed: wf-grooming brainstorm route
     stub --> planned: wf-grooming plan route
     brainstormed --> planned: wf-grooming plan route
-    planned --> in_progress: wf-development claim
+    planned --> ready_for_work: human approval stamp
+    ready_for_work --> in_progress: wf-development claim
     in_progress --> in_review: wf-development opens PR
     in_review --> done: merge automation
 
     stub --> abandoned
     brainstormed --> abandoned
     planned --> abandoned
+    ready_for_work --> abandoned
     in_progress --> abandoned
     in_review --> abandoned
     done --> abandoned
 ```
 
 `done` is the terminal successful ticket state and `abandoned` is the explicit off-ramp.
-Deployment/publication remains native delivery evidence, while compounding is a mandatory pre-merge
-disposition against the current PR head. The lifecycle reference under `wf-setup` defines entry
-gates, writer contracts, claims, and the closed repair set.
+`ready_for_work` is a human approval stamp, not a `wf-grooming` write — `planned` is grooming's
+ceiling, and no agent path advances an issue past it. Deployment/publication remains native
+delivery evidence, while compounding is a mandatory pre-merge disposition against the current PR
+head. The lifecycle reference under `wf-setup` defines entry gates, writer contracts, claims, agent
+write scope, and the closed repair set.
 
 ## Setup flow
 
