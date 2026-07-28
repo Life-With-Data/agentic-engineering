@@ -106,14 +106,14 @@ Beads is **not** a tracker and is in no way a source of truth for managing tasks
 
 #### Lifecycle
 
-In `github-project` mode, every work item flows through seven stages on the board's built-in Status field:
+In `github-project` mode, every work item flows through eight stages on the board's built-in Status field:
 
 ```
-stub → brainstormed → planned → in_progress → in_review → done
-                                                            ↘ abandoned (off-ramp)
+stub → brainstormed → planned → ready_for_work → in_progress → in_review → done
+                                                                             ↘ abandoned (off-ramp)
 ```
 
-`planned` is the trusted readiness attestation: the current issue and its sub-issues contain implementation-ready scope, acceptance and validation criteria, dependencies, and applicable security or provenance considerations. `done` means the accepted repository work merged and the issue closed; `abandoned` is reachable from any stage. Deployment/publication uses native delivery evidence, and compounding is a mandatory pre-merge disposition rather than another Status value. Each transition has exactly one writer, and a shared reconciler applies a closed repair set. The full vocabulary — stages, writer contracts, entry-gate verdicts, claim semantics, and security invariants — lives in the [`wf-setup` lifecycle reference](skills/wf-setup/references/lifecycle.md), which workflow routers load when lifecycle state matters. Humans and agents have parity: assign yourself and drag a card to `in_progress` (the drag is the claim), or run `--claim`; manual card order in views is decorative (the API cannot read it).
+`planned` is grooming's readiness attestation: the current issue and its sub-issues contain implementation-ready scope, acceptance and validation criteria, dependencies, and applicable security or provenance considerations. It is grooming's ceiling, not the work-entry floor — `ready_for_work` is a separate human approval stamp that no agent path writes, and every work-entry gate compares against it. `done` means the accepted repository work merged and the issue closed; `abandoned` is reachable from any stage. Deployment/publication uses native delivery evidence, and compounding is a mandatory pre-merge disposition rather than another Status value. Each transition has exactly one writer, and a shared reconciler applies a closed repair set. The full vocabulary — stages, writer contracts, entry-gate verdicts, claim semantics, agent write scope, and security invariants — lives in the [`wf-setup` lifecycle reference](skills/wf-setup/references/lifecycle.md), which workflow routers load when lifecycle state matters. Humans and agents have parity for the claim: assign yourself and drag a card to `in_progress` (the drag is the claim), or run `--claim`; manual card order in views is decorative (the API cannot read it). Approval has no such parity — only a human drags a card to `ready_for_work` or runs `--set-status ready_for_work --force`.
 
 ## MCP Servers
 

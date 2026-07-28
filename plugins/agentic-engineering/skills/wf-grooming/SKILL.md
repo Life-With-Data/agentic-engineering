@@ -67,7 +67,9 @@ delegation](../wf-development/references/subagent-delegation.md).
 
 Grooming is complete only when the request is unambiguous, acceptance and validation criteria are explicit, repository capabilities have been consulted, and the work item is ready for `wf-development`. For bugs, the reproduction evidence is mandatory. Grooming never claims implementation work or edits product code.
 
-In Project mode, grooming is complete only when `--groom-verify <N>` passes — `Status >= planned` on read-back, where the `--decompose` write is the attestation, not the prose judgment; the [plan route](references/workflows-plan.md) owns that mechanics. In an unconfigured repository (`no_board`), make no tracker claim. The groomed PARENT is what becomes ready and claimable for `wf-development`; its sub-issues are task units and must never be described individually as ready for development, and a sub-issue's board Status is never a readiness signal.
+In Project mode, grooming is complete only when `--groom-verify <N>` passes — `Status >= planned` on read-back, where the `--decompose` write is the attestation, not the prose judgment; the [plan route](references/workflows-plan.md) owns that mechanics. In an unconfigured repository (`no_board`), make no tracker claim.
+
+Groomed is not claimable. `planned` is grooming's ceiling, not `wf-development`'s floor: the groomed PARENT becomes claimable only once a human stamps `ready_for_work` — an approval no agent path performs, detailed in the `wf-setup` [lifecycle reference](../wf-setup/references/lifecycle.md#agent-write-scope-and-the-approval-seam). End a grooming run at `planned` by reporting that the item awaits that stamp, never by claiming it is ready for development. Its sub-issues are task units and must never be described individually as ready for development, and a sub-issue's board Status is never a readiness signal.
 
 ## Wrong-layer recovery
 

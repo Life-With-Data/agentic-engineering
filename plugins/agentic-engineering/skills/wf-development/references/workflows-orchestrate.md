@@ -21,13 +21,18 @@ do not restate stop reasons here or elsewhere — link to it instead.
 
 ## Delivery posture
 
-Autonomous execution of a claimed work item is gated on two independent
-things, not one:
+Autonomous execution of a claimed work item is gated on three independent
+things, not two:
 
-Hands-off execution requires **both** grooming attestation (`Status >=
-planned`, verifiable with `--groom-verify N`) **and** the ticket's autonomous
-clearance (a `posture:autonomous` label, or an overriding per-invocation
-token). Either one alone is not enough.
+Hands-off execution requires **all three**: a human's approval stamp
+(`Status >= ready_for_work`, verifiable as `approved` on `--groom-verify N`),
+grooming attestation (`Status >= planned`, verifiable as `groomed` on the same
+call), **and** the ticket's autonomous clearance (a `posture:autonomous`
+label, or an overriding per-invocation token). Any one missing is not enough.
+
+Who may grant the approval, and why an agent cannot, is defined once in the
+`wf-setup` [lifecycle reference](../../wf-setup/references/lifecycle.md#agent-write-scope-and-the-approval-seam);
+this document does not restate it.
 
 Clearance itself resolves from three sources in a fixed order, stated in full
 exactly once:
@@ -40,21 +45,25 @@ by relative path rather than restating it.
 
 ### Reading the posture
 
-Both halves of the gate come from **one** call, already machine-fused — do not
-reassemble the conjunction from labels plus Status by hand:
+All three parts of the gate come from **one** call, already machine-read — do
+not reassemble the conjunction from labels plus Status by hand:
 
 ```bash
 python3 "<skill-directory>/scripts/lifecycle_board.py" --groom-verify <parent>
 ```
 
-Branch on its output. Each row reads one field; none re-derives what a
-`posture:*` label means:
+Branch on its output, checking `approved` **first**: `cleared` folds in
+`groomed` (attestation) and `posture`, but not `approved` — a `planned`,
+autonomous-labeled, not-yet-approved ticket reads `cleared: true` even though
+work must not start. Reading `cleared` without `approved` would silently
+reintroduce the self-approval gap this stage closed:
 
 | Read | Meaning |
 |------|---------|
-| `cleared: true` | Attested **and** ticket-cleared. Sufficient authority to proceed hands-off. |
-| `cleared: false`, `posture_source: "ticket"` | The ticket decided. Standard posture; the repository default does **not** apply. |
-| `cleared: false`, `posture_source: "unset"` | The ticket said nothing. Fall back to the preflight JSON's `delivery_mode_resolved` — and only when `groomed` is true. |
+| `approved: false` | Not yet approved (`Status < ready_for_work`) — route to the human for the approval stamp, regardless of `cleared`. |
+| `approved: true`, `cleared: true` | Approved, attested, **and** ticket-cleared. Sufficient authority to proceed hands-off. |
+| `approved: true`, `cleared: false`, `posture_source: "ticket"` | Approved, but the ticket decided standard posture; the repository default does **not** apply. |
+| `approved: true`, `cleared: false`, `posture_source: "unset"` | Approved; the ticket said nothing. Fall back to the preflight JSON's `delivery_mode_resolved` — and only when `groomed` is true. |
 
 **`cleared: false` is not by itself a denial.** It is label-derived: the engine
 sees neither the repository default nor per-invocation tokens, so a consumer
@@ -94,10 +103,12 @@ is the trust boundary, and it is worth stating plainly because nothing about a
 label *looks* like a privilege grant.
 
 **The conjunction is the defense.** A label alone grants nothing: hands-off
-execution also requires `Status >= planned`, and Project Status is a separate
-write scope from repository labels. Label-add privilege plus the grooming
-attestation is the pair — which is exactly what the engine reports fused as
-`cleared`.
+execution also requires grooming attestation (`Status >= planned`) **and** a
+human's separate approval (`Status >= ready_for_work`), and Project Status is
+a write scope no label-add privilege reaches. Label-add privilege plus
+grooming attestation is the pair the engine reports fused as `cleared` — but
+`cleared` alone is still not enough to proceed; see [reading the
+posture](#reading-the-posture) above for why `approved` gates ahead of it.
 
 Two standard escalation paths must therefore **never** attach
 `posture:autonomous`:
@@ -134,36 +145,45 @@ because the grooming decisions that filled it were.
 Use the GitHub issue/project state and explicitly supplied artifacts.
 
 - Ungroomed request or unreproduced bug: route to `wf-grooming`.
-- Planned, unclaimed work: continue with `wf-development`.
+- Planned but not yet approved (`Status == planned`): route to the human for
+  the `ready_for_work` approval stamp. Grooming's job already ended here —
+  see [grooming's completion boundary](../../wf-grooming/SKILL.md#completion-boundary).
+  Do not stamp it and do not describe it as ready for development.
+- Approved, unclaimed work (`Status >= ready_for_work`): continue with
+  `wf-development`.
 - Implemented change: route to `wf-testing`.
 - Verified change: route to `wf-review`.
 - Review-ready PR: route to `wf-delivery`.
 - A current PR needing its required knowledge-disposition check: route to
   `wf-documentation` before delivery merges it.
 
-Only the "Planned, unclaimed work" and "Ungroomed request" branches above
-depend on the [resolved posture](#delivery-posture) and its
-attestation-AND-clearance gate. Resolve them against all four combinations of
-groomed/un-groomed input and cleared/not-cleared posture. The **Clearance**
-column below is the *ticket's* clearance (`posture`), not the fused `cleared`
-field — `cleared` already folds in the attestation, so it is necessarily
-`false` on both un-groomed rows. Reading only `cleared` still routes those rows
-correctly, to the human:
+Only the "Approved, unclaimed work", "Ungroomed request", and "Planned but not
+yet approved" branches above depend on the [resolved posture](#delivery-posture)
+and its approval-attestation-AND-clearance gate. Resolve them against all four
+combinations of approved/not-approved input and cleared/not-cleared posture.
+The **Clearance** column below is the *ticket's* clearance (`posture`), not
+the fused `cleared` field. Unlike before this stage existed, `cleared` is
+**not** necessarily false on a not-approved row: a `planned`,
+autonomous-labeled ticket reads `cleared: true` (attestation and label are
+both satisfied) even though no human has approved it — which is exactly why
+the table branches on approval before it ever consults posture:
 
 | Input | Clearance | Behavior |
 |-------|-----------|----------|
-| Groomed (`Status >= planned`) | cleared | Proceed hands-off through implementation -> review -> delivery. |
-| Groomed | not cleared | Standard: plan approval, findings triage, merge `[y/N]`. |
-| Un-groomed | cleared | Route to `wf-grooming` **with the human**. Clearance does not survive a missing contract. |
-| Un-groomed | not cleared | Route to `wf-grooming` with the human (today's behavior). |
+| Approved (`Status >= ready_for_work`) | cleared | Proceed hands-off through implementation -> review -> delivery. |
+| Approved | not cleared | Standard: plan approval, findings triage, merge `[y/N]`. |
+| Not approved (ungroomed, or `planned` awaiting the approval stamp) | cleared | Route to the human regardless of posture — to `wf-grooming` if ungroomed, or for the `ready_for_work` stamp if already `planned`. Clearance does not survive a missing approval. |
+| Not approved | not cleared | Route to the human the same way (today's behavior). |
 
-**Un-groomed input routes to the human regardless of posture.** Autonomous
-posture never silently auto-grooms; grooming stays collaborative by
-construction, and a posture label on an un-groomed issue grants nothing.
+**Not-yet-approved input routes to the human regardless of posture.**
+Autonomous posture never silently auto-grooms and never silently
+self-approves; grooming stays collaborative by construction and approval
+stays human-only by construction, so a posture label on an ungroomed or
+unapproved issue grants nothing.
 
-The net new content is narrow: only the `planned` / unclaimed ->
-`wf-development` branch can inherit hands-off execution, and only when the
-resolved posture is autonomous.
+The net new content is narrow: only the approved (`Status >= ready_for_work`)
+/ unclaimed -> `wf-development` branch can inherit hands-off execution, and
+only when the resolved posture is autonomous.
 
 ## Execute
 

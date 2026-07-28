@@ -176,7 +176,7 @@ POSTURE_LABEL_META = {
     "posture:autonomous": (
         "5319E7",
         "Delivery posture: cleared to run implementation -> review -> delivery "
-        "hands-off once Status >= planned",
+        "hands-off once Status >= ready_for_work",
     ),
 }
 
