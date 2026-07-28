@@ -25,6 +25,14 @@ Record in-scope behavior, explicit exclusions, acceptance criteria, validation
 expectations, dependencies, and product decisions. Ask the user only for
 decisions that cannot be resolved from repository evidence or the issue.
 
+Before settling that scope, dispatch the `scope-skeptic` agent to argue the case
+for cutting it — whether the item should exist at all and which proposed work
+earns its place. Grooming already delegates legwork; this is the same pattern.
+Set the sub-agent's model explicitly at dispatch, choosing the lowest tier that
+fits the item's ambiguity. The agent reports; the orchestrator still owns every
+scope decision and every tracker write. Record what the challenge changed, or
+that scope survived it, in the item's exclusions or decisions.
+
 ## Completion
 
 Grooming completes only by handing an unambiguous item to planning or by
