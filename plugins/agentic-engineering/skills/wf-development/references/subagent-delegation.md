@@ -39,12 +39,18 @@ model, never a gate on the work itself.
 
 | Stage | Delegate to sub-agents | Orchestrator retains |
 |---|---|---|
-| Grooming | Codebase reconnaissance, prior-art and learnings research, reproduction attempts | Scope decisions, user interviews, plan readiness, issue writes |
+| Grooming | Codebase reconnaissance, prior-art and learnings research, reproduction attempts, the scope challenge that argues for cutting proposed work | Scope decisions, user interviews, plan readiness, issue writes |
 | Development | Implementation of each planned unit, isolated diagnosis experiments | Decomposition, wave planning, diff verification, gate reruns, board writes |
 | Testing | Test authoring per surface, failure analysis | Test strategy, evidence sufficiency, ready/not-ready verdicts, independent gate rerun |
 | Review | One reviewer per selected review lens | Lens selection, deduplication, severity classification, fix/defer decisions |
 | Delivery | Per-job CI-failure diagnosis, release-note and PR-body drafting | Merge decisions, PR and tracker state writes, release evidence |
 | Documentation | Drafting and per-document review passes | Accuracy validation against source, placement, publication decisions |
+
+Delegating the argument is not delegating the call. Grooming's scope challenge
+is the worked example: a sub-agent argues for cutting proposed work precisely
+because it has no stake in the plan, and the orchestrator still makes every
+scope decision. Read a stage's two columns together rather than as a boundary
+around a topic.
 
 ## Model selection
 
