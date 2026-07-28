@@ -56,9 +56,10 @@ Load only the references needed for the active route.
 
 ## Sub-agent delegation
 
-Delegate codebase reconnaissance, prior-art and learnings research, and
-reproduction attempts to focused sub-agents; the orchestrator retains scope
-decisions, user interviews, plan readiness, and all issue writes. Roles,
+Delegate codebase reconnaissance, prior-art and learnings research, reproduction
+attempts, and the scope challenge that argues for cutting proposed work to
+focused sub-agents; the orchestrator retains scope decisions, user interviews,
+plan readiness, and all issue writes. Roles,
 dispatch, per-unit model selection, verification, and the inline fallback for
 hosts without a sub-agent mechanism are owned by [sub-agent
 delegation](../wf-development/references/subagent-delegation.md).

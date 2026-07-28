@@ -6,7 +6,7 @@ Workflow-guided development tools that get smarter with every use. Make each uni
 
 | Component | Count |
 |-----------|-------|
-| Agents | 32 |
+| Agents | 33 |
 | Skills | 7 |
 | MCP Servers | 1 |
 
@@ -16,7 +16,7 @@ Workflow-guided development tools that get smarter with every use. Make each uni
 
 Agents are organized into categories for easier discovery.
 
-### Review (17)
+### Review (18)
 
 | Agent | Description |
 |-------|-------------|
@@ -36,6 +36,7 @@ Agents are organized into categories for easier discovery.
 | `pattern-recognition-specialist` | Analyze code for patterns and anti-patterns |
 | `performance-oracle` | Performance analysis and optimization |
 | `schema-drift-detector` | Detect unrelated schema.rb changes in PRs |
+| `scope-skeptic` | Argue the case for cutting proposed work during grooming |
 | `security-sentinel` | Security audits and vulnerability assessments |
 
 ### Research (5)

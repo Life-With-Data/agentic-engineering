@@ -66,6 +66,17 @@ The plan must include:
 Tasks should be independently reviewable and small enough to verify. State what
 must change and why; repository operational assets supply exact commands.
 
+Once the tasks are drafted and before persisting them, dispatch the
+`scope-skeptic` agent against the concrete units to argue which ones earn their
+place. The agent reports; the orchestrator still owns every scope decision and
+every tracker write.
+
+Skip this dispatch when the item already carries a recorded scope challenge from
+[workflow groom](workflows-groom.md) and the plan did not materially widen what
+that challenge examined — re-running it on unchanged scope wastes a turn and
+teaches nothing. A plan that grew new units, new configurability, or new surface
+beyond the groomed scope has materially widened and gets challenged again.
+
 ## Persist and track
 
 Put the complete plan in the parent GitHub issue body using the repository's

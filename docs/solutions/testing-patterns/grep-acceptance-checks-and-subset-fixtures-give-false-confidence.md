@@ -149,8 +149,35 @@ under a differently-spelled variant while the test stays green.** As in PR #146,
 independent `integration-boundary-reviewer`, not the implementer's own passing test + negative-proof,
 that caught it.
 
+## Recurrence: the mutation that verifies a guardrail can itself be a no-op (PR #333)
+
+The remedy for everything above is to prove a check can fail — mutate the thing it guards and watch
+it go red. PR #333 added a guardrail pinning a prose dispatch to a section of two workflow
+references, anchored with `source.indexOf("## Persist and track")` and a
+`expect(end).toBeGreaterThan(-1)` guard against a renamed heading slicing the whole file into a
+false pass.
+
+Verifying that guard, the heading was mutated to `## Persist and track it`. The test passed. That
+read as the exact false-pass the guard existed to prevent — but the guard was fine and the
+*mutation* was invalid: `indexOf` still prefix-matches the original string inside the longer one,
+and the section boundary never moved, so nothing had actually been mutated. A genuine rename
+(`## Record and track`) failed at the intended assertion.
+
+The general trap: a mutation only tests an assertion if it changes what that assertion reads. An
+append is not a rename; adding a field is not removing one; reordering is not deleting. When a
+mutation passes, rule out "the mutation was a no-op" before concluding "the check is weak" — and
+never the reverse, because concluding the check is weak leads to rewriting a check that was already
+correct. Confirm the mutation landed (`grep -c` the mutated token) as part of the mutation itself.
+
+Same thesis as the sections above, applied one level up: a verification that cannot distinguish
+present-from-absent gives false confidence, and that includes the verification of a verification.
+
 ## Resources
 
+- Recurrence documented in: [PR #333](https://github.com/Life-With-Data/agentic-engineering/pull/333)
+  — `tests/workflow-skill-architecture.test.ts`, the `scope-skeptic` grooming guardrail. No defect
+  shipped; the invalid mutation was caught during verification, and all four mutations (both
+  dispatches, the dedup condition, a real heading rename) fail the test as intended.
 - Recurrence fixed in: [PR #180](https://github.com/Life-With-Data/agentic-engineering/pull/180)
   (issue #176) — `tests/conversion-policy.test.ts` / `docs/conversion-policy.md`, structural-detection
   hardening driven by `integration-boundary-reviewer`. Secondary catch from the same PR: the plan
