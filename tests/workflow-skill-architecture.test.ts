@@ -21,8 +21,8 @@ const WORKFLOW_REFERENCES: Record<string, string[]> = {
   ],
   "wf-development": [
     "agent-native-architecture", "api-and-interface-design",
-    "debugging-and-error-recovery", "escalation-contract", "frontend-design",
-    "git-worktree", "observability-and-instrumentation", "resolve-parallel",
+    "debugging-and-error-recovery", "escalation-contract",
+    "git-worktree", "observability-and-instrumentation",
     "workflows-orchestrate", "workflows-work",
   ],
   "wf-testing": [
@@ -675,5 +675,98 @@ describe("workflow skill architecture", () => {
     const postureTriggerMentions = landPr.split("resolved delivery posture").length - 1;
     expect(postureTriggerMentions).toBe(2);
     expect(landPr).not.toContain(CHAIN);
+  });
+
+  test("every agent name cited in skill prose resolves to a shipped agent", () => {
+    // Regression guard: `linting-agent` shipped in workflows-work.md for the
+    // life of the file while the actual agent was named `lint`, so an agent
+    // following the instruction could not dispatch it. The valid set is DERIVED
+    // from the agents tree on every run, never a frozen list of spellings
+    // (docs/solutions/testing-patterns/
+    // grep-acceptance-checks-and-subset-fixtures-give-false-confidence.md).
+    const shipped = new Set(
+      recursiveFiles(path.join(PLUGIN, "agents"))
+        .filter((file) => file.endsWith(".md"))
+        .map((file) => path.basename(file, ".md")),
+    );
+
+    // Named in prose as an external component, not a dispatchable plugin agent.
+    const THIRD_PARTY = new Set(["request-filtering-agent"]);
+
+    // English compounds, not names: "sub-agent", "multi-agent". Excluded by the
+    // bound prefix rather than by listing tokens, so a real agent name can
+    // never be silently waived by landing on an allowlist.
+    const GENERIC = /^(?:sub|multi|single|per|non|co|inter|intra|cross)-agent$/;
+
+    const unresolved: string[] = [];
+    for (const file of recursiveFiles(SKILLS).filter((f) => f.endsWith(".md"))) {
+      const source = readFileSync(file, "utf8")
+        .replace(/```[\s\S]*?```/g, "")   // fenced samples are illustrative
+        .replace(/\]\([^)]*\)/g, "")      // link targets are paths, not agents
+        .replace(/name="[^"]*"/g, "");    // XML pattern attributes in examples
+      const where = path.relative(ROOT, file);
+
+      // Arm 1: the canonical `<name>` agent citation form.
+      for (const m of source.matchAll(/`([a-z0-9-]+)`\s+agent\b/g)) {
+        if (!shipped.has(m[1])) unresolved.push(`${where} -> ${m[1]}`);
+      }
+      // Arm 2: bare `<something>-agent` tokens. This arm is what actually
+      // catches the shipped defect, because `linting-agent` was unbackticked.
+      for (const m of source.matchAll(/\b([a-z0-9]+(?:-[a-z0-9]+)*-agent)\b/g)) {
+        const name = m[1];
+        if (shipped.has(name) || THIRD_PARTY.has(name) || GENERIC.test(name)) continue;
+        unresolved.push(`${where} -> ${name}`);
+      }
+    }
+
+    expect(unresolved).toEqual([]);
+  });
+
+  test("skills do not instruct host primitives this plugin cannot rely on", () => {
+    // Removal pin for the Swarm Mode block, which told the agent to call
+    // Teammate({operation:"spawnTeam"}) and Task({team_name:...}) -- APIs that
+    // do not exist, so following the route produced failing tool calls.
+    //
+    // Honest scope: a denylist pins THESE primitives out of the tree; it cannot
+    // catch the next invented API. The control for that class is review, not
+    // this test. Same shape as "active workflow instructions do not invoke
+    // retired flat skills" above.
+    const source = recursiveFiles(SKILLS)
+      .filter((file) => file.endsWith(".md"))
+      .map((file) => readFileSync(file, "utf8"))
+      .join("\n");
+
+    for (const primitive of [
+      "Teammate(",
+      "team_name",
+      "spawnTeam",
+      "requestShutdown",
+    ]) {
+      expect(source).not.toContain(primitive);
+    }
+  });
+
+  test("the migration map never names a reference that no longer exists", () => {
+    // WORKFLOW_SKILLS.md's migration map is a SUBSET of WORKFLOW_REFERENCES by
+    // design -- it records only references that were formerly standalone
+    // skills, so natively-authored ones (design-context, escalation-contract,
+    // subagent-delegation, lifecycle-bootstrap) are legitimately absent.
+    // Asserting equality would erase that distinction; the real invariant is
+    // that the map cannot advertise a deleted file.
+    const doc = readFileSync(path.join(PLUGIN, "WORKFLOW_SKILLS.md"), "utf8");
+    const map = doc.slice(doc.indexOf("## Migration map"));
+    const dangling: string[] = [];
+
+    for (const entry of map.matchAll(
+      /^- `(wf-[a-z]+)`:\s*((?:.|\n(?!\s*-\s|\n))*)/gm,
+    )) {
+      const owner = entry[1];
+      for (const cited of entry[2].matchAll(/`([a-z0-9-]+)`/g)) {
+        const target = path.join(SKILLS, owner, "references", `${cited[1]}.md`);
+        if (!existsSync(target)) dangling.push(`${owner} -> ${cited[1]}`);
+      }
+    }
+
+    expect(dangling).toEqual([]);
   });
 });

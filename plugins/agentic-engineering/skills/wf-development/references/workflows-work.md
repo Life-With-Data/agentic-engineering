@@ -193,7 +193,6 @@ When `verdict == no_board`, the repo has no configured Projects board — lifecy
 |-------|----------|-------------|
 | **Orchestrated** (default, [section](#orchestrated-execution-board-driven)) | Any work the host can delegate to subagents — one tracked sub-issue or many | You own the board/sub-issue state and drive one subagent per sub-issue, looping each to a terminal state before returning. |
 | **Inline** (fallback, below) | The host has no subagent mechanism, or the change is a trivial single edit | You implement each sub-issue directly in this session, closing each as its criteria pass. |
-| **Swarm** ([section](#swarm-mode-optional)) | 5+ independent workstreams needing maximum parallelism | Long-lived teammates self-claim from a shared queue. |
 
 **Orchestrated is the default.** The session's default agent stays the orchestrator and validator — it delegates each work item to a focused subagent whose diff it verifies before accepting, per the [sub-agent delegation](subagent-delegation.md) policy. Even a **single** tracked item benefits — the orchestrator absorbs the retry/verify/unblock loop and returns a finished or verifiably-blocked result, not a half-step. Drop to the Inline loop only when the host has no subagent mechanism or the change is genuinely trivial; under the `wf-development` orchestration route in an autonomous mode (its fully-autonomous default, or `--final-review`), Orchestrated is mandatory for all inputs.
 
@@ -274,24 +273,14 @@ When `verdict == no_board`, the repo has no configured Projects board — lifecy
 
    **Note:** Incremental commits use clean conventional messages without attribution footers. The final Phase 4 commit/PR includes the full attribution.
 
-3. **Follow Existing Patterns**
+3. **Testing note.** Unit tests with mocks prove logic in isolation; integration
+   tests with real objects prove the layers work together - if the change touches
+   callbacks, middleware, or error handling, write both. If a new library import
+   or constructor call was introduced, write at least one smoke test that
+   constructs the real object with representative arguments - this catches API
+   mismatches (wrong kwargs, missing parameters) that mocked unit tests never find.
 
-   - The issue or packet should reference similar code — read those files first.
-   - Match naming conventions exactly.
-   - Reuse existing components where possible.
-   - Follow project coding standards (see CLAUDE.md).
-   - When in doubt, grep for similar implementations.
-
-4. **Test Continuously**
-
-   - Run relevant tests after each significant change.
-   - Don't wait until the end to test.
-   - Fix failures immediately.
-   - Add new tests for new functionality.
-   - **Unit tests with mocks prove logic in isolation. Integration tests with real objects prove the layers work together.** If your change touches callbacks, middleware, or error handling — you need both.
-   - **External library smoke tests**: If you introduced a new library import or constructor call, write at least one test that constructs the real object with representative arguments. This catches API mismatches (wrong kwargs, missing parameters) that unit tests with mocks will never find.
-
-5. **Figma Design Sync** (if applicable)
+4. **Figma Design Sync** (if applicable)
 
    For UI work with Figma designs:
 
@@ -300,7 +289,7 @@ When `verdict == no_board`, the repo has no configured Projects board — lifecy
    - Fix visual differences identified.
    - Repeat until implementation matches design.
 
-6. **Track Progress**
+5. **Track Progress**
    - Keep your tracker updated as you complete tasks — close each sub-issue (`gh issue close <sub> --repo <origin>`) when its criteria pass in board mode; TodoWrite otherwise.
    - Note any blockers or unexpected discoveries.
    - Create new sub-issues if scope expands (see the Orchestrated Execution binding for the follow-on recipe).
@@ -317,7 +306,7 @@ When `verdict == no_board`, the repo has no configured Projects board — lifecy
    # Examples: bin/rails test, npm test, pytest, go test, etc.
 
    # Run linting (per CLAUDE.md)
-   # Use linting-agent before pushing to origin
+   # Use the `lint` agent before pushing to origin
    ```
 
 2. **No open sub-issues** (board mode — REQUIRED before opening a PR)
@@ -373,6 +362,10 @@ When `verdict == no_board`, the repo has no configured Projects board — lifecy
 ### Phase 4: Ship It
 
 The philosophy here: **opening the PR is the `in_review` transition, not a completion event.** The issue stays open. The merge — via `Closes #N` — is what closes the issue, and the built-in "Item closed" automation stamps parent `Status = done`. This command's last board write is `in_review`; it never closes the issue and never writes a terminal stage.
+
+**Protocol pitfalls:**
+- **Don't close the issue at PR creation.** Manually closing at PR-open subverts the merge automation and the reconciler's repairs.
+- **Don't open the PR with open sub-issues.** The parent can't enter `in_review` with open sub-issues; finish or deliberately re-scope them first.
 
 1. **Create Commit**
 
@@ -504,11 +497,9 @@ Worth it even for one sub-issue: the orchestrator absorbs the iteration (retry o
 acceptance, discover and file follow-on work) so the user gets back a *finished or verifiably-
 blocked* result, not a half-step.
 
-**Orchestrated vs Swarm.** Orchestrated = you spawn one short-lived, tightly-scoped subagent per
-sub-issue and verify each result yourself — tight control, ideal for one sub-issue or a modest set. Swarm
-(below) = a team of long-lived teammates self-claim from a shared queue — maximum parallelism for
-5+ independent workstreams. Use Orchestrated by default for tracked sub-issues; escalate to Swarm when
-the set is large and highly parallel.
+**Orchestrated is the default for tracked sub-issues.** You spawn one short-lived, tightly-scoped
+subagent per sub-issue and verify each result yourself - tight control, and it scales from a single
+sub-issue to a full set by running independent waves in parallel (see Procedure below).
 
 ### GitHub binding (the single tracker)
 
@@ -641,111 +632,6 @@ REPORT BACK (your final message = structured result, not prose to a human):
 
 ---
 
-## Swarm Mode (Optional)
-
-For complex plans with multiple independent workstreams, enable swarm mode for parallel execution with coordinated agents.
-
-### When to Use Swarm Mode
-
-| Use Swarm Mode when... | Use Standard Mode when... |
-|------------------------|---------------------------|
-| Plan has 5+ independent tasks | Plan is linear/sequential |
-| Multiple specialists needed (review + test + implement) | Single-focus work |
-| Want maximum parallelism | Simpler mental model preferred |
-| Large feature with clear phases | Small feature or bug fix |
-
-### Enabling Swarm Mode
-
-To trigger swarm execution, say:
-
-> "Make a Task list and launch an army of agent swarm subagents to build this work item"
-
-Or explicitly request: "Use swarm mode for this work"
-
-### Swarm Workflow
-
-When swarm mode is enabled, the workflow changes:
-
-1. **Create Team**
-   ```
-   Teammate({ operation: "spawnTeam", team_name: "work-{timestamp}" })
-   ```
-
-2. **Create Task List with Dependencies**
-   - Parse plan into TaskCreate items
-   - Set up blockedBy relationships for sequential dependencies
-   - Independent tasks have no blockers (can run in parallel)
-
-3. **Spawn Specialized Teammates**
-   ```
-   Task({
-     team_name: "work-{timestamp}",
-     name: "implementer",
-     subagent_type: "general-purpose",
-     prompt: "Claim implementation tasks, execute, mark complete",
-     run_in_background: true
-   })
-
-   Task({
-     team_name: "work-{timestamp}",
-     name: "tester",
-     subagent_type: "general-purpose",
-     prompt: "Claim testing tasks, run tests, mark complete",
-     run_in_background: true
-   })
-   ```
-
-4. **Coordinate and Monitor**
-   - Team lead monitors task completion
-   - Spawn additional workers as phases unblock
-   - Handle plan approval if required
-
-5. **Cleanup**
-   ```
-   Teammate({ operation: "requestShutdown", target_agent_id: "implementer" })
-   Teammate({ operation: "requestShutdown", target_agent_id: "tester" })
-   Teammate({ operation: "cleanup" })
-   ```
-
-Use only the host's documented agent-coordination capability. If the host has
-no team or subagent mechanism, use the inline or orchestrated single-agent
-model; do not require a separately named orchestration skill.
-
----
-
-## Key Principles
-
-### Start Fast, Execute Faster
-
-- Get clarification once at the start, then execute
-- Don't wait for perfect understanding - ask questions and move
-- The goal is to **finish the feature**, not create perfect process
-
-### The Plan is Your Guide
-
-- The issue or packet should reference similar code and patterns
-- Load those references and follow them
-- Don't reinvent - match what exists
-
-### Test As You Go
-
-- Run tests after each change, not at the end
-- Fix failures immediately
-- Continuous testing prevents big surprises
-
-### Quality is Built In
-
-- Follow existing patterns
-- Write tests for new code
-- Run linting before pushing
-- Use reviewer agents for complex/risky changes only
-
-### Ship Complete Features
-
-- Close every sub-issue before opening the PR
-- Don't leave features 80% done
-- A finished feature that ships beats a perfect feature that doesn't
-
 ## Quality Checklist
 
 Before creating PR, verify:
@@ -753,7 +639,7 @@ Before creating PR, verify:
 - [ ] All clarifying questions asked and answered
 - [ ] No open sub-issues on the parent `<N>` (`gh issue view <N> --repo <origin> --json subIssues`), or all TodoWrite scratch items completed (unconfigured) — parent `Status = done` is stamped by the merge automation, never by this command
 - [ ] Tests pass (run project's test command)
-- [ ] Linting passes (use linting-agent)
+- [ ] Linting passes (use the `lint` agent)
 - [ ] Code follows existing patterns
 - [ ] Figma designs match implementation (if applicable)
 - [ ] For UI-affecting changes: before/after (or expected-state) screenshots captured and attached through the repository's mapped delivery process — this is expected evidence, not optional; for non-UI changes this item is N/A
@@ -778,14 +664,3 @@ dispatches its own reviewer sub-agents per selected lens.
 - User explicitly requests thorough review
 
 For most features: tests + linting + following patterns is sufficient.
-
-## Common Pitfalls to Avoid
-
-- **Analysis paralysis** - Don't overthink, read the issue and packet, then execute
-- **Skipping clarifying questions** - Ask now, not after building wrong thing
-- **Ignoring plan references** - The plan has links for a reason
-- **Testing at the end** - Test continuously or suffer later
-- **Forgetting to track progress** - Close sub-issues as you finish them (board configured) or update TodoWrite scratch (unconfigured), or lose track of what's done
-- **Closing the issue at PR creation** - Don't. Opening the PR is the `in_review` transition; the *merge* closes the issue via `Closes #<N>` and the automation stamps parent `Status = done`. Manually closing at PR-open subverts the automation and the reconciler's repairs
-- **Opening the PR with open sub-issues** - The parent can't enter `in_review` with open sub-issues; finish or deliberately re-scope them first
-- **Over-reviewing simple changes** - Save reviewer agents for complex work

@@ -15,10 +15,9 @@ Does not contain: invented repository commands, guessed credentials, product imp
 
 ## Start here
 
-Resolve `<skill-directory>` to the directory containing this `SKILL.md`. All
-scripts used by this workflow are bundled there; do not resolve them through a
-plugin root. Run the strict validator from any path inside the repository
-checkout:
+Scripts are bundled beside this `SKILL.md`; resolve `<skill-directory>` to that
+directory, never through a plugin root. Run the strict validator from any path
+inside the repository checkout:
 
 ```bash
 python3 <skill-directory>/scripts/repository-context.py
@@ -57,4 +56,4 @@ Setup is complete only when:
 
 ## Wrong-layer recovery
 
-`wf-setup` decides what must exist for adoption and readiness. It does not know how a repository builds, tests, deploys, or accesses infrastructure. Inventory repository-owned assets, map suitable existing context directly, interview only for unresolved mechanics, and return here to validate the contract.
+`wf-setup` decides what must exist for adoption and readiness, never how a repository builds, tests, deploys, or accesses infrastructure. Inventory repository-owned assets, map suitable existing context directly, interview only for unresolved mechanics, and return here to validate the contract.
