@@ -41,7 +41,7 @@ jobs:
         run: |
           python3 plugins/agentic-engineering/skills/documentation-health/scripts/doc_health_check.py \
             . --json > doc-health.json || true
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: doc-health-report
