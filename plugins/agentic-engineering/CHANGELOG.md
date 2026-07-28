@@ -5,6 +5,25 @@ All notable changes to the agentic-engineering plugin will be documented in this
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.0.0](https://github.com/Life-With-Data/agentic-engineering/compare/agentic-engineering-v5.4.0...agentic-engineering-v6.0.0) (2026-07-28)
+
+
+### ⚠ BREAKING CHANGES
+
+* **lifecycle:** human approval gate — `ready_for_work` stage between grooming and work ([#336](https://github.com/Life-With-Data/agentic-engineering/issues/336))
+
+### Features
+
+* **grooming:** add scope-skeptic agent that forces YAGNI before code exists ([#333](https://github.com/Life-With-Data/agentic-engineering/issues/333)) ([76f8913](https://github.com/Life-With-Data/agentic-engineering/commit/76f89135b8cf09fde604bf115e1a84cd5691fd31))
+* **lifecycle:** human approval gate — `ready_for_work` stage between grooming and work ([#336](https://github.com/Life-With-Data/agentic-engineering/issues/336)) ([ac5e259](https://github.com/Life-With-Data/agentic-engineering/commit/ac5e259c551ede1a09f603062405b2571d58d944))
+* **lifecycle:** machine-enforce delivery-posture clearance instead of resolving it in prose ([#312](https://github.com/Life-With-Data/agentic-engineering/issues/312)) ([ba81d02](https://github.com/Life-With-Data/agentic-engineering/commit/ba81d02e729a0d8f72c025ce9128377dc514347f))
+* **lifecycle:** two-mode delivery posture - per-ticket autonomous clearance stamped at grooming ([#304](https://github.com/Life-With-Data/agentic-engineering/issues/304)) ([051c690](https://github.com/Life-With-Data/agentic-engineering/commit/051c690cde858dcf38aad920e748499008cc51ac))
+
+
+### Bug Fixes
+
+* **skills:** remove unfollowable workflow instructions and deduplicate router policy ([#317](https://github.com/Life-With-Data/agentic-engineering/issues/317)) ([6fe5f8c](https://github.com/Life-With-Data/agentic-engineering/commit/6fe5f8c2d6e4421f8bfda6e2677bba83e60b6cff))
+
 ## [5.4.0](https://github.com/Life-With-Data/agentic-engineering/compare/agentic-engineering-v5.3.0...agentic-engineering-v5.4.0) (2026-07-22)
 
 
