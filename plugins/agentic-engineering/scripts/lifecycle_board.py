@@ -1391,8 +1391,9 @@ def verb_set_status(issue: int, stage: str, ctx: RepoContext, runner: GhRunner,
     # so an agent that skips the Phase-4 check cannot advance the parent and
     # bury the unfinished sub-issues under the merge → done automation. The
     # data is already in `state`; the reconciler and deliberate operator moves
-    # pass force=True. Only `in_review` is gated — the agent-driven transition
-    # that precedes the burying merge.
+    # pass force=True. This is the `in_review` half of the seam — the
+    # agent-driven transition that precedes the burying merge; `ready_for_work`
+    # is gated separately below.
     if stage == "in_review" and not force and state.open_sub_issues:
         raise BoardError(
             "open_sub_issues",
@@ -1400,6 +1401,15 @@ def verb_set_status(issue: int, stage: str, ctx: RepoContext, runner: GhRunner,
             "in_review until they are terminal",
             "Finish and `--sub-status <sub> done` each open sub-issue (or re-parent/close "
             "out-of-scope ones), then retry. Deliberate override: --force")
+    # Seam gate: `ready_for_work` is the human approval stamp — no agent-driven
+    # path may write it. Mirrors the `in_review` gate above: same shape, same
+    # `--force` escape for the reconciler and deliberate operator moves.
+    if stage == "ready_for_work" and not force:
+        raise BoardError(
+            "approval_required",
+            f"Issue #{issue} cannot be set to ready_for_work by an agent-driven path",
+            "A human drags the card to Ready for Work in the Projects UI, or "
+            "re-runs with --force")
     item_id = state.item_id
     if item_id is None:
         # An archived item now parses as absent (item_id None), so this reaches
@@ -1842,12 +1852,23 @@ def verb_groom_verify(issue: int, ctx: RepoContext, runner: GhRunner,
     reports the EXACT sub-issue and
     with-dependency counts (from the parent's own sub-issue nodes — the
     `.subIssues | length`-style miscount is structurally impossible here).
-    Also fuses both halves of the downstream gate into ONE value: `cleared` is
-    `groomed and posture == "autonomous"` — attested AND cleared, the exact
-    conjunction that authorizes hands-off execution. It exists so the routing
-    boundary reads one field instead of reassembling the conjunction from
-    labels plus Status, which is a safety property that drifts when it lives in
-    two languages at once.
+
+    Reports two independent safety properties, never fused:
+
+      * `approved` = `stage_at_least(stage, "ready_for_work")` — the
+        work-entry authority. It answers "has a human stamped this ready to
+        start?" and is the field a work-entry gate reads. A groomed-but-not-
+        yet-approved item (freshly `--decompose`d, still at `planned`) is
+        normal and expected: `groomed: true, approved: false`.
+      * `cleared` is `groomed and posture == "autonomous"` — the unattended-
+        execution authority. It fuses attestation with *posture*, an
+        orthogonal axis, and answers "may this run hands-off once it starts?"
+
+    A consumer needs BOTH: `approved` to enter work, `cleared` to run it
+    without a human in the loop. Folding `approved` into `cleared` (or vice
+    versa) would overload one field with two independent safety properties —
+    the exact failure mode `cleared`'s own semantics below already guard
+    against.
 
     `cleared` is deliberately LABEL-DERIVED ONLY. This verb sees neither the
     repository `delivery_mode` default (owned by workflow-repo-preflight.py)
@@ -1898,7 +1919,9 @@ def verb_groom_verify(issue: int, ctx: RepoContext, runner: GhRunner,
                            "converges either way"})
     groomed = not failures
     clearance = resolve_clearance(state.labels)
-    return {"issue": issue, "groomed": groomed, "stage": state.stage,
+    return {"issue": issue, "groomed": groomed,
+            "approved": stage_at_least(state.stage, "ready_for_work"),
+            "stage": state.stage,
             **clearance,
             "cleared": groomed and clearance["posture"] == "autonomous",
             "sub_issue_count": len(subs), "sub_issues_with_dependencies": blocked,

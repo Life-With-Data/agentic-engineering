@@ -702,6 +702,59 @@ class SetStatusGateTest(unittest.TestCase):
         self.assertEqual(result["stage"], "in_progress")
 
 
+class SetStatusReadyForWorkGateTest(unittest.TestCase):
+    """#321: the ready_for_work seam gate — verb_set_status refuses to stamp
+    the human approval stage from an agent-driven path, unless force=True.
+    Mirrors SetStatusGateTest's in_review coverage exactly."""
+
+    def setUp(self) -> None:
+        import tempfile
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        root = self._tmp.name
+        (Path(root) / "agentic-engineering.md").write_text(
+            "---\ngithub_project_owner: acme\ngithub_project_number: 1\n---\n", encoding="utf-8")
+        self.ctx = lb.RepoContext(root=root, main_root=root, origin_owner="acme",
+                                  origin_repo="widget", default_branch="main")
+        lb.load_cache = lambda _ctx: {}
+        lb.save_cache = lambda _ctx, _cache: None
+        self._field_list = _ok(json.dumps({"fields": [{"name": "Status", "id": "F",
+            "projectId": "P", "options": [{"id": f"o_{s}", "name": s} for s in lb.STAGES]}]}))
+
+    def _runner_through_fetch(self):
+        return FakeRunner([
+            (["project", "field-list", "1", "--owner", "acme"], self._field_list),
+            (["api", "graphql"], _ok(json.dumps(
+                _issue_query_response(stage="planned", open_subs=[])))),
+        ])
+
+    def test_refuses_ready_for_work_without_force(self) -> None:
+        runner = self._runner_through_fetch()
+        with self.assertRaises(lb.BoardError) as caught:
+            lb.verb_set_status(5, "ready_for_work", self.ctx, runner)
+        self.assertEqual(caught.exception.code, "approval_required")
+        # Refused BEFORE any board write (no item-edit call).
+        self.assertFalse(any(c[:2] == ["project", "item-edit"] for c in runner.calls))
+
+    def test_force_bypasses_the_gate(self) -> None:
+        runner = FakeRunner([
+            (["project", "field-list", "1", "--owner", "acme"], self._field_list),
+            (["api", "graphql"], _ok(json.dumps(
+                _issue_query_response(stage="planned", open_subs=[])))),
+            (["project", "item-edit", "--id", "item5", "--project-id", "P",
+              "--field-id", "F", "--single-select-option-id", "o_ready_for_work"], _ok("{}")),
+        ])
+        result = lb.verb_set_status(5, "ready_for_work", self.ctx, runner, force=True)
+        self.assertEqual(result["stage"], "ready_for_work")
+
+    def test_error_code_distinct_from_open_sub_issues_gate(self) -> None:
+        # The two seam gates must stay independently branchable by callers.
+        runner = self._runner_through_fetch()
+        with self.assertRaises(lb.BoardError) as caught:
+            lb.verb_set_status(5, "ready_for_work", self.ctx, runner)
+        self.assertNotEqual(caught.exception.code, "open_sub_issues")
+
+
 class ClaimVerbTest(unittest.TestCase):
     """End-to-end verb_claim over a FakeRunner: win, two-winner conflict, and
     blocked-refusal. blockedBy rides the bounded node-state shape."""
@@ -2736,6 +2789,47 @@ class DecomposeVerbTest(unittest.TestCase):
             spy.assert_not_called()
             self.assertIsNone(out["parent_posture"])
 
+    def test_decompose_always_stamps_planned_never_ready_for_work(self) -> None:
+        # #321: verb_decompose must never target ready_for_work — the human
+        # approval stamp. The transition already hardcodes the "planned"
+        # string literal (no spec key reaches it); this test pins that
+        # invariant for every spec shape, including one carrying a `posture`
+        # and a `complexity`, rather than adding a runtime guard on a
+        # constant no refactor has proposed.
+        specs = [
+            {"body_file": "parent.md", "sub_issues": []},
+            {"body_file": "parent.md", "posture": "autonomous", "complexity": "high",
+             "sub_issues": []},
+        ]
+        for spec in specs:
+            with self.subTest(spec=spec):
+                with tempfile.TemporaryDirectory() as d:
+                    root = Path(d)
+                    (root / "parent.md").write_text("parent", encoding="utf-8")
+                    spec_path = root / "spec.json"
+                    spec_path.write_text(json.dumps(spec), encoding="utf-8")
+
+                    seen = {}
+
+                    def fake_set_status(parent, stage, ctx, run, force=False):
+                        seen["call"] = (parent, stage)
+                        return {"issue": parent, "stage": stage, "previous_stage": None}
+
+                    runner = FakeRunner([
+                        (["issue", "edit", "182", "--repo", "o/r", "--body-file"],
+                         _ok("https://github.com/o/r/issues/182\n")),
+                    ])
+                    with mock.patch.object(
+                            lb, "read_board_config",
+                            return_value=lb.BoardConfig(owner="o", number=1, source="committed")), \
+                         mock.patch.object(lb, "apply_complexity_label"), \
+                         mock.patch.object(lb, "apply_posture_label"):
+                        lb.verb_decompose(182, str(spec_path), _ctx(str(root)), runner,
+                                          set_status=fake_set_status,
+                                          deboard=lambda number, board, ctx, run: {
+                                              "issue": number, "deboarded": False})
+                    self.assertEqual(seen["call"], (182, "planned"))
+
 
 class ComplexityLabelGuardrailTest(unittest.TestCase):
     """Freeze the complexity-label CATEGORY, not a frozen literal set of tiers.
@@ -3009,6 +3103,66 @@ class GroomVerifyVerbTest(unittest.TestCase):
                 out = lb.verb_groom_verify(182, _ctx(str(d)), runner, deboard=None)
             self.assertTrue(out["groomed"])
             self.assertEqual(out["warnings"], [])
+
+    def test_approved_false_on_a_freshly_decomposed_item(self) -> None:
+        # #321: a groomed-but-not-yet-approved item (fresh --decompose, still
+        # at `planned`) is the normal, expected state — exit 0 with
+        # approved: false, not a verify failure.
+        with tempfile.TemporaryDirectory() as d:
+            out = self._run(Path(d), "planned", [])
+            self.assertTrue(out["groomed"])
+            self.assertFalse(out["approved"])
+
+    def test_approved_true_once_stamped_ready_for_work(self) -> None:
+        with tempfile.TemporaryDirectory() as d:
+            out = self._run(Path(d), "ready_for_work", [])
+            self.assertTrue(out["groomed"])
+            self.assertTrue(out["approved"])
+
+    def test_approved_true_for_every_stage_at_or_past_ready_for_work(self) -> None:
+        for stage in ("ready_for_work", "in_progress", "in_review", "done"):
+            with self.subTest(stage=stage):
+                with tempfile.TemporaryDirectory() as d:
+                    out = self._run(Path(d), stage, [])
+                    self.assertTrue(out["approved"])
+
+    def test_approved_and_cleared_are_independent_fields(self) -> None:
+        # #321: `approved` (work-entry authority) and `cleared` (unattended-
+        # execution authority) are orthogonal — pin that a ticket can be
+        # approved without being cleared (no autonomous posture label) and
+        # that `cleared`'s own posture-fusion semantics are untouched by the
+        # new field, assert by the posture category it depends on, not a
+        # frozen literal.
+        with tempfile.TemporaryDirectory() as d:
+            approved_not_cleared = self._run(Path(d), "ready_for_work", [])
+            self.assertTrue(approved_not_cleared["approved"])
+            self.assertFalse(approved_not_cleared["cleared"])
+
+            cleared_not_approved = self._run(Path(d), "planned", [],
+                                             labels=["posture:autonomous"])
+            self.assertFalse(cleared_not_approved["approved"])
+            self.assertTrue(cleared_not_approved["cleared"])
+
+    def test_cleared_semantics_unchanged_by_the_approved_field(self) -> None:
+        # Regression: `cleared` must remain `groomed and posture ==
+        # "autonomous"` — byte-identical behavior — for every stage/posture
+        # combination, now that `approved` rides alongside it. Assert by the
+        # posture category the field is documented to depend on (per repo
+        # policy: category, not a frozen literal).
+        cases = [
+            ("planned", (), False),
+            ("planned", ("posture:autonomous",), True),
+            ("ready_for_work", (), False),
+            ("ready_for_work", ("posture:autonomous",), True),
+            ("brainstormed", ("posture:autonomous",), False),  # not groomed
+        ]
+        with tempfile.TemporaryDirectory() as d:
+            for stage, labels, expected_cleared in cases:
+                with self.subTest(stage=stage, labels=labels):
+                    out = self._run(Path(d), stage, [], labels=list(labels))
+                    self.assertEqual(out["cleared"], expected_cleared)
+                    self.assertEqual(out["cleared"],
+                                     out["groomed"] and out["posture"] == "autonomous")
 
 
 class PacketVerbTest(unittest.TestCase):
