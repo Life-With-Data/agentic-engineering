@@ -63,7 +63,7 @@ hand-assemble Project mutations.
 | -> `stub` | `wf-grooming` triage, repository maintenance, humans | Create issue, add to Project, `--set-status stub` |
 | -> `brainstormed` | `wf-grooming` brainstorm route | Complete the issue's brainstorm and resolve open questions |
 | -> `planned` | `wf-grooming` planning route | Verify issue/sub-issues, then attest readiness with `--set-status planned` |
-| -> `ready_for_work` | A human — the sole approver; no agent path emits this | Drag the card to `Ready for Work` in the Projects UI, or run `--set-status <N> ready_for_work --force` |
+| -> `ready_for_work` | A human — the sole approver; no agent path emits this | Drag the card to the `ready_for_work` column in the Projects UI, or run `--set-status <N> ready_for_work --force` |
 | -> `in_progress` | `wf-development` work route | `--claim` |
 | -> `in_review` | `wf-development` work route | Open a closing PR, then `--set-status in_review` |
 | -> `done` | Built-in "Item closed" automation | Merge closes the parent issue through `Closes #N` |
@@ -106,19 +106,23 @@ is not an expressible GitHub permission.
 
 An agent therefore holds Projects **Write**, because the engine needs it for
 four transitions: `--decompose` -> `planned`
-(`scripts/lifecycle_board.py:1806`), `--claim` -> `in_progress`
-(`scripts/lifecycle_board.py:2124`), `--set-status` -> `in_review`
-(`scripts/lifecycle_board.py:1376`), and reconciler repairs
-(`scripts/lifecycle_board.py:2310`). Only `-> done` has a non-agent writer —
-GitHub's native "Item closed" automation
-(`scripts/lifecycle_board.py:2941`).
+(`scripts/lifecycle_board.py:1820`), `--claim` -> `in_progress`
+(`scripts/lifecycle_board.py:2152`), `--set-status` -> `in_review`
+(gated at `scripts/lifecycle_board.py:1400`; every Status write lands through
+the single item-edit at `scripts/lifecycle_board.py:1433`), and reconciler
+repairs (`scripts/lifecycle_board.py:2349`). Only `-> done` has a non-agent
+writer — GitHub's native "Item closed" automation
+(`scripts/lifecycle_board.py:2980`).
 
 **So `ready_for_work` is not withheld by permission. It is withheld by the
 engine.** `verb_set_status` raises `approval_required` on any agent-driven
-write to `ready_for_work` (`scripts/lifecycle_board.py:1407`), and `--force`
+write to `ready_for_work` (`scripts/lifecycle_board.py:1410`), and `--claim`
+refuses to enter work below that floor
+(`scripts/lifecycle_board.py:2097`) — so neither the stamp nor the transition
+it guards can be reached by an agent path. `--force`
 makes a deliberate bypass a visible, logged act rather than a silent one.
 This is the same enforcement class as the `in_review` open-sub-issues seam
-gate (`scripts/lifecycle_board.py:1397`), which the lifecycle already relies
+gate (`scripts/lifecycle_board.py:1400`), which the lifecycle already relies
 on for a comparable "an agent must not advance this itself" invariant.
 
 **Do not oversell this.** An agent holding a Projects-write credential that

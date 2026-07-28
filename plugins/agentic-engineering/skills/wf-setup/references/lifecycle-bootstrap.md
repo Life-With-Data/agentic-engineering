@@ -239,6 +239,27 @@ Lifecycle setup is complete only when:
 
 ## Day-two operation and recovery
 
+### A plugin upgrade that adds a lifecycle stage
+
+When a plugin release adds a Status option, every already-configured board is
+missing it until the bootstrap is re-run. `resolve_schema` refuses such a board
+with `option_missing`, so lifecycle verbs hard-error rather than operating on a
+board that cannot represent the stage. This is deliberate, not a regression.
+
+The remedy is the ordinary idempotent bootstrap re-run:
+
+```bash
+python3 "<skill-directory>/scripts/bootstrap_lifecycle_board.py"
+```
+
+It adds only the missing options, preserves every existing option ID by name,
+removes nothing, and moves no items. Re-running it on a current board is a
+no-op. Confirm with `--doctor`, whose `status_options` check reports the
+expected option count.
+
+The `ready_for_work` approval stage was added this way, taking the board from
+seven options to eight.
+
 Re-run doctor after plugin upgrades, board-field or Project-workflow changes,
 repository transfers, forward-binding changes, authentication or secret
 rotation, and before the first real item in a newly configured repository. Run

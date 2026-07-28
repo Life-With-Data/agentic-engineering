@@ -609,13 +609,17 @@ describe("workflow skill architecture", () => {
     // an exact match is the only assertion that can check it. Issue #324
     // (epic #319) superseded the two-part framing #302 froze with a three-part
     // one — a human approval stamp (`ready_for_work`) is now a third
-    // independent precondition alongside attestation and clearance — so this
-    // is the criterion #302's own comment said to update, not a loosening of
-    // the guardrail. It is brittle to re-wrapping by design — if you are
-    // reflowing this paragraph, you are changing something frozen on purpose,
-    // so update the criterion too rather than loosening the test. (A frozen
-    // sentence normally risks a silent false-pass; it cannot here, because the
-    // whole point is that the text is fixed.)
+    // independent precondition alongside attestation and clearance.
+    //
+    // Be honest about what now backs this: #302 mandated its sentence verbatim,
+    // which is what justified a byte-exact assertion. #324 mandated only the
+    // three-part SEMANTICS, not this exact wording — so the string below is the
+    // repository's own prose, and the guardrail is that the three preconditions
+    // stay stated together in one place, not that these bytes are sacred. It
+    // still cannot silently false-pass (a reword breaks the exact match), but a
+    // future reflow should update this assertion rather than treat it as a
+    // frozen external contract. If this paragraph is reworded again, keep the
+    // three named preconditions and re-pin.
     const GATE =
       "Hands-off execution requires **all three**: a human's approval stamp\n" +
       "(`Status >= ready_for_work`, verifiable as `approved` on `--groom-verify N`),\n" +

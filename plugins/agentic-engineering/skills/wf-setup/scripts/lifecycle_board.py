@@ -37,9 +37,10 @@ CLI verbs (used by workflow commands; humans/CI may call them directly):
                                  each sub-issue, wire dependencies, Status=planned
   --groom-verify <N>             groom postcondition: assert stage >= planned — grooming's
                                  ceiling; entering work additionally requires the
-                                 ready_for_work approval stamp. Emits the exact sub-issue +
-                                 blocked counts and the clearance read
-                                 (cleared/posture/posture_source); exit 1 if not groomed
+                                 ready_for_work approval stamp, reported as `approved`.
+                                 Emits the exact sub-issue + blocked counts, `approved`,
+                                 and the clearance read (cleared/posture/posture_source);
+                                 exit 1 if not groomed
   --materialize-packet <N>       refresh generated issue context under git-common-dir
   --delete-packet <N>            delete that exact packet after done/abandoned
 """
@@ -680,8 +681,10 @@ def resolve_schema(board: BoardConfig, ctx: RepoContext, runner: GhRunner,
         raise BoardError(
             "option_missing",
             f"Status field is missing lifecycle options: {', '.join(missing)}",
-            "Re-run the setup bootstrap (it updates options ID-preservingly); "
-            "someone may have renamed options in the project UI",
+            "Usually the plugin added a lifecycle stage and this board predates it "
+            "(less often, an option was renamed in the Projects UI). Re-run "
+            "`python3 <wf-setup skill dir>/scripts/bootstrap_lifecycle_board.py` — it "
+            "adds missing options ID-preservingly and moves no items",
         )
     project_id = payload.get("projectId") or status.get("projectId") or ""
     if not project_id:
@@ -1408,8 +1411,8 @@ def verb_set_status(issue: int, stage: str, ctx: RepoContext, runner: GhRunner,
         raise BoardError(
             "approval_required",
             f"Issue #{issue} cannot be set to ready_for_work by an agent-driven path",
-            "A human drags the card to Ready for Work in the Projects UI, or "
-            "re-runs with --force")
+            "A human drags the card to the `ready_for_work` column in the Projects "
+            "UI, or re-runs with --force")
     item_id = state.item_id
     if item_id is None:
         # An archived item now parses as absent (item_id None), so this reaches
@@ -1757,6 +1760,17 @@ def verb_decompose(issue: Optional[int], spec_path: str, ctx: RepoContext, runne
                              "Write every sub-issue body file before decomposing")
         sub_body_paths.append(sub_body)
 
+    # The board schema is a precondition of step 5's Status write, but it is read
+    # for the first time thousands of lines of GitHub mutation later. Resolve it
+    # HERE, with the other preflights, so a board missing a lifecycle option fails
+    # before the parent and every sub-issue have already been created — a partial
+    # decomposition that no retry can repair, because re-running the same spec
+    # creates duplicates. Persisted to the cache so step 5's own resolve is a hit,
+    # not a second field-list call.
+    _schema_cache = load_cache(ctx)
+    resolve_schema(board, ctx, runner, _schema_cache)
+    save_cache(ctx, _schema_cache)
+
     # 1. Parent: create from the plan, or update an existing parent's body.
     if issue is None:
         res = _run_gh_retry(runner, ["issue", "create", "--repo", ctx.slug,
@@ -2072,6 +2086,20 @@ def verb_claim(issue: int, ctx: RepoContext, runner: GhRunner) -> dict:
             f"Issue #{issue} is a sub-issue of #{state.parent_number} — sub-issues are not "
             "claimed or worked directly; the parent owns the board stage and PR",
             f"Claim and work the parent #{state.parent_number} instead")
+    # Work-entry floor. The approval seam is only real if it binds the verb that
+    # actually ENTERS work: refusing the `ready_for_work` write in verb_set_status
+    # while leaving --claim unguarded would let --decompose -> planned -> --claim
+    # reach in_progress with no human and no --force, which is the exact
+    # self-approval loop this stage exists to close. Refused BEFORE any assignment
+    # write, like the sub-issue refusal above, so an unapproved issue is never
+    # touched. stage_at_least admits in_progress/in_review, so resuming a claim
+    # still works.
+    if not stage_at_least(state.stage, "ready_for_work"):
+        raise BoardError(
+            "approval_required",
+            f"Issue #{issue} is at {state.stage!r} — work requires Status >= ready_for_work",
+            "A human approves it by dragging the card to the `ready_for_work` column in "
+            "the Projects UI, or running --set-status <N> ready_for_work --force")
     if state.assignees and me not in state.assignees:
         decision = decide_claim(state.assignees, me, state.blocked_by_count)
         return {"issue": issue, "claimed": False, "verdict": "claim_conflict", "reason": decision.reason}
@@ -2211,6 +2239,17 @@ def _batched_parent_numbers(numbers: "list[int]", ctx: RepoContext,
 def verb_ready_work(ctx: RepoContext, runner: GhRunner) -> dict:
     board = _require_board(ctx)
     items = _item_list(board, runner, "status:ready_for_work no:assignee")   # call 1
+    if not items:
+        # GitHub's item-list filter does NOT error on an unknown status token — it
+        # returns an empty page, exit 0. On a board that predates a lifecycle stage
+        # that makes "no work is ready" indistinguishable from "this board has no
+        # such column", violating _item_list's own rule that a failed query must
+        # never read as an empty work list. Only an empty result is ambiguous: a
+        # non-empty one proves the option exists, so the hot path keeps its 2-call
+        # budget and only the ambiguous path pays for the (TTL-cached) schema read.
+        _schema_cache = load_cache(ctx)
+        resolve_schema(board, ctx, runner, _schema_cache)
+        save_cache(ctx, _schema_cache)
     # Scope BEFORE the batch: only origin-repo issue numbers may enter the
     # per-number blockedBy query (foreign/PR items would hard-fail it).
     numbers = [n for n in (_origin_issue_number(i, ctx.slug) for i in items) if n is not None]
