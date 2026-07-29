@@ -680,8 +680,7 @@ class SetStatusGateTest(unittest.TestCase):
         self.addCleanup(lambda: setattr(lb, "save_cache", _real_save))
         lb.load_cache = lambda _ctx: {}
         lb.save_cache = lambda _ctx, _cache: None
-        self._field_list = _ok(json.dumps({"fields": [{"name": "Status", "id": "F",
-            "projectId": "P", "options": [{"id": f"o_{s}", "name": s} for s in lb.STAGES]}]}))
+        self._field_list = _ok(json.dumps(_schema_fields_payload()))
 
     def _runner_through_fetch(self, open_subs):
         return FakeRunner([
@@ -755,8 +754,7 @@ class SetStatusReadyForWorkGateTest(unittest.TestCase):
         self.addCleanup(lambda: setattr(lb, "save_cache", _real_save))
         lb.load_cache = lambda _ctx: {}
         lb.save_cache = lambda _ctx, _cache: None
-        self._field_list = _ok(json.dumps({"fields": [{"name": "Status", "id": "F",
-            "projectId": "P", "options": [{"id": f"o_{s}", "name": s} for s in lb.STAGES]}]}))
+        self._field_list = _ok(json.dumps(_schema_fields_payload()))
 
     def _runner_through_fetch(self):
         return FakeRunner([
@@ -817,8 +815,7 @@ class ClaimVerbTest(unittest.TestCase):
         lb.save_cache = lambda _ctx, _cache: None
         self.addCleanup(lambda: (setattr(lb, "load_cache", _orig_load),
                                  setattr(lb, "save_cache", _orig_save)))
-        self._field_list = _ok(json.dumps({"fields": [{"name": "Status", "id": "F",
-            "projectId": "P", "options": [{"id": f"o_{s}", "name": s} for s in lb.STAGES]}]}))
+        self._field_list = _ok(json.dumps(_schema_fields_payload()))
 
     def test_win_path_assigns_confirms_and_sets_status(self) -> None:
         runner = FakeRunner([
@@ -969,8 +966,7 @@ class ReadyWorkVerbTest(unittest.TestCase):
 
     @staticmethod
     def _field_list(stages):
-        return _ok(json.dumps({"fields": [{"name": "Status", "id": "F", "projectId": "P",
-                                           "options": [{"id": f"o_{s}", "name": s} for s in stages]}]}))
+        return _ok(json.dumps(_schema_fields_payload(stages)))
 
     def test_queries_the_ready_for_work_leg_not_planned(self) -> None:
         """The query string IS the behavior: it is what makes --ready-work honor the
@@ -2063,12 +2059,17 @@ class SchemaOptionMissingTest(unittest.TestCase):
         self.ctx = lb.RepoContext(root=".", main_root=".", origin_owner="acme",
                                   origin_repo="widget", default_branch="main")
 
-    def _runner(self, stages):
+    def _runner(self, stages, priority_options=None):
+        fields = [{"name": "Status", "id": "F", "projectId": "P",
+                   "options": [{"id": f"o_{s}", "name": s} for s in stages]}]
+        if priority_options is not False:
+            opts = (priority_options if priority_options is not None
+                    else list(lb.PRIORITY_VALUES))
+            fields.append({"name": "Priority", "id": "F_PRI", "projectId": "P",
+                           "options": [{"id": f"o_{p}", "name": p} for p in opts]})
         return FakeRunner([
             (["project", "field-list", "1", "--owner", "acme"],
-             _ok(json.dumps({"fields": [{"name": "Status", "id": "F", "projectId": "P",
-                                         "options": [{"id": f"o_{s}", "name": s}
-                                                     for s in stages]}]}))),
+             _ok(json.dumps({"fields": fields}))),
         ])
 
     def test_board_missing_any_stage_raises_option_missing(self) -> None:
@@ -2091,6 +2092,22 @@ class SchemaOptionMissingTest(unittest.TestCase):
     def test_a_current_board_resolves(self) -> None:
         schema = lb.resolve_schema(self.board, self.ctx, self._runner(lb.STAGES), {})
         self.assertEqual(set(schema.status_options), set(lb.STAGES))
+        self.assertEqual(set(schema.priority_options), set(lb.PRIORITY_VALUES))
+        self.assertEqual(schema.priority_field_id, "F_PRI")
+
+    def test_board_missing_priority_field_raises_option_missing(self) -> None:
+        runner = self._runner(lb.STAGES, priority_options=False)
+        with self.assertRaises(lb.BoardError) as caught:
+            lb.resolve_schema(self.board, self.ctx, runner, {})
+        self.assertEqual(caught.exception.code, "option_missing")
+        self.assertIn("Priority", str(caught.exception))
+
+    def test_board_missing_priority_option_raises_option_missing(self) -> None:
+        runner = self._runner(lb.STAGES, priority_options=["p1", "p2"])  # no p3
+        with self.assertRaises(lb.BoardError) as caught:
+            lb.resolve_schema(self.board, self.ctx, runner, {})
+        self.assertEqual(caught.exception.code, "option_missing")
+        self.assertIn("p3", str(caught.exception))
 
 
 class FixtureReplayTest(unittest.TestCase):
@@ -2246,7 +2263,7 @@ class ParseCreatedIssueNumberTest(unittest.TestCase):
 
 class DecomposeSpecValidationTest(unittest.TestCase):
     def test_valid_spec_returns_ordered_subs(self) -> None:
-        spec = {"plan_path": "docs/plans/p.md", "sub_issues": [
+        spec = {"plan_path": "docs/plans/p.md", "priority": "p2", "sub_issues": [
             {"title": "a", "body_file": "s1.md"},
             {"title": "b", "body_file": "s2.md", "blocked_by": [0]}]}
         subs = lb.validate_decompose_spec(spec, has_parent=True)
@@ -2254,21 +2271,45 @@ class DecomposeSpecValidationTest(unittest.TestCase):
 
     def test_missing_plan_path_rejected(self) -> None:
         with self.assertRaises(lb.BoardError) as cm:
-            lb.validate_decompose_spec({"sub_issues": []}, has_parent=True)
+            lb.validate_decompose_spec({"priority": "p2", "sub_issues": []}, has_parent=True)
         self.assertEqual(cm.exception.code, "invalid_decompose_spec")
+
+    def test_required_priority_accepted(self) -> None:
+        for value in lb.PRIORITY_VALUES:
+            spec = {"plan_path": "p", "priority": value, "sub_issues": []}
+            self.assertEqual(lb.validate_decompose_spec(spec, has_parent=True), [])
+
+    def test_omitted_or_invalid_priority_rejected(self) -> None:
+        for bad in (
+            {"plan_path": "p", "sub_issues": []},
+            {"plan_path": "p", "priority": None, "sub_issues": []},
+            {"plan_path": "p", "priority": "p0", "sub_issues": []},
+        ):
+            with self.assertRaises(lb.BoardError) as cm:
+                lb.validate_decompose_spec(bad, has_parent=True)
+            self.assertEqual(cm.exception.code, "invalid_decompose_spec")
+            self.assertIn("priority", str(cm.exception))
+
+    def test_sub_level_priority_rejected_with_spec_level_hint(self) -> None:
+        spec = {"plan_path": "p", "priority": "p2", "sub_issues": [
+            {"title": "a", "body_file": "s", "priority": "p1"}]}
+        with self.assertRaises(lb.BoardError) as cm:
+            lb.validate_decompose_spec(spec, has_parent=True)
+        self.assertEqual(cm.exception.code, "invalid_decompose_spec")
+        self.assertIn("spec.priority", str(cm.exception))
 
     def test_forward_and_self_dependency_rejected(self) -> None:
         # forward: sub 0 depends on sub 1 (not yet created)
-        fwd = {"plan_path": "p", "sub_issues": [{"title": "a", "body_file": "s", "blocked_by": [1]}]}
+        fwd = {"plan_path": "p", "priority": "p2", "sub_issues": [{"title": "a", "body_file": "s", "blocked_by": [1]}]}
         # self: sub 0 depends on itself
-        selfdep = {"plan_path": "p", "sub_issues": [{"title": "a", "body_file": "s", "blocked_by": [0]}]}
+        selfdep = {"plan_path": "p", "priority": "p2", "sub_issues": [{"title": "a", "body_file": "s", "blocked_by": [0]}]}
         for bad in (fwd, selfdep):
             with self.assertRaises(lb.BoardError) as cm:
                 lb.validate_decompose_spec(bad, has_parent=True)
             self.assertEqual(cm.exception.code, "invalid_decompose_spec")
 
     def test_parent_title_required_only_when_creating(self) -> None:
-        spec = {"plan_path": "p", "sub_issues": []}
+        spec = {"plan_path": "p", "priority": "p2", "sub_issues": []}
         # creating (no parent number) needs a title
         with self.assertRaises(lb.BoardError):
             lb.validate_decompose_spec(spec, has_parent=False)
@@ -2276,20 +2317,20 @@ class DecomposeSpecValidationTest(unittest.TestCase):
         self.assertEqual(lb.validate_decompose_spec(spec, has_parent=True), [])
 
     def test_valid_complexity_on_parent_and_subs_accepted(self) -> None:
-        spec = {"plan_path": "p", "complexity": "low", "sub_issues": [
+        spec = {"plan_path": "p", "priority": "p2", "complexity": "low", "sub_issues": [
             {"title": "a", "body_file": "s1", "complexity": "high"},
             {"title": "b", "body_file": "s2"}]}  # sub omitting complexity stays valid
         subs = lb.validate_decompose_spec(spec, has_parent=True)
         self.assertEqual(len(subs), 2)
 
     def test_omitted_complexity_still_valid(self) -> None:
-        spec = {"plan_path": "p", "sub_issues": [{"title": "a", "body_file": "s"}]}
+        spec = {"plan_path": "p", "priority": "p2", "sub_issues": [{"title": "a", "body_file": "s"}]}
         # No complexity anywhere is backward compatible — no raise.
         self.assertEqual(len(lb.validate_decompose_spec(spec, has_parent=True)), 1)
 
     def test_out_of_vocabulary_complexity_rejected(self) -> None:
-        parent_bad = {"plan_path": "p", "complexity": "epic", "sub_issues": []}
-        sub_bad = {"plan_path": "p", "sub_issues": [
+        parent_bad = {"plan_path": "p", "priority": "p2", "complexity": "epic", "sub_issues": []}
+        sub_bad = {"plan_path": "p", "priority": "p2", "sub_issues": [
             {"title": "a", "body_file": "s", "complexity": "huge"}]}
         for bad in (parent_bad, sub_bad):
             with self.assertRaises(lb.BoardError) as cm:
@@ -2298,17 +2339,17 @@ class DecomposeSpecValidationTest(unittest.TestCase):
 
     def test_valid_posture_on_parent_accepted(self) -> None:
         for value in ("standard", "autonomous"):
-            spec = {"plan_path": "p", "posture": value, "sub_issues": [
+            spec = {"plan_path": "p", "priority": "p2", "posture": value, "sub_issues": [
                 {"title": "a", "body_file": "s"}]}
             subs = lb.validate_decompose_spec(spec, has_parent=True)
             self.assertEqual(len(subs), 1)
 
     def test_omitted_posture_still_valid(self) -> None:
-        spec = {"plan_path": "p", "sub_issues": [{"title": "a", "body_file": "s"}]}
+        spec = {"plan_path": "p", "priority": "p2", "sub_issues": [{"title": "a", "body_file": "s"}]}
         self.assertEqual(len(lb.validate_decompose_spec(spec, has_parent=True)), 1)
 
     def test_out_of_vocabulary_posture_rejected(self) -> None:
-        spec = {"plan_path": "p", "posture": "yolo", "sub_issues": []}
+        spec = {"plan_path": "p", "priority": "p2", "posture": "yolo", "sub_issues": []}
         with self.assertRaises(lb.BoardError) as cm:
             lb.validate_decompose_spec(spec, has_parent=True)
         self.assertEqual(cm.exception.code, "invalid_decompose_spec")
@@ -2317,7 +2358,7 @@ class DecomposeSpecValidationTest(unittest.TestCase):
         # Posture governs the claimed PARENT across implement->review->deliver,
         # never an individual sub-issue — a hint must name the spec-level fix,
         # not silently ignore an author's mistaken placement.
-        spec = {"plan_path": "p", "sub_issues": [
+        spec = {"plan_path": "p", "priority": "p2", "sub_issues": [
             {"title": "a", "body_file": "s", "posture": "autonomous"}]}
         with self.assertRaises(lb.BoardError) as cm:
             lb.validate_decompose_spec(spec, has_parent=True)
@@ -2723,18 +2764,44 @@ class DeboardSubissueHelperTest(unittest.TestCase):
         self.assertIn("error", out)
 
 
+def _schema_fields_payload(stages=None):
+    """Status + Priority field-list payload for resolve_schema hermetic tests."""
+    stages = list(lb.STAGES if stages is None else stages)
+    return {"fields": [
+        {"name": "Status", "id": "F", "projectId": "P",
+         "options": [{"id": f"o_{s}", "name": s} for s in stages]},
+        {"name": "Priority", "id": "F_PRI", "projectId": "P",
+         "options": [{"id": f"o_{p}", "name": p} for p in lb.PRIORITY_VALUES]},
+    ]}
+
+
 def _decompose_field_list() -> "subprocess.CompletedProcess[str]":
     """The `project field-list` response verb_decompose's schema preflight
     reads before its first mutation. set_status is faked in these tests, so
     this is the only resolve_schema call they ever make."""
-    return _ok(json.dumps({"fields": [{"name": "Status", "id": "F",
-        "projectId": "P", "options": [{"id": f"o_{s}", "name": s} for s in lb.STAGES]}]}))
+    return _ok(json.dumps(_schema_fields_payload()))
+
+
+def _spec_priority(spec: dict, priority: str = "p2") -> dict:
+    """Ensure a decompose spec carries required parent priority (test helper)."""
+    out = dict(spec)
+    out.setdefault("priority", priority)
+    return out
 
 
 class DecomposeVerbTest(unittest.TestCase):
     """The effectful decompose verb, driven by an argv-recording FakeRunner and
     an injected set_status seam. Proves the create->wire->stamp sequence and that
     sub-issue numbers come from gh's returned URLs (not positional guessing)."""
+
+    def setUp(self) -> None:
+        # Priority write is covered by dedicated tests; other decompose cases
+        # stub it so FakeRunner sequences stay focused on issue create/wire.
+        self._priority_patch = mock.patch.object(
+            lb, "apply_priority_field",
+            return_value={"item_id": "IT_1", "priority": "p2"})
+        self._priority_patch.start()
+        self.addCleanup(self._priority_patch.stop)
 
     def test_updates_parent_creates_subs_wires_deps_and_stamps(self) -> None:
         with tempfile.TemporaryDirectory() as d:
@@ -2744,7 +2811,7 @@ class DecomposeVerbTest(unittest.TestCase):
             plan.write_text("---\ntitle: t\n---\n\nbody\n", encoding="utf-8")
             (root / "s1.md").write_text("sub1", encoding="utf-8")
             (root / "s2.md").write_text("sub2", encoding="utf-8")
-            spec = {"body_file": "docs/plans/p.md", "sub_issues": [
+            spec = {"body_file": "docs/plans/p.md", "priority": "p2", "sub_issues": [
                 {"title": "core", "body_file": "s1.md"},
                 {"title": "follow", "body_file": "s2.md", "blocked_by": [0]}]}
             spec_path = root / "spec.json"
@@ -2797,7 +2864,7 @@ class DecomposeVerbTest(unittest.TestCase):
             root = Path(d)
             (root / "p.md").write_text("body", encoding="utf-8")
             (root / "s1.md").write_text("sub1", encoding="utf-8")
-            spec = {"body_file": "p.md", "sub_issues": [{"title": "core", "body_file": "s1.md"}]}
+            spec = {"body_file": "p.md", "priority": "p2", "sub_issues": [{"title": "core", "body_file": "s1.md"}]}
             spec_path = root / "spec.json"
             spec_path.write_text(json.dumps(spec), encoding="utf-8")
             runner = FakeRunner([
@@ -2840,7 +2907,7 @@ class DecomposeVerbTest(unittest.TestCase):
             root = Path(d)
             (root / "parent.md").write_text("parent", encoding="utf-8")
             (root / "s1.md").write_text("first", encoding="utf-8")
-            spec = {"body_file": "parent.md", "sub_issues": [
+            spec = {"body_file": "parent.md", "priority": "p2", "sub_issues": [
                 {"title": "first", "body_file": "s1.md"},
                 {"title": "missing", "body_file": "s2.md"}]}
             spec_path = root / "spec.json"
@@ -2863,7 +2930,7 @@ class DecomposeVerbTest(unittest.TestCase):
             (root / "s2.md").write_text("sub2", encoding="utf-8")
             # Parent spec-level complexity is `low`, but children are high+low, so
             # the parent ROLLUP must be `high` (max child), not the spec-level value.
-            spec = {"body_file": "parent.md", "complexity": "low", "sub_issues": [
+            spec = {"body_file": "parent.md", "priority": "p2", "complexity": "low", "sub_issues": [
                 {"title": "core", "body_file": "s1.md", "complexity": "high"},
                 {"title": "follow", "body_file": "s2.md", "blocked_by": [0], "complexity": "low"}]}
             spec_path = root / "spec.json"
@@ -2913,7 +2980,7 @@ class DecomposeVerbTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             root = Path(d)
             (root / "parent.md").write_text("parent", encoding="utf-8")
-            spec = {"body_file": "parent.md", "complexity": "medium", "sub_issues": []}
+            spec = {"body_file": "parent.md", "priority": "p2", "complexity": "medium", "sub_issues": []}
             spec_path = root / "spec.json"
             spec_path.write_text(json.dumps(spec), encoding="utf-8")
 
@@ -2943,7 +3010,7 @@ class DecomposeVerbTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             root = Path(d)
             (root / "parent.md").write_text("parent", encoding="utf-8")
-            spec = {"body_file": "parent.md", "posture": "autonomous", "sub_issues": []}
+            spec = {"body_file": "parent.md", "priority": "p2", "posture": "autonomous", "sub_issues": []}
             spec_path = root / "spec.json"
             spec_path.write_text(json.dumps(spec), encoding="utf-8")
 
@@ -2951,32 +3018,72 @@ class DecomposeVerbTest(unittest.TestCase):
 
             def fake_set_status(parent, stage, ctx, run, force=False):
                 order.append("set_status")
-                return {"issue": parent, "stage": stage, "previous_stage": None}
+                return {"issue": parent, "stage": stage, "previous_stage": None, "item_id": "IT_1"}
 
             def fake_apply_posture(issue, posture, ctx, runner):
                 order.append("posture")
                 return {"issue": issue, "posture": posture, "label": "posture:autonomous",
                         "removed_labels": []}
 
+            def fake_apply_priority(item_id, value, schema, runner):
+                order.append("priority")
+                return {"item_id": item_id, "priority": value}
+
             runner = FakeRunner([
                 (["project", "field-list", "1", "--owner", "o"], _decompose_field_list()),
                 (["issue", "edit", "182", "--repo", "o/r", "--body-file"],
                  _ok("https://github.com/o/r/issues/182\n")),
             ])
+            self._priority_patch.stop()
             with mock.patch.object(lb, "read_board_config",
                                    return_value=lb.BoardConfig(owner="o", number=1, source="committed")), \
-                 mock.patch.object(lb, "apply_posture_label", side_effect=fake_apply_posture):
+                 mock.patch.object(lb, "apply_posture_label", side_effect=fake_apply_posture), \
+                 mock.patch.object(lb, "apply_priority_field", side_effect=fake_apply_priority):
                 out = lb.verb_decompose(182, str(spec_path), _ctx(str(root)), runner,
                                         set_status=fake_set_status,
                                         deboard=lambda number, board, ctx, run: {"issue": number, "deboarded": False})
-            self.assertEqual(order, ["set_status", "posture"])
+            self.assertEqual(order, ["set_status", "priority", "posture"])
             self.assertEqual(out["parent_posture"], "autonomous")
+            self.assertEqual(out["parent_priority"], "p2")
+
+    def test_priority_write_uses_item_id_from_set_status(self) -> None:
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            (root / "parent.md").write_text("parent", encoding="utf-8")
+            spec = {"body_file": "parent.md", "priority": "p1", "sub_issues": []}
+            spec_path = root / "spec.json"
+            spec_path.write_text(json.dumps(spec), encoding="utf-8")
+
+            seen = {}
+
+            def fake_set_status(parent, stage, ctx, run, force=False):
+                return {"issue": parent, "stage": stage, "previous_stage": None, "item_id": "IT_FROM_STATUS"}
+
+            def fake_apply_priority(item_id, value, schema, runner):
+                seen["call"] = (item_id, value, schema.priority_field_id)
+                return {"item_id": item_id, "priority": value}
+
+            runner = FakeRunner([
+                (["project", "field-list", "1", "--owner", "o"], _decompose_field_list()),
+                (["issue", "edit", "182", "--repo", "o/r", "--body-file"],
+                 _ok("https://github.com/o/r/issues/182\n")),
+            ])
+            self._priority_patch.stop()
+            with mock.patch.object(lb, "read_board_config",
+                                   return_value=lb.BoardConfig(owner="o", number=1, source="committed")), \
+                 mock.patch.object(lb, "apply_priority_field", side_effect=fake_apply_priority):
+                out = lb.verb_decompose(182, str(spec_path), _ctx(str(root)), runner,
+                                        set_status=fake_set_status,
+                                        deboard=lambda number, board, ctx, run: {"issue": number, "deboarded": False})
+            self.assertEqual(seen["call"][0], "IT_FROM_STATUS")
+            self.assertEqual(seen["call"][1], "p1")
+            self.assertEqual(out["parent_priority"], "p1")
 
     def test_omitted_posture_writes_no_label(self) -> None:
         with tempfile.TemporaryDirectory() as d:
             root = Path(d)
             (root / "parent.md").write_text("parent", encoding="utf-8")
-            spec = {"body_file": "parent.md", "sub_issues": []}
+            spec = {"body_file": "parent.md", "priority": "p2", "sub_issues": []}
             spec_path = root / "spec.json"
             spec_path.write_text(json.dumps(spec), encoding="utf-8")
 
@@ -3002,8 +3109,8 @@ class DecomposeVerbTest(unittest.TestCase):
         # and a `complexity`, rather than adding a runtime guard on a
         # constant no refactor has proposed.
         specs = [
-            {"body_file": "parent.md", "sub_issues": []},
-            {"body_file": "parent.md", "posture": "autonomous", "complexity": "high",
+            {"body_file": "parent.md", "priority": "p2", "sub_issues": []},
+            {"body_file": "parent.md", "priority": "p2", "posture": "autonomous", "complexity": "high",
              "sub_issues": []},
         ]
         for spec in specs:
@@ -3105,24 +3212,32 @@ class PostureLabelGuardrailTest(unittest.TestCase):
         # writer — not re-derived elsewhere. Prove the wiring structurally.
         self.assertIn("apply_posture_label", inspect.getsource(lb.verb_decompose))
 
+    def test_verb_decompose_is_wired_to_the_priority_writer(self) -> None:
+        self.assertIn("apply_priority_field", inspect.getsource(lb.verb_decompose))
+
 
 class GroomVerifyVerbTest(unittest.TestCase):
     """The postcondition verb: Status>=planned, with an
     exact sub-issue/blocked count straight from the parent's sub-issue nodes."""
 
     @staticmethod
-    def _issue_payload(stage, subs, labels=()):
+    def _issue_payload(stage, subs, labels=(), priority="p2"):
+        node = {
+            "id": "IT_1",
+            "project": {"id": "PJ", "number": 1, "owner": {"login": "o"}},
+            "fieldValueByName": {"name": stage},
+        }
+        if priority is not None:
+            node["priority"] = {"name": priority}
         return json.dumps({"data": {"repository": {"issue": {
             "number": 182, "state": "OPEN", "authorAssociation": "MEMBER", "url": "u",
             "labels": {"nodes": [{"name": n} for n in labels]},
             "subIssues": {"nodes": subs},
-            "projectItems": {"nodes": [{
-                "id": "IT_1",
-                "project": {"id": "PJ", "number": 1, "owner": {"login": "o"}},
-                "fieldValueByName": {"name": stage}}]}}}}})
+            "projectItems": {"nodes": [node]}}}}})
 
-    def _run(self, root, stage, subs, deboard=None, labels=()):
-        runner = FakeRunner([(["api", "graphql"], _ok(self._issue_payload(stage, subs, labels)))])
+    def _run(self, root, stage, subs, deboard=None, labels=(), priority="p2"):
+        runner = FakeRunner([(["api", "graphql"],
+                              _ok(self._issue_payload(stage, subs, labels, priority)))])
         # Default: every touched sub is NOT on the board (no warnings). Tests that
         # exercise the still-boarded path inject their own deboard seam.
         deboard = deboard or (lambda number, board, ctx, run: {"issue": number, "deboarded": False})
@@ -3161,6 +3276,12 @@ class GroomVerifyVerbTest(unittest.TestCase):
             out = self._run(root, "brainstormed", [])
             self.assertFalse(out["groomed"])
             self.assertTrue(any("expected >= planned" in f for f in out["failures"]))
+
+    def test_not_groomed_when_priority_unset(self) -> None:
+        with tempfile.TemporaryDirectory() as d:
+            out = self._run(Path(d), "planned", [], priority=None)
+            self.assertFalse(out["groomed"])
+            self.assertTrue(any("priority is" in f for f in out["failures"]))
 
     def test_reports_standard_posture_when_unlabeled(self) -> None:
         # Unlabeled (and legacy) issues resolve to the safe `standard` default,

@@ -608,7 +608,8 @@ class OwnerFromOriginTest(unittest.TestCase):
             fields = {"fields": [
                 {"name": "Status", "id": "F", "projectId": "P",
                  "options": [{"id": f"o_{s}", "name": s} for s in bs.STAGES]},
-                {"name": "Priority", "id": "PRI", "options": []},
+                {"name": "Priority", "id": "PRI",
+                 "options": [{"id": f"p_{p}", "name": p} for p in ("p1", "p2", "p3")]},
             ]}
             workflows = {"data": {"repositoryOwner": {"projectV2": {"workflows": {
                 "nodes": [{"id": "C", "name": "Item closed", "enabled": True}]}}}}}
@@ -1128,8 +1129,12 @@ class ProbeTest(unittest.TestCase):
 
     def test_probe_passes_closes_issue_and_removes_project_item(self) -> None:
         ctx = self.ctx
-        board_stub = {"fields": [{"name": "Status", "id": "F", "projectId": "P",
-                                  "options": [{"id": f"o_{s}", "name": s} for s in bs.STAGES]}]}
+        board_stub = {"fields": [
+            {"name": "Status", "id": "F", "projectId": "P",
+             "options": [{"id": f"o_{s}", "name": s} for s in bs.STAGES]},
+            {"name": "Priority", "id": "F_PRI", "projectId": "P",
+             "options": [{"id": f"o_{p}", "name": p} for p in ("p1", "p2", "p3")]},
+        ]}
         issue_done = {"data": {"repository": {"issue": {
             "number": 99, "state": "CLOSED", "stateReason": "COMPLETED", "url": "u",
             "authorAssociation": "OWNER", "assignees": {"nodes": []},
@@ -1174,9 +1179,12 @@ class ProbeTest(unittest.TestCase):
         config.write_text(
             "---\ngithub_project_owner: acme\ngithub_project_number: 3\n"
             "github_project_forward_binding: auto-add\n---\n", encoding="utf-8")
-        board_stub = {"fields": [{"name": "Status", "id": "F", "projectId": "P",
-                                  "options": [{"id": f"o_{s}", "name": s}
-                                              for s in bs.STAGES]}]}
+        board_stub = {"fields": [
+            {"name": "Status", "id": "F", "projectId": "P",
+             "options": [{"id": f"o_{s}", "name": s} for s in bs.STAGES]},
+            {"name": "Priority", "id": "F_PRI", "projectId": "P",
+             "options": [{"id": f"o_{p}", "name": p} for p in ("p1", "p2", "p3")]},
+        ]}
 
         def issue_payload(stage, state="OPEN"):
             return {"data": {"repository": {"issue": {
@@ -1221,9 +1229,12 @@ class ProbeTest(unittest.TestCase):
         ctx = lb.RepoContext(root=self.ctx.root, main_root=self.ctx.main_root,
                              origin_owner="fork-owner", origin_repo="widget",
                              default_branch="main")
-        fields = {"fields": [{"name": "Status", "id": "F", "projectId": "P",
-                              "options": [{"id": f"o_{s}", "name": s}
-                                          for s in bs.STAGES]}]}
+        fields = {"fields": [
+            {"name": "Status", "id": "F", "projectId": "P",
+             "options": [{"id": f"o_{s}", "name": s} for s in bs.STAGES]},
+            {"name": "Priority", "id": "F_PRI", "projectId": "P",
+             "options": [{"id": f"o_{p}", "name": p} for p in ("p1", "p2", "p3")]},
+        ]}
 
         def payload(*, state="OPEN", item=True, stage=None):
             items = [] if not item else [{
@@ -1258,9 +1269,12 @@ class ProbeTest(unittest.TestCase):
         self.assertEqual(result["cleanup"]["result"], "PASS")
 
     def test_item_removal_failure_overrides_success(self) -> None:
-        board_stub = {"fields": [{"name": "Status", "id": "F", "projectId": "P",
-                                  "options": [{"id": f"o_{s}", "name": s}
-                                              for s in bs.STAGES]}]}
+        board_stub = {"fields": [
+            {"name": "Status", "id": "F", "projectId": "P",
+             "options": [{"id": f"o_{s}", "name": s} for s in bs.STAGES]},
+            {"name": "Priority", "id": "F_PRI", "projectId": "P",
+             "options": [{"id": f"o_{p}", "name": p} for p in ("p1", "p2", "p3")]},
+        ]}
         issue = {"data": {"repository": {"issue": {
             "number": 99, "state": "CLOSED", "stateReason": "COMPLETED", "url": "u",
             "authorAssociation": "OWNER", "blockedBy": {"totalCount": 0},
@@ -1296,9 +1310,12 @@ class ProbeTest(unittest.TestCase):
         self.assertIn("close", result["cleanup"]["detail"])
 
     def test_item_removal_must_be_verified(self) -> None:
-        board_stub = {"fields": [{"name": "Status", "id": "F", "projectId": "P",
-                                  "options": [{"id": f"o_{s}", "name": s}
-                                              for s in bs.STAGES]}]}
+        board_stub = {"fields": [
+            {"name": "Status", "id": "F", "projectId": "P",
+             "options": [{"id": f"o_{s}", "name": s} for s in bs.STAGES]},
+            {"name": "Priority", "id": "F_PRI", "projectId": "P",
+             "options": [{"id": f"o_{p}", "name": p} for p in ("p1", "p2", "p3")]},
+        ]}
         done = self._payload("done", state="CLOSED")
         runner = FakeRunner([
             (["issue", "create"], _ok("https://github.com/acme/widget/issues/99\n")),
@@ -1373,8 +1390,12 @@ class ProbeTest(unittest.TestCase):
 
     def test_probe_failure_still_closes_and_removes_project_item(self) -> None:
         ctx = self.ctx
-        board_stub = {"fields": [{"name": "Status", "id": "F", "projectId": "P",
-                                  "options": [{"id": f"o_{s}", "name": s} for s in bs.STAGES]}]}
+        board_stub = {"fields": [
+            {"name": "Status", "id": "F", "projectId": "P",
+             "options": [{"id": f"o_{s}", "name": s} for s in bs.STAGES]},
+            {"name": "Priority", "id": "F_PRI", "projectId": "P",
+             "options": [{"id": f"o_{p}", "name": p} for p in ("p1", "p2", "p3")]},
+        ]}
         open_stub = {"data": {"repository": {"issue": {
             "number": 99, "state": "OPEN", "stateReason": None, "url": "u",
             "authorAssociation": "OWNER", "blockedBy": {"totalCount": 0},
