@@ -224,14 +224,20 @@ bash <skill-directory>/scripts/worktree-manager.sh finish <worktree-name>
 `finish` is the worktree-safe single-target teardown: verifies the branch
 merged (cherry patch-equivalence or a merge commit; ambiguous branches are
 refused without `--force`), removes the worktree from outside it, deletes the
-orphaned branch, fast-forwards base. **When the session's cwd IS the worktree
-being landed**, either run `finish` as the session's terminal action (nothing
-after it — the cwd dies), or defer with the exact ready-to-paste one-liner in
-the report: `bun run worktrees:finish -- <worktree>` in this repo,
-`npx github:Life-With-Data/agentic-engineering worktrees finish <worktree>` in
-consuming repos. Never phrase deferred cleanup as a manual
-`git worktree remove`. `worktree-manager.sh sync` (or `worktrees:sync`) is the
-batch catch-all that reaps every merged worktree.
+orphaned branch, fast-forwards base. **Teardown is the session's job — never
+the user's.** A landing run ends with the worktree removed and its directory
+gone; handing the human a cleanup one-liner means the cleanup failed at its
+job. **When the session's cwd IS the worktree being landed**, run `finish` as
+the session's terminal shell action — write the report first, invoke the
+script by its path in the **primary tree**, and run nothing after it (the cwd
+dies with the worktree). Only a host that genuinely cannot execute a further
+shell command may leave the worktree behind, and then the report must state
+the teardown did NOT happen and name the exact command
+(`bun run worktrees:finish -- <worktree>` in this repo,
+`npx github:Life-With-Data/agentic-engineering worktrees finish <worktree>`
+in consuming repos) as an explicit failure handoff — never phrased as a
+manual `git worktree remove`. `worktree-manager.sh sync` (or
+`worktrees:sync`) is the batch catch-all that reaps every merged worktree.
 
 Then dispatch on tracker state:
 
@@ -250,10 +256,12 @@ Then dispatch on tracker state:
 
 The merged PR (number + URL), merge method, compounding disposition with its
 checked head SHA, tracker state, packet cleanup result, and branch/worktree
-cleanup by mode — for a deferred linked-worktree teardown, name the worktree +
-branch left behind and include the exact one-liner. Note follow-on work
-discovered while landing. Never claim a local fast-forward or delete that did
-not happen.
+cleanup by mode — a linked-worktree landing reports that `finish` runs as the
+terminal action immediately after this report; only a host that cannot run
+another shell command reports the teardown as NOT done, naming the worktree +
+branch left behind and the exact one-liner. Note follow-on work discovered
+while landing. Never claim a local fast-forward or delete that did not
+happen.
 
 ## Scripts
 
@@ -267,7 +275,9 @@ not happen.
   recorded for the head that merged.
 - Tracker completion verified by state (`done` stamp + packet cleanup in
   `github-project` mode; `N/A` when unconfigured).
-- Cleanup completed or explicitly deferred with the exact one-liner, per mode.
+- Cleanup completed by the session itself — worktree removed, directory gone,
+  branch deleted, base fast-forwarded. A teardown left to the user is a
+  failed criterion, reported as such.
 - In autonomous mode, the merge happened only with CI green, the independent
   review passed with P1s resolved, the PR mergeable, and the disposition
   matching the merged head — never on an unmet condition, and never blocked

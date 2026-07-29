@@ -61,12 +61,15 @@ never derived from the directory name (harness worktrees routinely differ).
 Refuses a dirty tree or ambiguous merge evidence without `--force`. May run
 from inside the target worktree — but then the session's cwd is deleted:
 
-> **Terminal-action caveat:** make `finish` the LAST action of the session
-> (report first, then finish, then nothing), or defer with the ready-to-paste
-> one-liner: `bun run worktrees:finish -- <name>` (this repo) or
-> `npx github:Life-With-Data/agentic-engineering worktrees finish <name>`
-> (consuming repos). Never describe deferred cleanup as a manual
-> `git worktree remove`.
+> **Terminal-action rule:** teardown is the session's job, never the user's.
+> Make `finish` the LAST shell action of the session — report first, invoke
+> the script by its primary-tree path, then nothing (the cwd dies with the
+> worktree). Handing the user a cleanup one-liner
+> (`bun run worktrees:finish -- <name>` /
+> `npx github:Life-With-Data/agentic-engineering worktrees finish <name>`)
+> is a failure handoff reserved for a host that cannot run another shell
+> command, and must be reported as the teardown NOT having happened — never
+> as a normal ending, and never as a manual `git worktree remove`.
 
 ### Land-* integration
 
