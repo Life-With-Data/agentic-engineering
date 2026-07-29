@@ -21,7 +21,7 @@ Do not proceed until you have a feature description from the user.
 1. Run `python3 "<skill-directory>/scripts/lifecycle_board.py" --gate brainstorm [--issue <N>]` (pass `--issue` only when an existing issue number is referenced).
 2. Branch on `verdict` per the `wf-setup`
    [entry-gate pattern](../../wf-setup/references/lifecycle.md#entry-gate-pattern),
-   with two route-specific rules:
+   with these route-specific rules:
    - **`proceed`** → continue to Phase 0; this run owns the write to `brainstormed` on completion.
    - **`already_done`** → announce the current stage, follow the gate's route, and STOP. Brainstorm never regresses a later stage back to `brainstormed` and never re-stamps.
    - **`repair_needed`** → announce the reason, then continue to Phase 0 to re-groom and repair.

@@ -1255,11 +1255,12 @@ def plan_repairs(states: "list[IssueState]", default_branch: str) -> "tuple[list
                               "or close it manually when it lands on the default branch"))
 
         # Flag (never repaired): parent is ready-for-review but decomposed work
-        # is unfinished. The seam gate blocks the agent path from creating this;
-        # this catches the forced/out-of-band paths (rule 5's reality-sync, an
-        # operator `--force`, a human drag) so an incomplete parent can't quietly
-        # merge → ship. Never auto-repaired: neither closing the sub-issues nor
-        # regressing the parent is safe to do unattended.
+        # is unfinished. The seam gate blocks the agent path from creating this,
+        # and rule 5 now skips parents with open sub-issues; this catches the
+        # remaining out-of-band paths (an operator `--force`, a human drag) so
+        # an incomplete parent can't quietly merge → ship. Never auto-repaired:
+        # neither closing the sub-issues nor regressing the parent is safe to
+        # do unattended.
         if s.state == "OPEN" and s.stage == "in_review" and s.open_sub_issues:
             flags.append(Flag(s.number, "in_review_with_open_subissues",
                               f"reconciler: issue is in_review but has open sub-issues "

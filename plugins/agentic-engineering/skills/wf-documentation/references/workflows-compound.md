@@ -35,7 +35,7 @@ lifecycle Status and not evidence of deployment or publication.
    only in a repository-established location and format.
 4. If durable knowledge is missing, amend the **same implementation PR**, run
    the repository's documentation checks, and return to the ordinary CI,
-   review, thread-resolution, and mergeability gates. The final compounding
+   review, and mergeability gates. The final compounding
    check must run again against the new head.
 5. For `not needed`, record a concise reason. Do not change repository files,
    create a commit, or rerun CI merely to represent that result.

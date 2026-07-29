@@ -140,8 +140,9 @@ skips it.
    criteria to the PR diff: **`captured`** (warranted learning present in this
    PR — name the paths) or **`not needed`** (short reason).
 3. Missing durable knowledge → update the **same PR**, run the mapped docs
-   checks, commit, push, and return to step 2: the new head needs green
-   conditions and fresh authorization before this gate re-runs.
+   checks, commit, push, and return to workflow step 2 (Assess landability):
+   the new head needs green conditions and fresh authorization before this
+   gate re-runs.
 4. Post one audit comment via
    `gh pr comment "$PR_NUM" --repo "$ORIGIN" --body-file <audit-file>`
    (create the file outside the worktree; remove after):

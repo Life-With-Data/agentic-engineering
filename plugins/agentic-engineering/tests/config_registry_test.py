@@ -57,10 +57,12 @@ class InventoryShapeTest(unittest.TestCase):
 
     def test_every_flag_has_required_fields(self) -> None:
         inv = config_registry.verb_inventory(self.ctx)
-        required = {"key", "kind", "default", "effective", "set", "valid",
+        required = {"key", "kind", "choices", "default", "effective", "set", "valid",
                     "source", "toggleable", "file", "owner", "description", "plugin"}
         for row in inv["flags"]:
             self.assertEqual(required, set(row.keys()))
+            if row["kind"] != "enum":
+                self.assertEqual(row["choices"], [])
 
     def test_identity_flags_are_not_toggleable(self) -> None:
         inv = config_registry.verb_inventory(self.ctx)
