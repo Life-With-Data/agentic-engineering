@@ -203,6 +203,7 @@ def _inventory_row(ctx: "lifecycle_board.RepoContext", flag: ConfigFlag) -> dict
     return {
         "key": flag.key,
         "kind": flag.kind,
+        "choices": list(flag.choices),
         "default": flag.default,
         "effective": effective,
         "set": is_set,

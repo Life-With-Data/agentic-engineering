@@ -20,7 +20,7 @@ const WORKFLOW_REFERENCES: Record<string, string[]> = {
     "workflows-groom", "workflows-plan",
   ],
   "wf-development": [
-    "agent-native-architecture", "api-and-interface-design",
+    "api-and-interface-design",
     "debugging-and-error-recovery", "escalation-contract",
     "git-worktree", "observability-and-instrumentation",
     "workflows-orchestrate", "workflows-work",

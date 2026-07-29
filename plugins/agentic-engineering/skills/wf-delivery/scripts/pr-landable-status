@@ -13,13 +13,12 @@
 #     "ci": "SUCCESS",                       # SUCCESS | FAILURE | PENDING | NONE
 #     "ci_failing": ["check-name", ...],
 #     "ci_pending": ["check-name", ...],
-#     "unresolved_threads": 0,
 #     "blockers": [],                        # human-readable reasons it can't merge yet
 #     "landable": true
 #   }
 #
 # `landable` is true when there are no mechanical merge blockers: state=OPEN, ci=SUCCESS,
-# no failing/pending checks, unresolved_threads=0, review_decision is NOT CHANGES_REQUESTED,
+# no failing/pending checks, review_decision is NOT CHANGES_REQUESTED,
 # and merge_state is not DIRTY/BLOCKED/BEHIND.
 #
 # Deliberately NOT required: review_decision == APPROVED. A *human* GitHub approval is not the
@@ -46,16 +45,7 @@ fi
 pr_json=$(gh pr view "$PR_NUMBER" ${REPO_ARG[@]+"${REPO_ARG[@]}"} \
     --json number,state,reviewDecision,mergeStateStatus,statusCheckRollup)
 
-# Unresolved-thread count: reuse the resolve-pr-parallel query if present, else 0.
-SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
-threads_script="$SCRIPT_DIR/../../resolve-pr-parallel/scripts/get-pr-comments"
-unresolved=0
-if [ -x "$threads_script" ] || [ -f "$threads_script" ]; then
-    threads=$(bash "$threads_script" "$PR_NUMBER" "${2:-}" 2>/dev/null || echo '[]')
-    unresolved=$(echo "$threads" | jq 'length' 2>/dev/null || echo 0)
-fi
-
-echo "$pr_json" | jq --argjson unresolved "${unresolved:-0}" '
+echo "$pr_json" | jq '
   # Classify each required/owned check from the status rollup.
   (.statusCheckRollup // []) as $checks
   | [ $checks[]
@@ -77,7 +67,6 @@ echo "$pr_json" | jq --argjson unresolved "${unresolved:-0}" '
   | ( [ (if .state != "OPEN" then "pr is \(.state), not OPEN" else empty end),
         (if ($failing | length) > 0 then "ci failing: \($failing | join(", "))" else empty end),
         (if ($pending | length) > 0 then "ci pending/in-progress: \($pending | join(", "))" else empty end),
-        (if $unresolved > 0 then "\($unresolved) unresolved review thread(s)" else empty end),
         (if $rd == "CHANGES_REQUESTED" then "changes requested by a reviewer (unresolved)" else empty end),
         (if $ms == "BLOCKED" then "merge blocked by branch protection (likely a required human approval or status check the agent cannot supply)" else empty end),
         (if $ms == "BEHIND" then "branch is behind base — needs update/rebase" else empty end),
@@ -89,7 +78,6 @@ echo "$pr_json" | jq --argjson unresolved "${unresolved:-0}" '
       ci: $ci,
       ci_failing: $failing,
       ci_pending: $pending,
-      unresolved_threads: $unresolved,
       blockers: $blockers,
       landable: (($blockers | length) == 0) }
 '

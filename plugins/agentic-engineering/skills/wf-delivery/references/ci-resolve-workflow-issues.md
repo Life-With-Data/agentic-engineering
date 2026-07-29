@@ -160,4 +160,4 @@ If it fails again with the same error, it is not flaky — proceed with the fix 
 ## Next Step
 
 Once all checks pass, return to the `wf-delivery` landing route to drive the PR
-through review threads, approval, and merge.
+through the independent review, the final compounding check, and merge.

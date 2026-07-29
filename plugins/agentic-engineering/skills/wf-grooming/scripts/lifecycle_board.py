@@ -1234,8 +1234,12 @@ def plan_repairs(states: "list[IssueState]", default_branch: str) -> "tuple[list
                                   close_sub_issues=list(s.open_sub_issues)))
             continue
 
-        # Rule 5: assignee's PR (re)opened while item regressed -> in_review
+        # Rule 5: assignee's PR (re)opened while item regressed -> in_review.
+        # Skipped while sub-issues are open: the repair must not force the exact
+        # write the open_sub_issues seam gate refuses; the parent stays
+        # in_progress, which is accurate.
         if s.state == "OPEN" and s.stage == "in_progress" \
+                and not s.open_sub_issues \
                 and any(p["state"] == "OPEN" for p in assignee_prs):
             repairs.append(Repair(s.number, "pr_reopened", s.stage, "in_review",
                                   "reconciler: linked PR is open — Status → in_review"))
@@ -1251,11 +1255,12 @@ def plan_repairs(states: "list[IssueState]", default_branch: str) -> "tuple[list
                               "or close it manually when it lands on the default branch"))
 
         # Flag (never repaired): parent is ready-for-review but decomposed work
-        # is unfinished. The seam gate blocks the agent path from creating this;
-        # this catches the forced/out-of-band paths (rule 5's reality-sync, an
-        # operator `--force`, a human drag) so an incomplete parent can't quietly
-        # merge → ship. Never auto-repaired: neither closing the sub-issues nor
-        # regressing the parent is safe to do unattended.
+        # is unfinished. The seam gate blocks the agent path from creating this,
+        # and rule 5 now skips parents with open sub-issues; this catches the
+        # remaining out-of-band paths (an operator `--force`, a human drag) so
+        # an incomplete parent can't quietly merge → ship. Never auto-repaired:
+        # neither closing the sub-issues nor regressing the parent is safe to
+        # do unattended.
         if s.state == "OPEN" and s.stage == "in_review" and s.open_sub_issues:
             flags.append(Flag(s.number, "in_review_with_open_subissues",
                               f"reconciler: issue is in_review but has open sub-issues "

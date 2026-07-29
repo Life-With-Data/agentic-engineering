@@ -109,30 +109,22 @@ To change a flag, run the `wf-setup` configuration route — this section is rea
 - After rotating `ADD_TO_PROJECT_PAT`, or when the auto-add workflow is red
 - Before picking up the first real work item on a newly configured repo (this is the runbook's step 0)
 
-The **forward binding** (how new issues reach the board) is a recorded decision,
-so `board_forward_binding` validates the selected branch. `workflow-only`
-requires no orphaned auto-add workflow. `auto-add` structurally validates the
-issue-open trigger, exact configured user/org Project URL, pinned
-`actions/add-to-project` action, and `ADD_TO_PROJECT_PAT` reference. A
-write-only secret's value and expiry cannot be checked read-only, so only the
-live probe proves the binding. `none` records a deliberate manual workflow; an
-unrecognized or unrecorded value blocks readiness.
-
-The ready-work saved view has no creation API and remains a manual verification
-in [lifecycle bootstrap](lifecycle-bootstrap.md). Backfill is a one-time action,
-not standing state: inspect its `failed` and `flags` results and rerun it after
-any auto-add outage or newly discovered un-added open issues.
+`board_forward_binding` validates the recorded binding choice: `workflow-only`
+requires no orphaned auto-add workflow; `auto-add` structurally validates the
+trigger, Project URL, pinned action, and `ADD_TO_PROJECT_PAT` reference (a
+write-only secret can only be proven by the live probe); `none` records the
+deliberate manual workflow. An unrecognized value blocks readiness. The
+ready-work saved view has no creation API and remains a manual verification in
+[lifecycle bootstrap](lifecycle-bootstrap.md); backfill is a one-time action —
+rerun it after any auto-add outage.
 
 ## Notes
 
-- This command is read-only in its default (non-`--live`) form; it makes no board writes and creates nothing. The Configuration section (Step 5) is also read-only, always — it never writes, even under `--live`.
-- `--live` is successful only when the chosen binding, close-to-`done`
-  automation, issue close, and exact Project-item removal/verification all
-  succeed. A mandatory cleanup failure leaves the issue and item identifiers in
-  the evidence for safe, targeted recovery. Permanent deletion is not attempted
-  and does not affect the verdict.
-- The doctor's checks and runtime entry gates share validation helpers, so a
-  clean doctor run is a reliable predictor of command behavior. The live probe
-  adds the external Actions and automation behavior that reads alone cannot
-  establish.
-- The Configuration section shares its data source (`config_registry.py --inventory`) with the `wf-setup` configuration route — the two surfaces can never disagree about what's currently set, only about whether they report or let you act on it.
+- Default (non-`--live`) mode is read-only; the Configuration section is
+  read-only always.
+- `--live` succeeds only when the binding, close-to-`done` automation, issue
+  close, and exact Project-item removal/verification all succeed. Permanent
+  deletion is not attempted and does not affect the verdict.
+- Doctor checks share validation helpers with the runtime entry gates, so a
+  clean run predicts command behavior; the live probe adds what reads alone
+  cannot establish.

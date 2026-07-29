@@ -81,7 +81,7 @@ flowchart TD
     ready -->|no| D["wf-development"]
     D --> T
     ready -->|yes| L["wf-delivery"]
-    L --> ci["repair CI and resolve threads"]
+    L --> ci["repair CI"]
     ci --> K["wf-documentation: final compounding disposition"]
     K --> merge{"current head passes every merge gate?"}
     merge -->|no| ci

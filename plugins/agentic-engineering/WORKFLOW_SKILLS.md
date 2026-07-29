@@ -148,7 +148,7 @@ Former standalone skills retained as internal references:
 - `wf-grooming`: `brainstorming`, `deepen-plan`, `interview-me`, `report-bug`,
   `reproduce-bug`, `triage`, `workflows-brainstorm`, `workflows-groom`,
   `workflows-plan`
-- `wf-development`: `agent-native-architecture`, `api-and-interface-design`,
+- `wf-development`: `api-and-interface-design`,
   `debugging-and-error-recovery`, `git-worktree`,
   `observability-and-instrumentation`, `workflows-orchestrate`,
   `workflows-work`

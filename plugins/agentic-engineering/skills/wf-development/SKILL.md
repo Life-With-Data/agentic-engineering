@@ -1,6 +1,6 @@
 ---
 name: wf-development
-description: Workflow policy for implementing planned engineering changes, diagnosing root causes, fixing reproduced bugs, refactoring, and building APIs, interfaces, or agent-native systems. Use when code or configuration must change after grooming, including end-to-end implementation orchestration. This skill owns development sequencing and handoffs; repository mechanics come from repository capability targets.
+description: Workflow policy for implementing planned engineering changes, diagnosing root causes, fixing reproduced bugs, refactoring, and building APIs and interfaces. Use when code or configuration must change after grooming, including end-to-end implementation orchestration. This skill owns development sequencing and handoffs; repository mechanics come from repository capability targets.
 ---
 
 # Development workflow
@@ -36,7 +36,6 @@ Stop on contract failure. Read each required capability's primary target, then s
 - Work in an isolated checkout: read [git worktree](references/git-worktree.md).
 - Resolve independent implementation units in parallel waves: read [workflow work](references/workflows-work.md). Pull-request review threads are out of scope here; `wf-review` owns them through its "Resolve review comments" route and the bundled scripts behind it.
 - Design an API or interface: read [API and interface design](references/api-and-interface-design.md).
-- Build agent-native software: read [agent-native architecture](references/agent-native-architecture.md).
 - Build a frontend: treat "frontend design" as a semantic runtime requirement, not a fixed skill name — resolve visual direction, typography, and component mechanics from the mapped repository assets and the host's available skill metadata. This plugin's `design-iterator` and `figma-design-sync` agents cover iterative refinement and design-to-implementation comparison when a design source exists. Report a missing-capability note when nothing resolves; this workflow does not prescribe aesthetics.
 - Add instrumentation while building: read [observability and instrumentation](references/observability-and-instrumentation.md); require `observability` if it needs repository systems.
 

@@ -348,6 +348,14 @@ class ReconcilerTest(unittest.TestCase):
         repairs, _ = lb.plan_repairs([s], "main")
         self.assertEqual([(r.rule, r.to_stage) for r in repairs], [("pr_reopened", "in_review")])
 
+    def test_rule5_skips_parent_with_open_sub_issues(self) -> None:
+        # The repair must not force the exact write the open_sub_issues seam
+        # gate refuses: in_progress + open PR + open sub-issues stays put.
+        s = _issue(assignees=["me"], stage="in_progress", open_subs=[7],
+                   closing_prs=[_pr(state="OPEN", merged=False, author="me")])
+        repairs, _ = lb.plan_repairs([s], "main")
+        self.assertEqual(repairs, [])
+
     def test_flag_merged_to_non_default_branch_never_repairs(self) -> None:
         # The git-flow stall: merged into develop, issue still open.
         s = _issue(assignees=["me"], stage="in_review",
