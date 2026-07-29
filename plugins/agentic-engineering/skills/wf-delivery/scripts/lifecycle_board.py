@@ -1234,8 +1234,12 @@ def plan_repairs(states: "list[IssueState]", default_branch: str) -> "tuple[list
                                   close_sub_issues=list(s.open_sub_issues)))
             continue
 
-        # Rule 5: assignee's PR (re)opened while item regressed -> in_review
+        # Rule 5: assignee's PR (re)opened while item regressed -> in_review.
+        # Skipped while sub-issues are open: the repair must not force the exact
+        # write the open_sub_issues seam gate refuses; the parent stays
+        # in_progress, which is accurate.
         if s.state == "OPEN" and s.stage == "in_progress" \
+                and not s.open_sub_issues \
                 and any(p["state"] == "OPEN" for p in assignee_prs):
             repairs.append(Repair(s.number, "pr_reopened", s.stage, "in_review",
                                   "reconciler: linked PR is open — Status → in_review"))

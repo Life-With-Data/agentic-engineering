@@ -68,11 +68,12 @@ Report totals: tests run, passed, failed, and coverage if available. Investigate
 Scan the change for secrets accidentally committed and for debug residue left behind. Adjust patterns and file globs to the project's languages:
 
 ```bash
-# Committed secrets (adapt the token patterns to the providers in use)
-git diff --cached | grep -nE '(api[_-]?key|secret|token|BEGIN [A-Z ]*PRIVATE KEY)' || true
+# Committed secrets across the whole branch diff, not just staged/unstaged
+# (adapt the token patterns to the providers in use)
+git diff <base>...HEAD | grep -nE '(api[_-]?key|secret|token|BEGIN [A-Z ]*PRIVATE KEY)' || true
 
-# Debug residue in the changed files
-git diff --name-only | xargs grep -nE 'console\.(log|debug)|binding\.pry|breakpoint\(\)|dbg!' 2>/dev/null || true
+# Debug residue in the files the branch changed
+git diff --name-only <base>...HEAD | xargs grep -nE 'console\.(log|debug)|binding\.pry|breakpoint\(\)|dbg!' 2>/dev/null || true
 ```
 
 Treat any hit as an issue to confirm or clear before shipping.
@@ -82,8 +83,8 @@ Treat any hit as an issue to confirm or clear before shipping.
 Read the change as a reviewer would:
 
 ```bash
-git diff --stat
-git diff
+git diff --stat <base>...HEAD
+git diff <base>...HEAD
 ```
 
 For each changed file, check for: unintended edits, missing error handling, and unhandled edge cases.

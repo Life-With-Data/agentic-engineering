@@ -66,7 +66,12 @@ Re-fetch comments to confirm all threads are resolved:
 bash <skill-directory>/scripts/get-pr-comments PR_NUMBER
 ```
 
-Should return an empty array `[]`. If threads remain, repeat from step 1.
+Should return an empty array `[]`. If threads remain, repeat from step 1 —
+bounded: a thread that survives ~2 passes without measurable progress (an
+unanswered reviewer question, a product decision, a bot that re-opens on
+every push) is a blocker to escalate to the user, not a reason to keep
+looping (stall bounds per the `wf-development`
+[escalation contract](../../wf-development/references/escalation-contract.md)).
 
 ## Scripts
 
@@ -82,6 +87,6 @@ Should return an empty array `[]`. If threads remain, repeat from step 1.
 
 ## Related
 
-This reference is the **comment-resolution loop**. To take a PR all the way to merged — waiting on CI,
-resolving threads (via this reference), confirming approval, then merging and cleaning up — use the
-[`land-pr`](../../wf-delivery/references/land-pr.md) reference, which calls this one as its thread-resolution step.
+This reference is the **comment-resolution loop**, invoked on its own through
+the `wf-review` router. To take a PR all the way to merged, use the
+[`land-pr`](../../wf-delivery/references/land-pr.md) reference.

@@ -21,27 +21,19 @@ do not restate stop reasons here or elsewhere — link to it instead.
 
 ## Delivery posture
 
-Autonomous execution of a claimed work item is gated on three independent
-things, not two:
-
 Hands-off execution requires **all three**: a human's approval stamp
 (`Status >= ready_for_work`, verifiable as `approved` on `--groom-verify N`),
 grooming attestation (`Status >= planned`, verifiable as `groomed` on the same
 call), **and** the ticket's autonomous clearance (a `posture:autonomous`
 label, or an overriding per-invocation token). Any one missing is not enough.
+Who may grant the approval is defined in the `wf-setup`
+[approval seam](../../wf-setup/references/lifecycle.md#agent-write-scope-and-the-approval-seam).
 
-Who may grant the approval, and why an agent cannot, is defined once in the
-`wf-setup` [lifecycle reference](../../wf-setup/references/lifecycle.md#agent-write-scope-and-the-approval-seam);
-this document does not restate it.
-
-Clearance itself resolves from three sources in a fixed order, stated in full
-exactly once:
+Clearance resolves from three sources in a fixed order, stated in full
+exactly once — every other mention links here rather than restating it:
 
 **Per-invocation argument tokens > per-ticket posture label > repository
 `delivery_mode` default (which itself defaults to `standard`).**
-
-Every other mention of this ordering in this plugin links back to this section
-by relative path rather than restating it.
 
 ### Reading the posture
 
@@ -77,23 +69,14 @@ one place that rule is written down. A reader who needs the exact semantics
 reads it there. Restating it here is what let a safety property drift between
 two languages.
 
-`--groom-verify` also best-effort de-boards open sub-issues, so it is not a
-pure read. That is safe at this boundary: the write is idempotent and the
-reconciler's rule 6 converges on the same state either way.
-
-Deliberate differences from the complexity read:
-
 - Complexity is read on the **sub-issue** at dispatch time; posture is read on
   the **parent** at the claim / routing boundary, **once per work item**.
-- **Posture is fixed for the run at that read.** A run finishes under the
-  posture it started with. Mid-run revocation is out of scope: removing the
-  label takes effect the next time the item is claimed or routed, not at stage
-  boundaries within a run already in flight.
+- **Posture is fixed for the run at that read.** Mid-run revocation is out of scope:
+  removing the label takes effect the next time the item is claimed or routed.
 - `--ready-work` does **not** carry labels or clearance — `ReadyItem` is
-  `{number, title, priority, repo}`, populated by `merge_ready_legs` from the
-  board item list. A queue drain therefore resolves each item's clearance with
-  the same one-issue `--groom-verify` call at the claim boundary, where several
-  calls already happen. Widening `ReadyItem` is out of scope.
+  `{number, title, priority, repo}`, populated by `merge_ready_legs`; a queue
+  drain resolves each item with the same one-issue `--groom-verify` call at
+  the claim boundary.
 
 ### Who may grant clearance
 
@@ -121,10 +104,6 @@ Two standard escalation paths must therefore **never** attach
   combined with a workflow triggered by untrusted input, it is a path from an
   external event to a clearance grant. Scope Actions to `permissions: {}` or
   read-only unless a label write is the workflow's actual purpose.
-
-Neither path is open in this repository today — there is no
-`.github/ISSUE_TEMPLATE/`, and no workflow holds `issues: write` — so this is a
-boundary to preserve, not a finding to fix.
 
 **De-escalating** takes an explicit write: `--decompose` with
 `posture: standard` strips every `posture:*` label (a pure removal — the label
@@ -157,16 +136,10 @@ Use the GitHub issue/project state and explicitly supplied artifacts.
 - A current PR needing its required knowledge-disposition check: route to
   `wf-documentation` before delivery merges it.
 
-Only the "Approved, unclaimed work", "Ungroomed request", and "Planned but not
-yet approved" branches above depend on the [resolved posture](#delivery-posture)
-and its approval-attestation-AND-clearance gate. Resolve them against all four
-combinations of approved/not-approved input and cleared/not-cleared posture.
 The **Clearance** column below is the *ticket's* clearance (`posture`), not
-the fused `cleared` field. Unlike before this stage existed, `cleared` is
-**not** necessarily false on a not-approved row: a `planned`,
-autonomous-labeled ticket reads `cleared: true` (attestation and label are
-both satisfied) even though no human has approved it — which is exactly why
-the table branches on approval before it ever consults posture:
+the fused `cleared` field — a `planned`, autonomous-labeled ticket reads
+`cleared: true` even though no human has approved it, which is exactly why the
+table branches on approval before it ever consults posture:
 
 | Input | Clearance | Behavior |
 |-------|-----------|----------|
@@ -177,13 +150,8 @@ the table branches on approval before it ever consults posture:
 
 **Not-yet-approved input routes to the human regardless of posture.**
 Autonomous posture never silently auto-grooms and never silently
-self-approves; grooming stays collaborative by construction and approval
-stays human-only by construction, so a posture label on an ungroomed or
-unapproved issue grants nothing.
-
-The net new content is narrow: only the approved (`Status >= ready_for_work`)
-/ unclaimed -> `wf-development` branch can inherit hands-off execution, and
-only when the resolved posture is autonomous.
+self-approves — a posture label on an ungroomed or unapproved issue grants
+nothing.
 
 ## Execute
 
@@ -211,11 +179,8 @@ tier (advisory — the orchestrator retains judgment):
 | `complexity:medium`  | Balanced/standard tier. |
 | `complexity:high`    | Powerful, orchestrator/verifier-grade tier. |
 
-When a unit carries **no** `complexity:*` label (an unlabeled or legacy issue),
-fall back to deriving complexity inline from the unit's scope — economy tiers
-for mechanical work, standard tiers for well-scoped work, the strongest
-available tier only for ambiguous or high-blast-radius work. The label is an
-optimization, never a hard dependency.
+A unit with no `complexity:*` label falls back to inline derivation from its
+scope; the label is an optimization, never a hard dependency.
 
 1. Validate the repository capabilities required by the current and next stage.
 2. Claim work only at the development boundary.

@@ -8,7 +8,7 @@ Discoverability front door for the plugin's opt-in, per-repo configuration flags
 python3 "<skill-directory>/scripts/config_registry.py" --inventory
 ```
 
-Returns JSON: `{"flags": [...], "ok": true}`. Each entry has `key`, `kind` (`boolean`/`enum`/`list`/`identity`), `default`, `effective`, `set`, `valid`, `source` (`local`/`committed`/`default`), `toggleable`, `file`, `owner`, `description`, `plugin`.
+Returns JSON: `{"flags": [...], "ok": true}`. Each entry has `key`, `kind` (`boolean`/`enum`/`list`/`identity`), `choices` (enum values; empty otherwise), `default`, `effective`, `set`, `valid`, `source` (`local`/`committed`/`default`), `toggleable`, `file`, `owner`, `description`, `plugin`.
 
 ## Step 2: Render the table
 

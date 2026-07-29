@@ -15,17 +15,7 @@ Conduct a comprehensive review of the codebase against agent-native architecture
 
 ## Workflow
 
-### Step 1: Load the Agent-Native Skill
-
-First, invoke the agent-native-architecture skill to understand all principles:
-
-```
-/agentic-engineering:agent-native-architecture
-```
-
-Select option 7 (action parity) to load the full reference material.
-
-### Step 2: Launch Parallel Sub-Agents
+### Step 1: Launch Parallel Sub-Agents
 
 Launch 8 parallel sub-agents using the Task tool with `subagent_type: Explore`, one for each principle. Each agent should:
 
@@ -211,7 +201,7 @@ Format:
 
 </sub-agents>
 
-### Step 3: Compile Summary Report
+### Step 2: Compile Summary Report
 
 After all agents complete, compile a summary with:
 
