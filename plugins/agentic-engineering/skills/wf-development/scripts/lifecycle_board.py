@@ -34,10 +34,12 @@ CLI verbs (used by workflow commands; humans/CI may call them directly):
                                  provenance -> a Routing-Ladder
                                  verdict (the model decides only crisp-vs-vague)
   --decompose <N> --spec FILE    create/update the canonical parent issue, create
-                                 each sub-issue, wire dependencies, Status=planned
-  --groom-verify <N>             groom postcondition: assert stage >= planned — grooming's
-                                 ceiling; entering work additionally requires the
-                                 ready_for_work approval stamp, reported as `approved`.
+                                 each sub-issue, wire dependencies, Status=planned,
+                                 and write required Project Priority (p1/p2/p3)
+  --groom-verify <N>             groom postcondition: assert stage >= planned and
+                                 Priority is set — grooming's ceiling; entering work
+                                 additionally requires the ready_for_work approval
+                                 stamp, reported as `approved`.
                                  Emits the exact sub-issue + blocked counts, `approved`,
                                  and the clearance read (cleared/posture/posture_source);
                                  exit 1 if not groomed
@@ -90,6 +92,7 @@ _ORDER = {
 TERMINAL_STAGES = {"done"}
 TRUSTED_ASSOCIATIONS = {"OWNER", "MEMBER", "COLLABORATOR"}
 PRIORITY_ORDER = {"p1": 0, "p2": 1, "p3": 2}
+PRIORITY_VALUES = tuple(PRIORITY_ORDER)  # p1 / p2 / p3 — Project Priority options
 
 # Gate verdicts emitted by evaluate_gate. `route_to_work`/`route_to_plan`/
 # `approval` are routes, not verdicts; claim_conflict/blocked are claim-only
@@ -637,6 +640,7 @@ class BoardSchema:
     status_field_id: str
     status_options: "dict[str, str]"      # stage name -> option id
     priority_field_id: Optional[str] = None
+    priority_options: "dict[str, str]" = field(default_factory=dict)  # p1/p2/p3 -> option id
 
 
 def parse_field_list(payload: dict) -> "tuple[Optional[dict], Optional[dict]]":
@@ -657,7 +661,10 @@ def resolve_schema(board: BoardConfig, ctx: RepoContext, runner: GhRunner,
     if (cached and cached.get("board_key") == cache_key
             and time.time() - cached.get("fetched_at", 0) < RECONCILE_TTL_SECONDS):
         options = cached.get("status_options") or {}
-        if all(s in options for s in STAGES):
+        priority_options = cached.get("priority_options") or {}
+        if (all(s in options for s in STAGES)
+                and cached.get("priority_field_id")
+                and all(p in priority_options for p in PRIORITY_VALUES)):
             try:
                 return BoardSchema(**{k: v for k, v in cached.items()
                                      if k not in ("fetched_at", "board_key")})
@@ -686,6 +693,22 @@ def resolve_schema(board: BoardConfig, ctx: RepoContext, runner: GhRunner,
             "`python3 <wf-setup skill dir>/scripts/bootstrap_lifecycle_board.py` — it "
             "adds missing options ID-preservingly and moves no items",
         )
+    if not priority:
+        raise BoardError(
+            "option_missing",
+            "Project has no Priority field",
+            "Re-run `python3 <wf-setup skill dir>/scripts/bootstrap_lifecycle_board.py` "
+            "to create the Priority single-select (p1/p2/p3)",
+        )
+    priority_options = {o["name"]: o["id"] for o in priority.get("options", [])}
+    missing_priority = [p for p in PRIORITY_VALUES if p not in priority_options]
+    if missing_priority:
+        raise BoardError(
+            "option_missing",
+            f"Priority field is missing options: {', '.join(missing_priority)}",
+            "Re-run `python3 <wf-setup skill dir>/scripts/bootstrap_lifecycle_board.py` "
+            "— it adds missing Priority options ID-preservingly and moves no items",
+        )
     project_id = payload.get("projectId") or status.get("projectId") or ""
     if not project_id:
         view = _run_gh_retry(runner, ["project", "view", str(board.number),
@@ -699,7 +722,8 @@ def resolve_schema(board: BoardConfig, ctx: RepoContext, runner: GhRunner,
         project_id=project_id,
         status_field_id=status["id"],
         status_options=options,
-        priority_field_id=priority["id"] if priority else None,
+        priority_field_id=priority["id"],
+        priority_options=priority_options,
     )
     cache["schema"] = {**dataclasses.asdict(schema), "fetched_at": time.time(),
                        "board_key": cache_key}
@@ -737,6 +761,9 @@ parent { number }
           fieldValueByName(name: "Status") {
             ... on ProjectV2ItemFieldSingleSelectValue { name }
           }
+          priority: fieldValueByName(name: "Priority") {
+            ... on ProjectV2ItemFieldSingleSelectValue { name }
+          }
         }
       }
     }
@@ -771,6 +798,8 @@ class IssueState:
     # Every sub-issue (open AND closed) with its blocked-by count, for the
     # groom postcondition's exact "N created, M with dependencies" report.
     all_sub_issues: "list[dict]" = field(default_factory=list)  # {number,state,blocked_by}
+    # Project Priority single-select (p1/p2/p3); None when unset or not on board.
+    priority: Optional[str] = None
 
 
 def open_blocker_count(blocked_by: object) -> int:
@@ -792,7 +821,7 @@ def parse_issue_state(data: dict, board: BoardConfig) -> Optional[IssueState]:
     issue = (data.get("data") or {}).get("repository", {}).get("issue")
     if not issue:
         return None
-    stage = item_id = None
+    stage = item_id = priority = None
     for node in issue.get("projectItems", {}).get("nodes", []):
         # projectItems defaults to includeArchived:true, so an item archived by
         # rule 6 is STILL returned on the next read (id + Status intact). Treat an
@@ -806,6 +835,8 @@ def parse_issue_state(data: dict, board: BoardConfig) -> Optional[IssueState]:
             item_id = node.get("id")
             fv = node.get("fieldValueByName") or {}
             stage = fv.get("name")
+            # Aliased Priority fieldValueByName — absent on older fixtures → None.
+            priority = (node.get("priority") or {}).get("name")
     return IssueState(
         number=issue["number"],
         state=issue.get("state", "OPEN"),
@@ -814,6 +845,7 @@ def parse_issue_state(data: dict, board: BoardConfig) -> Optional[IssueState]:
         author_association=issue.get("authorAssociation", "NONE"),
         stage=stage,
         item_id=item_id,
+        priority=priority,
         closing_prs=[
             {"number": n["number"], "state": n["state"], "merged": n["merged"],
              "baseRefName": n.get("baseRefName", ""), "author": (n.get("author") or {}).get("login", "")}
@@ -1113,6 +1145,14 @@ def validate_decompose_spec(spec: dict, has_parent: bool) -> "list[dict]":
             raise bad(f"{where} posture={value!r} must be one of {POSTURE_VALUES} (or omitted)")
 
     check_posture(spec.get("posture"), "spec")
+
+    def check_priority(value, where: str) -> None:
+        # Required on the parent. Presence is a groom gate (unlike advisory
+        # complexity/posture): omit/null/invalid all fail closed before writes.
+        if not isinstance(value, str) or value not in PRIORITY_VALUES:
+            raise bad(f"{where} priority={value!r} must be one of {PRIORITY_VALUES}")
+
+    check_priority(spec.get("priority"), "spec")
     subs = spec.get("sub_issues")
     if not isinstance(subs, list):
         raise bad("spec.sub_issues (array) is required (use [] for a single-task item)")
@@ -1128,6 +1168,9 @@ def validate_decompose_spec(spec: dict, has_parent: bool) -> "list[dict]":
             raise bad(f"sub_issues[{i}].posture is not supported; set spec.posture instead - "
                       "posture governs the claimed PARENT across implement -> review -> deliver, "
                       "never an individual sub-issue")
+        if "priority" in sub:
+            raise bad(f"sub_issues[{i}].priority is not supported; set spec.priority instead - "
+                      "Priority is a parent Project field (the board tracks the parent)")
         deps = sub.get("blocked_by", [])
         if not isinstance(deps, list):
             raise bad(f"sub_issues[{i}].blocked_by must be an array of earlier indices")
@@ -1511,6 +1554,40 @@ def verb_sub_status(issue: int, status: str, ctx: RepoContext, runner: GhRunner)
             "removed_labels": remove, "was_open": is_open}
 
 
+def apply_priority_field(item_id: str, value: str, schema: BoardSchema,
+                         runner: GhRunner) -> dict:
+    """Write the Project Priority single-select on an already-boarded item.
+
+    Mirrors `verb_set_status`'s item-edit shape. Caller must pass the `item_id`
+    returned by `set_status` (which item-adds when needed) — this helper never
+    adds the item itself. Re-decompose overwrites Priority the same way Status
+    is re-stamped.
+    """
+    if value not in PRIORITY_VALUES:
+        raise BoardError("invalid_priority", f"{value!r} is not a Priority value",
+                         f"Use one of: {', '.join(PRIORITY_VALUES)}")
+    if not item_id:
+        raise BoardError("board_write_failed",
+                         "cannot write Priority without a Project item id",
+                         "Ensure set_status ran first and returned item_id")
+    if not schema.priority_field_id or value not in schema.priority_options:
+        raise BoardError(
+            "option_missing",
+            f"Priority option {value!r} is not resolvable on this board",
+            "Re-run `python3 <wf-setup skill dir>/scripts/bootstrap_lifecycle_board.py`",
+        )
+    edit = _run_gh_retry(runner, [
+        "project", "item-edit", "--id", item_id,
+        "--project-id", schema.project_id,
+        "--field-id", schema.priority_field_id,
+        "--single-select-option-id", schema.priority_options[value],
+    ])
+    if edit.returncode != 0:
+        raise BoardError("board_write_failed", f"Priority item-edit failed: {edit.stderr.strip()[:200]}",
+                         "Verify the `project` scope and board permissions")
+    return {"item_id": item_id, "priority": value}
+
+
 def apply_complexity_label(issue: int, tier: str, ctx: RepoContext, runner: GhRunner) -> dict:
     """Attach the repo-scoped `complexity:{tier}` label to an issue, mutually
     exclusive with any other `complexity:*` label. Mirrors the `status:*`
@@ -1772,10 +1849,10 @@ def verb_decompose(issue: Optional[int], spec_path: str, ctx: RepoContext, runne
     # decomposition that no retry can repair, because re-running the same spec
     # creates duplicates. Deliberately resolved WITHOUT the on-disk cache: this is
     # a preflight, and it must not depend on Git's common directory being
-    # resolvable. Step 5 resolves again through the normal cached path; one extra
-    # field-list on a verb that already makes N issue-creates is a fair price for
-    # a precondition that cannot half-write.
-    resolve_schema(board, ctx, runner, {})
+    # resolvable. The returned schema is reused for the Priority write after
+    # set_status (same board, same process) so Priority options cannot drift
+    # mid-verb and tests keep a single field-list.
+    schema = resolve_schema(board, ctx, runner, {})
 
     # 1. Parent: create from the plan, or update an existing parent's body.
     if issue is None:
@@ -1821,9 +1898,17 @@ def verb_decompose(issue: Optional[int], spec_path: str, ctx: RepoContext, runne
             wired.append({"issue": created[i], "blocked_by": created[dep_idx]})
 
     # 4. Advance the parent to planned (board-adds if needed) — the transition.
-    #    This happens BEFORE the complexity labels below so a label write can
-    #    never gate or break the `planned` transition (issue #285 AC5).
+    #    This happens BEFORE Priority / complexity / posture writes below so a
+    #    field or label write can never gate or break the `planned` transition
+    #    (issue #285 AC5; Priority follows the same ordering).
     st = set_status(parent, "planned", ctx, runner)
+
+    # 4b. Persist Project Priority (required). Uses item_id from set_status so
+    #     Priority never races an item-add. Re-decompose overwrites. Schema came
+    #     from the preflight resolve above. Production set_status always returns
+    #     item_id; a missing id fails inside apply_priority_field.
+    parent_priority = spec["priority"]
+    apply_priority_field(st.get("item_id") or "", parent_priority, schema, runner)
 
     # 5. Persist implementation-complexity labels (advisory, optional). Each
     #    sub-issue gets its own tier; the parent gets a ROLLUP = the highest
@@ -1856,6 +1941,7 @@ def verb_decompose(issue: Optional[int], spec_path: str, ctx: RepoContext, runne
     deboarded = [deboard(number, board, ctx, runner) for number in created]
     return {"parent": parent, "body_file": spec[body_key], "stage": st.get("stage"),
             "previous_stage": st.get("previous_stage"),
+            "parent_priority": parent_priority,
             "parent_complexity": parent_tier,
             "parent_posture": parent_posture,
             "sub_issues": [{"number": created[i], "title": subs[i]["title"],
@@ -1923,6 +2009,9 @@ def verb_groom_verify(issue: int, ctx: RepoContext, runner: GhRunner,
     failures: "list[str]" = []
     if not stage_at_least(state.stage, "planned"):
         failures.append(f"stage is {state.stage!r}, expected >= planned")
+    if state.priority not in PRIORITY_VALUES:
+        failures.append(
+            f"priority is {state.priority!r}, expected one of {PRIORITY_VALUES}")
 
     warnings: "list[dict]" = []
     for sub in subs:

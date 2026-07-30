@@ -108,6 +108,24 @@ Advisory, never a gate. Use the engine vocabulary exactly:
 
 The engine rolls the parent's label up to the highest child tier.
 
+### Assess priority
+
+Grooming estimates Project **Priority** once here and writes it on the parent
+during `--decompose`. The spec **MUST** carry parent-level `priority`
+(`p1` | `p2` | `p3`) — required, not advisory. The engine persists it as the
+board's Priority single-select (not an issue label). Estimate from plan context
+**without asking the user**; humans may revise the field when stamping
+`ready_for_work`. Use the engine vocabulary exactly:
+
+| `priority` | When it fits |
+|------------|--------------|
+| `p1`       | Urgent or blocking; high user/ops impact if deferred. |
+| `p2`       | Important near-term improvement; default for most work. |
+| `p3`       | Nice-to-have or opportunistic; low urgency. |
+
+`--groom-verify` fails when Priority is unset. Do not invent scoring frameworks;
+a short judgment from the plan is enough.
+
 ### Decide delivery posture
 
 Grooming decides delivery **posture** in the same conversation and the same
