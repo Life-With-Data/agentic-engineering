@@ -5,6 +5,27 @@ All notable changes to the agentic-engineering plugin will be documented in this
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [7.0.0](https://github.com/Life-With-Data/agentic-engineering/compare/agentic-engineering-v6.0.0...agentic-engineering-v7.0.0) (2026-07-30)
+
+
+### ⚠ BREAKING CHANGES
+
+* **skills:** delete agent-native corpus, make the engine the single authority, slim references 63% ([#337](https://github.com/Life-With-Data/agentic-engineering/issues/337))
+
+### Features
+
+* **lifecycle:** require Project Priority during grooming ([#345](https://github.com/Life-With-Data/agentic-engineering/issues/345)) ([301154b](https://github.com/Life-With-Data/agentic-engineering/commit/301154b1f69d8fa718bfb41a032a3b6e778c6e0d))
+
+
+### Bug Fixes
+
+* **skills:** worktree teardown is the session's job, never a user handoff ([#339](https://github.com/Life-With-Data/agentic-engineering/issues/339)) ([e5e9064](https://github.com/Life-With-Data/agentic-engineering/commit/e5e9064b1e1c9bc7bf318040ad68ec48fc451fb0))
+
+
+### Code Refactoring
+
+* **skills:** delete agent-native corpus, make the engine the single authority, slim references 63% ([#337](https://github.com/Life-With-Data/agentic-engineering/issues/337)) ([e1d7b50](https://github.com/Life-With-Data/agentic-engineering/commit/e1d7b50b1d3a30b949471ee524d064977931cd8e))
+
 ## [6.0.0](https://github.com/Life-With-Data/agentic-engineering/compare/agentic-engineering-v5.4.0...agentic-engineering-v6.0.0) (2026-07-28)
 
 
