@@ -2308,6 +2308,36 @@ class DecomposeSpecValidationTest(unittest.TestCase):
                 lb.validate_decompose_spec(bad, has_parent=True)
             self.assertEqual(cm.exception.code, "invalid_decompose_spec")
 
+    def test_existing_issue_blocked_by_accepted_in_both_spellings(self) -> None:
+        # A dependency on an issue that ALREADY exists has no ordering problem —
+        # both the bare and the hashed spelling name the same issue.
+        for entry in ("257", "#257", " #257 "):
+            spec = {"plan_path": "p", "priority": "p2", "sub_issues": [
+                {"title": "a", "body_file": "s", "blocked_by": [entry]}]}
+            self.assertEqual(len(lb.validate_decompose_spec(spec, has_parent=True)), 1)
+
+    def test_mixed_index_and_existing_issue_blocked_by_accepted(self) -> None:
+        spec = {"plan_path": "p", "priority": "p2", "sub_issues": [
+            {"title": "a", "body_file": "s1"},
+            {"title": "b", "body_file": "s2", "blocked_by": [0, "#257"]}]}
+        self.assertEqual(len(lb.validate_decompose_spec(spec, has_parent=True)), 2)
+
+    def test_blocked_by_naming_the_parent_is_rejected_as_a_cycle(self) -> None:
+        spec = {"plan_path": "p", "priority": "p2", "sub_issues": [
+            {"title": "a", "body_file": "s", "blocked_by": ["#182"]}]}
+        with self.assertRaises(lb.BoardError) as cm:
+            lb.validate_decompose_spec(spec, has_parent=True, parent=182)
+        self.assertEqual(cm.exception.code, "invalid_decompose_spec")
+        self.assertIn("cycle", str(cm.exception))
+
+    def test_non_numeric_and_zero_blocked_by_strings_rejected(self) -> None:
+        for entry in ("#abc", "", "#0", "0", "12x", "#-3"):
+            spec = {"plan_path": "p", "priority": "p2", "sub_issues": [
+                {"title": "a", "body_file": "s", "blocked_by": [entry]}]}
+            with self.assertRaises(lb.BoardError) as cm:
+                lb.validate_decompose_spec(spec, has_parent=True)
+            self.assertEqual(cm.exception.code, "invalid_decompose_spec")
+
     def test_parent_title_required_only_when_creating(self) -> None:
         spec = {"plan_path": "p", "priority": "p2", "sub_issues": []}
         # creating (no parent number) needs a title
@@ -2901,6 +2931,132 @@ class DecomposeVerbTest(unittest.TestCase):
                                       set_status=lambda *a, **k: None)
             self.assertEqual(cm.exception.code, "invalid_decompose_spec")
             self.assertEqual(runner.calls, [])  # no gh writes on a malformed spec
+
+    def test_existing_issue_blocked_by_is_preflighted_then_wired(self) -> None:
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            (root / "p.md").write_text("parent", encoding="utf-8")
+            (root / "s1.md").write_text("sub1", encoding="utf-8")
+            (root / "s2.md").write_text("sub2", encoding="utf-8")
+            spec = {"body_file": "p.md", "priority": "p2", "sub_issues": [
+                {"title": "core", "body_file": "s1.md"},
+                {"title": "follow", "body_file": "s2.md", "blocked_by": [0, "#257"]}]}
+            spec_path = root / "spec.json"
+            spec_path.write_text(json.dumps(spec), encoding="utf-8")
+
+            runner = FakeRunner([
+                # existence check runs with the other preflights, BEFORE the
+                # schema resolve and long before the first mutation
+                (["issue", "view", "257", "--repo", "o/r", "--json", "number"],
+                 _ok('{"number":257}')),
+                (["project", "field-list", "1", "--owner", "o"], _decompose_field_list()),
+                (["issue", "edit", "182", "--repo", "o/r", "--body-file"],
+                 _ok("https://github.com/o/r/issues/182\n")),
+                (["issue", "create", "--repo", "o/r", "--parent", "182", "--title", "core"],
+                 _ok("https://github.com/o/r/issues/183\n")),
+                (["issue", "create", "--repo", "o/r", "--parent", "182", "--title", "follow"],
+                 _ok("https://github.com/o/r/issues/184\n")),
+                (["issue", "edit", "184", "--repo", "o/r", "--add-blocked-by", "183"], _ok("")),
+                (["issue", "edit", "184", "--repo", "o/r", "--add-blocked-by", "257"], _ok("")),
+            ])
+
+            with mock.patch.object(lb, "read_board_config",
+                                   return_value=lb.BoardConfig(owner="o", number=1, source="committed")):
+                out = lb.verb_decompose(182, str(spec_path), _ctx(str(root)), runner,
+                                        set_status=lambda *a, **k: {"stage": "planned",
+                                                                    "previous_stage": None},
+                                        deboard=lambda n, b, c, r: {"issue": n, "deboarded": True})
+
+            self.assertEqual(out["dependencies_wired"], 2)
+            # both kinds resolve to literal issue numbers in the returned JSON
+            self.assertEqual(out["sub_issues"][1]["blocked_by"], [183, 257])
+            self.assertEqual(runner.responses, [])
+
+    def test_closed_referenced_issue_is_a_satisfied_dependency(self) -> None:
+        # `gh issue view` succeeds for a closed issue; the preflight checks
+        # EXISTENCE only, so a closed blocker must not fail the decomposition.
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            (root / "p.md").write_text("parent", encoding="utf-8")
+            (root / "s1.md").write_text("sub1", encoding="utf-8")
+            spec = {"body_file": "p.md", "priority": "p2", "sub_issues": [
+                {"title": "core", "body_file": "s1.md", "blocked_by": ["257"]}]}
+            spec_path = root / "spec.json"
+            spec_path.write_text(json.dumps(spec), encoding="utf-8")
+            runner = FakeRunner([
+                (["issue", "view", "257", "--repo", "o/r", "--json", "number"],
+                 _ok('{"number":257}')),
+                (["project", "field-list", "1", "--owner", "o"], _decompose_field_list()),
+                (["issue", "edit", "182", "--repo", "o/r", "--body-file"],
+                 _ok("https://github.com/o/r/issues/182\n")),
+                (["issue", "create", "--repo", "o/r", "--parent", "182", "--title", "core"],
+                 _ok("https://github.com/o/r/issues/183\n")),
+                (["issue", "edit", "183", "--repo", "o/r", "--add-blocked-by", "257"], _ok("")),
+            ])
+            with mock.patch.object(lb, "read_board_config",
+                                   return_value=lb.BoardConfig(owner="o", number=1, source="committed")):
+                out = lb.verb_decompose(182, str(spec_path), _ctx(str(root)), runner,
+                                        set_status=lambda *a, **k: {"stage": "planned",
+                                                                    "previous_stage": None},
+                                        deboard=lambda n, b, c, r: {"issue": n, "deboarded": True})
+            self.assertEqual(out["sub_issues"][0]["blocked_by"], [257])
+            self.assertEqual(runner.responses, [])
+
+    def test_missing_referenced_issue_writes_nothing(self) -> None:
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            (root / "p.md").write_text("parent", encoding="utf-8")
+            (root / "s1.md").write_text("sub1", encoding="utf-8")
+            spec = {"body_file": "p.md", "priority": "p2", "sub_issues": [
+                {"title": "core", "body_file": "s1.md", "blocked_by": ["#999999"]}]}
+            spec_path = root / "spec.json"
+            spec_path.write_text(json.dumps(spec), encoding="utf-8")
+            runner = FakeRunner([
+                (["issue", "view", "999999", "--repo", "o/r", "--json", "number"],
+                 subprocess.CompletedProcess(args=[], returncode=1, stdout="",
+                                             stderr="Could not resolve to an Issue")),
+            ])
+            with mock.patch.object(lb, "read_board_config",
+                                   return_value=lb.BoardConfig(owner="o", number=1, source="committed")):
+                with self.assertRaises(lb.BoardError) as cm:
+                    lb.verb_decompose(182, str(spec_path), _ctx(str(root)), runner,
+                                      set_status=lambda *a, **k: None)
+            self.assertEqual(cm.exception.code, "blocked_by_issue_missing")
+            # the failing view is the ONLY gh call: nothing was created or edited
+            self.assertEqual(len(runner.calls), 1)
+
+    def test_index_only_spec_makes_no_existence_check(self) -> None:
+        # Backward compatibility: an index-only spec produces exactly the argv
+        # it produced before cross-issue blocked_by existed.
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            (root / "p.md").write_text("parent", encoding="utf-8")
+            (root / "s1.md").write_text("sub1", encoding="utf-8")
+            (root / "s2.md").write_text("sub2", encoding="utf-8")
+            spec = {"body_file": "p.md", "priority": "p2", "sub_issues": [
+                {"title": "core", "body_file": "s1.md"},
+                {"title": "follow", "body_file": "s2.md", "blocked_by": [0]}]}
+            spec_path = root / "spec.json"
+            spec_path.write_text(json.dumps(spec), encoding="utf-8")
+            runner = FakeRunner([
+                (["project", "field-list", "1", "--owner", "o"], _decompose_field_list()),
+                (["issue", "edit", "182", "--repo", "o/r", "--body-file"],
+                 _ok("https://github.com/o/r/issues/182\n")),
+                (["issue", "create", "--repo", "o/r", "--parent", "182", "--title", "core"],
+                 _ok("https://github.com/o/r/issues/183\n")),
+                (["issue", "create", "--repo", "o/r", "--parent", "182", "--title", "follow"],
+                 _ok("https://github.com/o/r/issues/184\n")),
+                (["issue", "edit", "184", "--repo", "o/r", "--add-blocked-by", "183"], _ok("")),
+            ])
+            with mock.patch.object(lb, "read_board_config",
+                                   return_value=lb.BoardConfig(owner="o", number=1, source="committed")):
+                out = lb.verb_decompose(182, str(spec_path), _ctx(str(root)), runner,
+                                        set_status=lambda *a, **k: {"stage": "planned",
+                                                                    "previous_stage": None},
+                                        deboard=lambda n, b, c, r: {"issue": n, "deboarded": True})
+            self.assertEqual(out["sub_issues"][1]["blocked_by"], [183])
+            self.assertNotIn("view", [c[1] for c in runner.calls])
+            self.assertEqual(runner.responses, [])
 
     def test_missing_later_sub_body_is_preflighted_before_parent_write(self) -> None:
         with tempfile.TemporaryDirectory() as d:

@@ -1090,6 +1090,21 @@ def route_for_groom(has_issue: bool, stage: Optional[str], plan_doc: Optional[st
 # --------------------------------------------------------------------------
 
 _ISSUE_URL_RE = re.compile(r"/issues/(\d+)\b")
+_BLOCKED_BY_ISSUE_RE = re.compile(r"^#?(\d+)$")
+
+
+def blocked_by_issue_number(entry) -> Optional[int]:
+    """The literal, already-existing issue number a `blocked_by` entry names,
+    or None when the entry is an index into the spec's own sub-issue list.
+
+    The two forms are disjoint by type: an int is always a spec index (the
+    sub-issue does not exist yet), a `"257"`/`"#257"` string is always a real
+    issue number. Anything else is neither, and validation rejects it."""
+    if isinstance(entry, str):
+        m = _BLOCKED_BY_ISSUE_RE.match(entry.strip())
+        if m:
+            return int(m.group(1))
+    return None
 
 
 def parse_created_issue_number(text: str) -> int:
@@ -1108,17 +1123,21 @@ def parse_created_issue_number(text: str) -> int:
     return int(found)
 
 
-def validate_decompose_spec(spec: dict, has_parent: bool) -> "list[dict]":
+def validate_decompose_spec(spec: dict, has_parent: bool,
+                            parent: Optional[int] = None) -> "list[dict]":
     """Return the validated, ordered sub-issue list or raise BoardError.
 
     A sub may only be `blocked_by` an EARLIER sub (lower index): sub-issues are
     created in list order, so a forward reference would wire a dependency on an
     issue that does not exist yet. Rejecting it here makes that class of bug
-    impossible in the effectful verb."""
+    impossible in the effectful verb. A dependency on an issue that ALREADY
+    exists has no such ordering problem and rides the string form (`"#257"`);
+    the effectful verb preflights its existence."""
     def bad(msg: str) -> "BoardError":
         return BoardError("invalid_decompose_spec", msg,
                           "Fix the --spec JSON: {body_file, [parent_title], "
-                          "sub_issues:[{title, body_file, blocked_by:[earlier-index...]}]}")
+                          "sub_issues:[{title, body_file, "
+                          "blocked_by:[earlier-index | \"#existing-issue\"...]}]}")
     if not isinstance(spec, dict):
         raise bad("spec must be a JSON object")
     body_file = spec.get("body_file") or spec.get("plan_path")  # legacy input alias
@@ -1175,6 +1194,17 @@ def validate_decompose_spec(spec: dict, has_parent: bool) -> "list[dict]":
         if not isinstance(deps, list):
             raise bad(f"sub_issues[{i}].blocked_by must be an array of earlier indices")
         for d in deps:
+            number = blocked_by_issue_number(d)
+            if number is not None:
+                if number <= 0:
+                    raise bad(f"sub_issues[{i}].blocked_by={d!r} is not a valid issue number")
+                if parent is not None and number == parent:
+                    raise bad(f"sub_issues[{i}].blocked_by={d!r} names the parent issue "
+                              f"#{parent}; a sub-issue blocked by its own parent is a cycle")
+                continue
+            if isinstance(d, str):
+                raise bad(f"sub_issues[{i}].blocked_by={d!r} must be an earlier sub-issue index "
+                          "or an existing issue number like \"#257\"")
             if not isinstance(d, int) or d < 0 or d >= i:
                 raise bad(f"sub_issues[{i}].blocked_by={d!r} must be an index of an EARLIER "
                           f"sub-issue (0..{i - 1}); forward/self dependencies are impossible")
@@ -1818,7 +1848,7 @@ def verb_decompose(issue: Optional[int], spec_path: str, ctx: RepoContext, runne
     except (OSError, ValueError) as exc:
         raise BoardError("spec_unreadable", f"could not read --spec {spec_path}: {exc}",
                          "Pass a path to a valid JSON spec file") from exc
-    subs = validate_decompose_spec(spec, has_parent=issue is not None)
+    subs = validate_decompose_spec(spec, has_parent=issue is not None, parent=issue)
 
     def _abs(rel: str) -> pathlib.Path:
         p = pathlib.Path(rel)
@@ -1841,6 +1871,25 @@ def verb_decompose(issue: Optional[int], spec_path: str, ctx: RepoContext, runne
                              f"sub_issues[{i}].body_file does not exist: {sub_body}",
                              "Write every sub-issue body file before decomposing")
         sub_body_paths.append(sub_body)
+
+    # Same rule, one step out: a `blocked_by` entry naming an ALREADY-existing
+    # issue is a remote reference, and a typo in it must fail here rather than
+    # after the parent and every sub-issue exist. Existence only — a CLOSED
+    # referenced issue is a satisfied dependency, not an error.
+    referenced: "list[tuple[int, int]]" = []  # (spec index, issue number), deduped
+    for i, sub in enumerate(subs):
+        for d in sub.get("blocked_by", []):
+            number = blocked_by_issue_number(d)
+            if number is not None and number not in [n for _, n in referenced]:
+                referenced.append((i, number))
+    for i, number in referenced:
+        r = _run_gh_retry(runner, ["issue", "view", str(number), "--repo", ctx.slug,
+                                   "--json", "number"])
+        if r.returncode != 0:
+            raise BoardError("blocked_by_issue_missing",
+                             f"sub_issues[{i}].blocked_by references #{number}, which does not "
+                             f"exist in {ctx.slug}: {r.stderr.strip()[:160]}",
+                             "Fix the issue number in the --spec JSON, or drop the dependency")
 
     # The board schema is a precondition of step 5's Status write, but it is read
     # for the first time thousands of lines of GitHub mutation later. Resolve it
@@ -1885,17 +1934,23 @@ def verb_decompose(issue: Optional[int], spec_path: str, ctx: RepoContext, runne
         created.append(parse_created_issue_number(r.stdout))
 
     # 3. Wire dependency edges by the numbers actually created (validation
-    #    guarantees every index refers to an earlier, already-created sub).
+    #    guarantees every index refers to an earlier, already-created sub) or,
+    #    for a string entry, by the pre-existing issue the preflight confirmed.
+    def dep_number(entry) -> int:
+        number = blocked_by_issue_number(entry)
+        return created[entry] if number is None else number
+
     wired: "list[dict]" = []
     for i, sub in enumerate(subs):
-        for dep_idx in sub.get("blocked_by", []):
+        for dep in sub.get("blocked_by", []):
+            blocker = dep_number(dep)
             e = _run_gh_retry(runner, ["issue", "edit", str(created[i]), "--repo", ctx.slug,
-                                       "--add-blocked-by", str(created[dep_idx])])
+                                       "--add-blocked-by", str(blocker)])
             if e.returncode != 0:
                 raise BoardError("dependency_wire_failed",
-                                 f"blocking #{created[i]} by #{created[dep_idx]} failed: {e.stderr.strip()[:160]}",
+                                 f"blocking #{created[i]} by #{blocker} failed: {e.stderr.strip()[:160]}",
                                  "Verify the dependency exists; re-run wiring is idempotent")
-            wired.append({"issue": created[i], "blocked_by": created[dep_idx]})
+            wired.append({"issue": created[i], "blocked_by": blocker})
 
     # 4. Advance the parent to planned (board-adds if needed) — the transition.
     #    This happens BEFORE Priority / complexity / posture writes below so a
@@ -1946,7 +2001,7 @@ def verb_decompose(issue: Optional[int], spec_path: str, ctx: RepoContext, runne
             "parent_posture": parent_posture,
             "sub_issues": [{"number": created[i], "title": subs[i]["title"],
                             "complexity": subs[i].get("complexity"),
-                            "blocked_by": [created[d] for d in subs[i].get("blocked_by", [])]}
+                            "blocked_by": [dep_number(d) for d in subs[i].get("blocked_by", [])]}
                            for i in range(len(subs))],
             "sub_issue_count": len(created), "dependencies_wired": len(wired),
             "deboarded": deboarded}
