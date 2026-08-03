@@ -1,10 +1,27 @@
 #!/usr/bin/env python3
 """
-Claude Code hook to block direct commits / pushes to the main branch.
+Claude Code hook to block direct commits to the main branch.
 
 The agentic-engineering workflow is PR-based (plan → work → PR → review →
-merge). Never commit or push directly to `main`/`master` — branch off and
-open a PR so code review, CI, and the `land-pr` flow apply.
+merge). Never commit directly to `main`/`master` — branch off and open a PR so
+code review, CI, and the `land-pr` flow apply.
+
+Push policy is deliberately NOT enforced here. A client-side refspec check
+decides from the shape of the phrasing rather than from what the push would
+actually do: it blocks `git push origin main` while `git push` and
+`git push --force origin HEAD` from `main` do the same thing and pass. It also
+blocks `git push origin main`, which is a required step of the delivery
+lifecycle on forges without a PR flow. Push and force-push policy belongs on
+the server, where it binds every client, identity, and phrasing — buzz
+(`buzz repos protect set --ref refs/heads/main --push owner --no-force-push`)
+and GitHub rulesets both own it.
+
+The commit rule below decides from live branch state rather than from the
+command's stated target, so rewording the refspec cannot get around it. It is
+not airtight against every spelling of the verb itself: global git options
+between the words (`git -c x=y commit`, `git --no-pager commit`) are not
+matched today. See issue #364, tracking parity with
+`block-no-verify.py`'s sanitizer.
 """
 import json
 import re
@@ -30,29 +47,16 @@ def main():
 
     stripped = strip_quotes(command)
 
-    is_commit = re.search(r"\bgit\s+commit\b", stripped) is not None
-    # Only the actual `git push` segments — NOT the whole compound command — so a
-    # `main`/`master` token in a sibling segment (e.g. `gh pr create --base main`,
-    # or a chained `git log origin/main`) cannot be attributed to the push.
-    push_segs = [s for s in split_segments(stripped) if re.search(r"\bgit\s+push\b", s)]
-
-    if not is_commit and not push_segs:
+    if re.search(r"\bgit\s+commit\b", stripped) is None:
         emit_allow()
 
     branch = current_branch()
 
-    if is_commit and branch in PROTECTED_BRANCHES:
+    if branch in PROTECTED_BRANCHES:
         block(
             f"Direct commit to `{branch}` is not allowed.",
             "Branch off and open a PR instead:",
             "  git checkout -b <type>/<description>",
-        )
-
-    if any(pushes_to_protected(seg) for seg in push_segs):
-        block(
-            "Direct push to `main`/`master` is not allowed.",
-            "Push your feature branch and open a PR instead:",
-            "  git push -u origin <your-branch>",
         )
 
     emit_allow()
@@ -62,16 +66,6 @@ def strip_quotes(command: str) -> str:
     command = re.sub(r"'[^']*'", "", command)
     command = re.sub(r'"[^"]*"', "", command)
     return command
-
-
-# Shell separators that end one simple command and begin another. Splitting on
-# these lets us inspect each command independently, so a `main` token in a
-# non-push segment can't be attributed to a `git push` in another segment.
-SEGMENT_SPLIT = re.compile(r"&&|\|\||[;\n|&]")
-
-
-def split_segments(stripped: str) -> list:
-    return SEGMENT_SPLIT.split(stripped)
 
 
 def current_branch() -> str:
@@ -85,10 +79,6 @@ def current_branch() -> str:
         return result.stdout.strip()
     except Exception:
         return ""
-
-
-def pushes_to_protected(stripped: str) -> bool:
-    return re.search(r"(?:^|[\s:/])(?:main|master)(?:$|[\s:])", stripped) is not None
 
 
 def block(*lines: str):
