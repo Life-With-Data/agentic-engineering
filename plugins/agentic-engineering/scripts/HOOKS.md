@@ -20,6 +20,7 @@ script changes). Wiring differs per platform:
 | `block-slack-webhook.py` | Ships (Bash + Write/Edit/MultiEdit) | Ships (shell + `preToolUse` Write) | Ships (Bash + `apply_patch`) | Safety net; Cursor has no MultiEdit matcher |
 | `block-db-push.py` | Ships | Ships | Ships | Safety net |
 | `block-beads-jsonl-stage.py` | Ships | Claude-only | Claude-only | Claude-primary |
+| `check-node-version.py` | Ships (`PreToolUse` / Bash) | Claude-only | Claude-only | Claude-only; no-op unless the repo declares a Node version |
 | `nudge-todowrite-to-tracker.py` | Ships (`TodoWrite`) | N/A | N/A | No TodoWrite equivalent on Cursor/Codex |
 | `sdd-cache-pre.py` / `sdd-cache-post.py` | Ships (`WebFetch`, opt-in) | N/A | N/A | WebFetch-specific; opt-in via `AGENTIC_SDD_CACHE=1` |
 | `worktree-session.py` | Ships (`SessionStart` / `startup`) | N/A | N/A | Worktree bootstrap + staleness advisory; no-op outside `.claude/worktrees/*` |
@@ -128,6 +129,47 @@ commands are untouched.
 
 **Correct alternative:** `prisma migrate dev --name <migration-name>` (or the
 repo's wrapper), which records a migration that keeps the DB and history in sync.
+
+## `check-node-version.py` — PreToolUse (Bash) — Claude-only
+
+**Blocks** a package-manager *run* command (`pnpm dev`/`build`/`test`/`run`,
+`npm run`/`test`, `yarn dev`, `npx …`, `turbo run …`) when the active Node.js
+major is outside the version this repository declares — comparing the running
+`node --version` against `.nvmrc` or `package.json`'s `engines.node`. The block
+message names the exact `nvm use` / `fnm use` (or install) command to switch
+first.
+
+**Why:** running project JS under the wrong Node major fails in confusing,
+expensive ways — native-addon ABI mismatches, ESM/CJS interop breaks (the
+canonical case is Zod v4 on Node >= 24), and engine warnings that surface three
+frames deep as unrelated stack traces. The command usually *does* fail, but
+slowly and after the agent has already burned a turn on it; catching it before
+it runs and handing back the one-line fix is the toolchain sibling of the
+`block-db-push` guard.
+
+**No-op unless relevant:** it reads only files the repo already ships, so a
+repository that declares no Node constraint — and every non-JS repo — pays
+nothing. `install`/`add` commands are never gated (installing under a slightly
+different major is usually fine and blocking it would trap the fix), and a
+command that already switches Node in the same line (`nvm use 22 && pnpm dev`)
+is left alone.
+
+**Precision — every ambiguity fails open.** `engines.node` is parsed as a
+*range*, never an equality: a repo on `">=18"` is not blocked while running Node
+20 (the bug the source of this hook had). An `.nvmrc` alias (`lts/*`), a `||`
+union, a `*` wildcard, an unreadable file, or a missing `node` binary all
+resolve to **allow** — a version guard that false-blocks a valid command is
+worse than one that occasionally lets a mismatch through, so unknowns bias
+toward allow. Quoted mentions and mid-command references
+(`git commit -m 'pnpm dev'`, `echo pnpm test`) don't fire — matching is
+segment-anchored and quote-stripped like the other guards.
+
+**Correct alternative:** switch the active version first
+(`nvm use <major>` / `fnm use <major>`), then re-run the command.
+
+**Cursor/Codex:** Claude-only — it is not part of the portable safety-guard
+bundle, and neither manifest wires it. Adapted and generalized (with correct
+range handling) from the Agent Leverage monorepo's `check-node-version.py`.
 
 ## `nudge-todowrite-to-tracker.py` — PreToolUse (TodoWrite) — Claude-only
 
@@ -306,6 +348,7 @@ Automated regression tests live in [`../tests/`](../tests) and run in CI via
 - [`prevent_main_commit_test.py`](../tests/prevent_main_commit_test.py)
 - [`block_slack_webhook_test.py`](../tests/block_slack_webhook_test.py)
 - [`block_db_push_test.py`](../tests/block_db_push_test.py)
+- [`check_node_version_test.py`](../tests/check_node_version_test.py)
 - [`nudge_todowrite_to_tracker_test.py`](../tests/nudge_todowrite_to_tracker_test.py)
 - [`sdd_cache_pre_test.py`](../tests/sdd_cache_pre_test.py)
 - [`sdd_cache_post_test.py`](../tests/sdd_cache_post_test.py)
