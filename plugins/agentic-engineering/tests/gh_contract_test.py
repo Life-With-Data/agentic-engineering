@@ -44,8 +44,8 @@ MIN_GH = (2, 94, 0)
 # any of these, the corresponding writer contract in lifecycle_board silently
 # breaks — this table is the tripwire.
 HELP_FLAG_MATRIX = {
-    "issue create": ["--parent", "--blocked-by"],
-    "issue edit": ["--add-blocked-by", "--add-blocking", "--parent"],
+    "issue create": ["--parent", "--blocked-by", "--milestone"],
+    "issue edit": ["--add-blocked-by", "--add-blocking", "--parent", "--milestone"],
     "issue list": ["--json"],
     "issue view": ["--json"],
     "issue close": ["--reason", "--comment"],

@@ -1090,6 +1090,29 @@ def route_for_groom(has_issue: bool, stage: Optional[str], plan_doc: Optional[st
 # --------------------------------------------------------------------------
 
 _ISSUE_URL_RE = re.compile(r"/issues/(\d+)\b")
+_BLOCKED_BY_ISSUE_RE = re.compile(r"^#?(\d+)$")
+
+# The CLOSED set of top-level decompose-spec keys. Enforced, not documentary: a
+# `milestones`/`prioritY` typo that merely fell through `spec.get` would write
+# nothing and be indistinguishable from deliberately omitting the key.
+DECOMPOSE_SPEC_KEYS = frozenset({
+    "body_file", "plan_path", "parent_title", "complexity",
+    "posture", "priority", "milestone", "sub_issues",
+})
+
+
+def blocked_by_issue_number(entry) -> Optional[int]:
+    """The literal, already-existing issue number a `blocked_by` entry names,
+    or None when the entry is an index into the spec's own sub-issue list.
+
+    The two forms are disjoint by type: an int is always a spec index (the
+    sub-issue does not exist yet), a `"257"`/`"#257"` string is always a real
+    issue number. Anything else is neither, and validation rejects it."""
+    if isinstance(entry, str):
+        m = _BLOCKED_BY_ISSUE_RE.match(entry.strip())
+        if m:
+            return int(m.group(1))
+    return None
 
 
 def parse_created_issue_number(text: str) -> int:
@@ -1108,19 +1131,27 @@ def parse_created_issue_number(text: str) -> int:
     return int(found)
 
 
-def validate_decompose_spec(spec: dict, has_parent: bool) -> "list[dict]":
+def validate_decompose_spec(spec: dict, has_parent: bool,
+                            parent: Optional[int] = None) -> "list[dict]":
     """Return the validated, ordered sub-issue list or raise BoardError.
 
     A sub may only be `blocked_by` an EARLIER sub (lower index): sub-issues are
     created in list order, so a forward reference would wire a dependency on an
     issue that does not exist yet. Rejecting it here makes that class of bug
-    impossible in the effectful verb."""
+    impossible in the effectful verb. A dependency on an issue that ALREADY
+    exists has no such ordering problem and rides the string form (`"#257"`);
+    the effectful verb preflights its existence."""
     def bad(msg: str) -> "BoardError":
         return BoardError("invalid_decompose_spec", msg,
                           "Fix the --spec JSON: {body_file, [parent_title], "
-                          "sub_issues:[{title, body_file, blocked_by:[earlier-index...]}]}")
+                          "sub_issues:[{title, body_file, "
+                          "blocked_by:[earlier-index | \"#existing-issue\"...]}]}")
     if not isinstance(spec, dict):
         raise bad("spec must be a JSON object")
+    unknown_top = sorted(set(spec) - DECOMPOSE_SPEC_KEYS)
+    if unknown_top:
+        raise bad(f"spec has unsupported top-level key(s) {unknown_top}; supported keys are "
+                  f"{sorted(DECOMPOSE_SPEC_KEYS)}")
     body_file = spec.get("body_file") or spec.get("plan_path")  # legacy input alias
     if not isinstance(body_file, str) or not body_file.strip():
         raise bad("spec.body_file (string) is required")
@@ -1153,6 +1184,26 @@ def validate_decompose_spec(spec: dict, has_parent: bool) -> "list[dict]":
             raise bad(f"{where} priority={value!r} must be one of {PRIORITY_VALUES}")
 
     check_priority(spec.get("priority"), "spec")
+
+    # `milestone` is optional (the epic tier above parent+subs). Omitted or null
+    # writes nothing. A present value is checked strictly, unknown keys included:
+    # a `titel` typo that silently produced no milestone would be indistinguishable
+    # from omitting the key, so it must fail loudly instead.
+    milestone = spec.get("milestone")
+    if milestone is not None:
+        if not isinstance(milestone, dict):
+            raise bad(f"spec.milestone={milestone!r} must be an object "
+                      "{title, description?} (or omitted)")
+        if not isinstance(milestone.get("title"), str) or not milestone["title"].strip():
+            raise bad("spec.milestone.title (non-empty string) is required")
+        description = milestone.get("description")
+        if description is not None and not isinstance(description, str):
+            raise bad(f"spec.milestone.description={description!r} must be a string (or omitted)")
+        unknown = sorted(set(milestone) - {"title", "description"})
+        if unknown:
+            raise bad(f"spec.milestone has unsupported key(s) {unknown}; only "
+                      "title and description are supported")
+
     subs = spec.get("sub_issues")
     if not isinstance(subs, list):
         raise bad("spec.sub_issues (array) is required (use [] for a single-task item)")
@@ -1175,6 +1226,17 @@ def validate_decompose_spec(spec: dict, has_parent: bool) -> "list[dict]":
         if not isinstance(deps, list):
             raise bad(f"sub_issues[{i}].blocked_by must be an array of earlier indices")
         for d in deps:
+            number = blocked_by_issue_number(d)
+            if number is not None:
+                if number <= 0:
+                    raise bad(f"sub_issues[{i}].blocked_by={d!r} is not a valid issue number")
+                if parent is not None and number == parent:
+                    raise bad(f"sub_issues[{i}].blocked_by={d!r} names the parent issue "
+                              f"#{parent}; a sub-issue blocked by its own parent is a cycle")
+                continue
+            if isinstance(d, str):
+                raise bad(f"sub_issues[{i}].blocked_by={d!r} must be an earlier sub-issue index "
+                          "or an existing issue number like \"#257\"")
             if not isinstance(d, int) or d < 0 or d >= i:
                 raise bad(f"sub_issues[{i}].blocked_by={d!r} must be an index of an EARLIER "
                           f"sub-issue (0..{i - 1}); forward/self dependencies are impossible")
@@ -1797,6 +1859,63 @@ def _deboard_subissue(number: int, board: BoardConfig, ctx: RepoContext,
     return {"issue": number, "deboarded": True}
 
 
+def resolve_milestone(milestone: dict, ctx: RepoContext, runner: GhRunner) -> dict:
+    """Create-or-reuse a repository milestone by EXACT title.
+
+    Matching is exact: a near-miss title is a DIFFERENT grouping, and adopting
+    it would silently file work under the wrong epic.
+
+    The listing covers `state=all` for diagnosis, not for reuse. Membership is
+    assigned by gh's own `--milestone <title>` resolver, which searches OPEN
+    milestones only — so a closed same-title milestone is reported here, before
+    any mutation, rather than surfacing later as an opaque issue-write failure."""
+    title = milestone["title"].strip()
+    listed = _run_gh_retry(runner, ["api", "--paginate", "--jq", ".[] | {number, title, state}",
+                                    f"repos/{ctx.slug}/milestones?state=all&per_page=100"])
+    if listed.returncode != 0:
+        raise BoardError("milestone_list_failed",
+                         f"listing milestones for {ctx.slug} failed: {listed.stderr.strip()[:200]}",
+                         "Verify issues-write permission on the repo")
+    for line in listed.stdout.splitlines():
+        if not line.strip():
+            continue
+        try:
+            row = json.loads(line)
+        except ValueError as exc:
+            raise BoardError("milestone_list_failed",
+                             f"could not parse a milestone row: {line.strip()[:120]!r}",
+                             "expected one JSON object per line from `gh api --jq`") from exc
+        if row.get("title") != title:
+            continue
+        if str(row.get("state", "")).lower() == "closed":
+            raise BoardError("milestone_closed",
+                             f"milestone {title!r} exists in {ctx.slug} but is CLOSED; "
+                             "issues can only be assigned to an open milestone",
+                             "Reopen the milestone, or use a different spec.milestone.title")
+        try:
+            return {"title": title, "number": int(row["number"]), "created": False}
+        except (ValueError, KeyError, TypeError) as exc:
+            raise BoardError("milestone_list_failed",
+                             f"milestone row is missing a usable number: {line.strip()[:120]!r}",
+                             "expected {number, title, state} from `gh api --jq`") from exc
+
+    args = ["api", f"repos/{ctx.slug}/milestones", "-f", f"title={title}"]
+    if milestone.get("description"):
+        args += ["-f", f"description={milestone['description']}"]
+    made = _run_gh_retry(runner, args)
+    if made.returncode != 0:
+        raise BoardError("milestone_create_failed",
+                         f"creating milestone {title!r} failed: {made.stderr.strip()[:200]}",
+                         "Verify issues-write permission on the repo")
+    try:
+        number = int(json.loads(made.stdout)["number"])
+    except (ValueError, KeyError, TypeError) as exc:
+        raise BoardError("milestone_create_failed",
+                         f"could not parse the created milestone: {made.stdout.strip()[:120]!r}",
+                         "expected the milestone object from the GitHub API") from exc
+    return {"title": title, "number": number, "created": True}
+
+
 def verb_decompose(issue: Optional[int], spec_path: str, ctx: RepoContext, runner: GhRunner,
                    set_status: "Optional[Callable]" = None,
                    deboard: "Optional[Callable]" = None) -> dict:
@@ -1818,7 +1937,7 @@ def verb_decompose(issue: Optional[int], spec_path: str, ctx: RepoContext, runne
     except (OSError, ValueError) as exc:
         raise BoardError("spec_unreadable", f"could not read --spec {spec_path}: {exc}",
                          "Pass a path to a valid JSON spec file") from exc
-    subs = validate_decompose_spec(spec, has_parent=issue is not None)
+    subs = validate_decompose_spec(spec, has_parent=issue is not None, parent=issue)
 
     def _abs(rel: str) -> pathlib.Path:
         p = pathlib.Path(rel)
@@ -1842,6 +1961,25 @@ def verb_decompose(issue: Optional[int], spec_path: str, ctx: RepoContext, runne
                              "Write every sub-issue body file before decomposing")
         sub_body_paths.append(sub_body)
 
+    # Same rule, one step out: a `blocked_by` entry naming an ALREADY-existing
+    # issue is a remote reference, and a typo in it must fail here rather than
+    # after the parent and every sub-issue exist. Existence only — a CLOSED
+    # referenced issue is a satisfied dependency, not an error.
+    referenced: "list[tuple[int, int]]" = []  # (spec index, issue number), deduped
+    for i, sub in enumerate(subs):
+        for d in sub.get("blocked_by", []):
+            number = blocked_by_issue_number(d)
+            if number is not None and number not in [n for _, n in referenced]:
+                referenced.append((i, number))
+    for i, number in referenced:
+        r = _run_gh_retry(runner, ["issue", "view", str(number), "--repo", ctx.slug,
+                                   "--json", "number"])
+        if r.returncode != 0:
+            raise BoardError("blocked_by_issue_missing",
+                             f"sub_issues[{i}].blocked_by references #{number}, which does not "
+                             f"exist in {ctx.slug}: {r.stderr.strip()[:160]}",
+                             "Fix the issue number in the --spec JSON, or drop the dependency")
+
     # The board schema is a precondition of step 5's Status write, but it is read
     # for the first time thousands of lines of GitHub mutation later. Resolve it
     # HERE, with the other preflights, so a board missing a lifecycle option fails
@@ -1854,10 +1992,24 @@ def verb_decompose(issue: Optional[int], spec_path: str, ctx: RepoContext, runne
     # mid-verb and tests keep a single field-list.
     schema = resolve_schema(board, ctx, runner, {})
 
+    # Milestone create-or-reuse is the ONE mutation that belongs in preflight.
+    # Every other write here is order-sensitive and unrepeatable, but resolving a
+    # milestone by exact title is inherently re-runnable: re-running the same spec
+    # reuses, and a milestone left empty by a later failure is harmless and gets
+    # adopted on retry. Resolving it here also means a permissions failure lands
+    # BEFORE the parent and sub-issues exist, like every other preflight above.
+    milestone_spec = spec.get("milestone")
+    milestone = resolve_milestone(milestone_spec, ctx, runner) if milestone_spec else None
+    # Membership rides gh's native flag on each create/edit. It is orthogonal to
+    # Project board membership: sub-issues are still de-boarded in step 6, and
+    # Status/Priority stay parent-scoped. A milestone groups; it does not track.
+    milestone_args = ["--milestone", milestone["title"]] if milestone else []
+
     # 1. Parent: create from the plan, or update an existing parent's body.
     if issue is None:
         res = _run_gh_retry(runner, ["issue", "create", "--repo", ctx.slug,
-                                     "--title", spec["parent_title"], "--body-file", str(body_abs)])
+                                     "--title", spec["parent_title"], "--body-file", str(body_abs),
+                                     *milestone_args])
         if res.returncode != 0:
             raise BoardError("issue_create_failed", f"creating parent failed: {res.stderr.strip()[:200]}",
                              "Verify issues-write permission on the repo")
@@ -1865,7 +2017,7 @@ def verb_decompose(issue: Optional[int], spec_path: str, ctx: RepoContext, runne
     else:
         parent = issue
         res = _run_gh_retry(runner, ["issue", "edit", str(parent), "--repo", ctx.slug,
-                                     "--body-file", str(body_abs)])
+                                     "--body-file", str(body_abs), *milestone_args])
         if res.returncode != 0:
             raise BoardError("issue_edit_failed", f"updating parent #{parent} failed: {res.stderr.strip()[:200]}",
                              "Verify the issue exists and you have issues-write permission")
@@ -1875,7 +2027,8 @@ def verb_decompose(issue: Optional[int], spec_path: str, ctx: RepoContext, runne
     created: "list[int]" = []
     for i, sub in enumerate(subs):
         r = _run_gh_retry(runner, ["issue", "create", "--repo", ctx.slug, "--parent", str(parent),
-                                   "--title", sub["title"], "--body-file", str(sub_body_paths[i])])
+                                   "--title", sub["title"], "--body-file", str(sub_body_paths[i]),
+                                   *milestone_args])
         if r.returncode != 0:
             raise BoardError("sub_issue_create_failed",
                              f"sub-issue {i} ({sub['title']!r}) failed after creating {created}: "
@@ -1885,17 +2038,23 @@ def verb_decompose(issue: Optional[int], spec_path: str, ctx: RepoContext, runne
         created.append(parse_created_issue_number(r.stdout))
 
     # 3. Wire dependency edges by the numbers actually created (validation
-    #    guarantees every index refers to an earlier, already-created sub).
+    #    guarantees every index refers to an earlier, already-created sub) or,
+    #    for a string entry, by the pre-existing issue the preflight confirmed.
+    def dep_number(entry) -> int:
+        number = blocked_by_issue_number(entry)
+        return created[entry] if number is None else number
+
     wired: "list[dict]" = []
     for i, sub in enumerate(subs):
-        for dep_idx in sub.get("blocked_by", []):
+        for dep in sub.get("blocked_by", []):
+            blocker = dep_number(dep)
             e = _run_gh_retry(runner, ["issue", "edit", str(created[i]), "--repo", ctx.slug,
-                                       "--add-blocked-by", str(created[dep_idx])])
+                                       "--add-blocked-by", str(blocker)])
             if e.returncode != 0:
                 raise BoardError("dependency_wire_failed",
-                                 f"blocking #{created[i]} by #{created[dep_idx]} failed: {e.stderr.strip()[:160]}",
+                                 f"blocking #{created[i]} by #{blocker} failed: {e.stderr.strip()[:160]}",
                                  "Verify the dependency exists; re-run wiring is idempotent")
-            wired.append({"issue": created[i], "blocked_by": created[dep_idx]})
+            wired.append({"issue": created[i], "blocked_by": blocker})
 
     # 4. Advance the parent to planned (board-adds if needed) — the transition.
     #    This happens BEFORE Priority / complexity / posture writes below so a
@@ -1944,9 +2103,10 @@ def verb_decompose(issue: Optional[int], spec_path: str, ctx: RepoContext, runne
             "parent_priority": parent_priority,
             "parent_complexity": parent_tier,
             "parent_posture": parent_posture,
+            "milestone": milestone,
             "sub_issues": [{"number": created[i], "title": subs[i]["title"],
                             "complexity": subs[i].get("complexity"),
-                            "blocked_by": [created[d] for d in subs[i].get("blocked_by", [])]}
+                            "blocked_by": [dep_number(d) for d in subs[i].get("blocked_by", [])]}
                            for i in range(len(subs))],
             "sub_issue_count": len(created), "dependencies_wired": len(wired),
             "deboarded": deboarded}

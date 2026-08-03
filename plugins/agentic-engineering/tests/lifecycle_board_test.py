@@ -2308,6 +2308,80 @@ class DecomposeSpecValidationTest(unittest.TestCase):
                 lb.validate_decompose_spec(bad, has_parent=True)
             self.assertEqual(cm.exception.code, "invalid_decompose_spec")
 
+    def test_valid_milestone_accepted_with_and_without_description(self) -> None:
+        for milestone in ({"title": "Non-demo data"},
+                          {"title": "Non-demo data", "description": "why"}):
+            spec = {"plan_path": "p", "priority": "p2", "milestone": milestone, "sub_issues": []}
+            self.assertEqual(lb.validate_decompose_spec(spec, has_parent=True), [])
+
+    def test_unknown_top_level_spec_key_rejected(self) -> None:
+        # `milestones` is the likelier typo than `titel`, and falling through
+        # spec.get() would write nothing — indistinguishable from omitting it.
+        for key in ("milestones", "Milestone", "prioritY", "subissues"):
+            spec = {"plan_path": "p", "priority": "p2", "sub_issues": [], key: "x"}
+            with self.assertRaises(lb.BoardError) as cm:
+                lb.validate_decompose_spec(spec, has_parent=True)
+            self.assertEqual(cm.exception.code, "invalid_decompose_spec")
+            self.assertIn(key, str(cm.exception))
+
+    def test_every_supported_top_level_key_is_accepted_together(self) -> None:
+        spec = {"body_file": "p", "plan_path": "p", "parent_title": "t", "complexity": "low",
+                "posture": "standard", "priority": "p2",
+                "milestone": {"title": "m", "description": "d"},
+                "sub_issues": [{"title": "a", "body_file": "s"}]}
+        self.assertEqual(set(spec), set(lb.DECOMPOSE_SPEC_KEYS))
+        self.assertEqual(len(lb.validate_decompose_spec(spec, has_parent=True)), 1)
+
+    def test_omitted_or_null_milestone_still_valid(self) -> None:
+        for spec in ({"plan_path": "p", "priority": "p2", "sub_issues": []},
+                     {"plan_path": "p", "priority": "p2", "milestone": None, "sub_issues": []}):
+            self.assertEqual(lb.validate_decompose_spec(spec, has_parent=True), [])
+
+    def test_invalid_milestone_rejected(self) -> None:
+        for milestone in ("Non-demo data",            # not an object
+                          {},                          # no title
+                          {"title": ""},               # empty title
+                          {"title": "   "},            # whitespace-only title
+                          {"title": 7},                # wrong title type
+                          {"title": "a", "description": 7},   # wrong description type
+                          {"titel": "a"},              # typo: unknown key, no title
+                          {"title": "a", "due_on": "x"}):     # unsupported key
+            spec = {"plan_path": "p", "priority": "p2", "milestone": milestone, "sub_issues": []}
+            with self.assertRaises(lb.BoardError) as cm:
+                lb.validate_decompose_spec(spec, has_parent=True)
+            self.assertEqual(cm.exception.code, "invalid_decompose_spec")
+            self.assertIn("milestone", str(cm.exception))
+
+    def test_existing_issue_blocked_by_accepted_in_both_spellings(self) -> None:
+        # A dependency on an issue that ALREADY exists has no ordering problem —
+        # both the bare and the hashed spelling name the same issue.
+        for entry in ("257", "#257", " #257 "):
+            spec = {"plan_path": "p", "priority": "p2", "sub_issues": [
+                {"title": "a", "body_file": "s", "blocked_by": [entry]}]}
+            self.assertEqual(len(lb.validate_decompose_spec(spec, has_parent=True)), 1)
+
+    def test_mixed_index_and_existing_issue_blocked_by_accepted(self) -> None:
+        spec = {"plan_path": "p", "priority": "p2", "sub_issues": [
+            {"title": "a", "body_file": "s1"},
+            {"title": "b", "body_file": "s2", "blocked_by": [0, "#257"]}]}
+        self.assertEqual(len(lb.validate_decompose_spec(spec, has_parent=True)), 2)
+
+    def test_blocked_by_naming_the_parent_is_rejected_as_a_cycle(self) -> None:
+        spec = {"plan_path": "p", "priority": "p2", "sub_issues": [
+            {"title": "a", "body_file": "s", "blocked_by": ["#182"]}]}
+        with self.assertRaises(lb.BoardError) as cm:
+            lb.validate_decompose_spec(spec, has_parent=True, parent=182)
+        self.assertEqual(cm.exception.code, "invalid_decompose_spec")
+        self.assertIn("cycle", str(cm.exception))
+
+    def test_non_numeric_and_zero_blocked_by_strings_rejected(self) -> None:
+        for entry in ("#abc", "", "#0", "0", "12x", "#-3"):
+            spec = {"plan_path": "p", "priority": "p2", "sub_issues": [
+                {"title": "a", "body_file": "s", "blocked_by": [entry]}]}
+            with self.assertRaises(lb.BoardError) as cm:
+                lb.validate_decompose_spec(spec, has_parent=True)
+            self.assertEqual(cm.exception.code, "invalid_decompose_spec")
+
     def test_parent_title_required_only_when_creating(self) -> None:
         spec = {"plan_path": "p", "priority": "p2", "sub_issues": []}
         # creating (no parent number) needs a title
@@ -2901,6 +2975,370 @@ class DecomposeVerbTest(unittest.TestCase):
                                       set_status=lambda *a, **k: None)
             self.assertEqual(cm.exception.code, "invalid_decompose_spec")
             self.assertEqual(runner.calls, [])  # no gh writes on a malformed spec
+
+    def test_existing_issue_blocked_by_is_preflighted_then_wired(self) -> None:
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            (root / "p.md").write_text("parent", encoding="utf-8")
+            (root / "s1.md").write_text("sub1", encoding="utf-8")
+            (root / "s2.md").write_text("sub2", encoding="utf-8")
+            spec = {"body_file": "p.md", "priority": "p2", "sub_issues": [
+                {"title": "core", "body_file": "s1.md"},
+                {"title": "follow", "body_file": "s2.md", "blocked_by": [0, "#257"]}]}
+            spec_path = root / "spec.json"
+            spec_path.write_text(json.dumps(spec), encoding="utf-8")
+
+            runner = FakeRunner([
+                # existence check runs with the other preflights, BEFORE the
+                # schema resolve and long before the first mutation
+                (["issue", "view", "257", "--repo", "o/r", "--json", "number"],
+                 _ok('{"number":257}')),
+                (["project", "field-list", "1", "--owner", "o"], _decompose_field_list()),
+                (["issue", "edit", "182", "--repo", "o/r", "--body-file"],
+                 _ok("https://github.com/o/r/issues/182\n")),
+                (["issue", "create", "--repo", "o/r", "--parent", "182", "--title", "core"],
+                 _ok("https://github.com/o/r/issues/183\n")),
+                (["issue", "create", "--repo", "o/r", "--parent", "182", "--title", "follow"],
+                 _ok("https://github.com/o/r/issues/184\n")),
+                (["issue", "edit", "184", "--repo", "o/r", "--add-blocked-by", "183"], _ok("")),
+                (["issue", "edit", "184", "--repo", "o/r", "--add-blocked-by", "257"], _ok("")),
+            ])
+
+            with mock.patch.object(lb, "read_board_config",
+                                   return_value=lb.BoardConfig(owner="o", number=1, source="committed")):
+                out = lb.verb_decompose(182, str(spec_path), _ctx(str(root)), runner,
+                                        set_status=lambda *a, **k: {"stage": "planned",
+                                                                    "previous_stage": None},
+                                        deboard=lambda n, b, c, r: {"issue": n, "deboarded": True})
+
+            self.assertEqual(out["dependencies_wired"], 2)
+            # both kinds resolve to literal issue numbers in the returned JSON
+            self.assertEqual(out["sub_issues"][1]["blocked_by"], [183, 257])
+            self.assertEqual(runner.responses, [])
+
+    def test_closed_referenced_issue_is_a_satisfied_dependency(self) -> None:
+        # `gh issue view` succeeds for a closed issue; the preflight checks
+        # EXISTENCE only, so a closed blocker must not fail the decomposition.
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            (root / "p.md").write_text("parent", encoding="utf-8")
+            (root / "s1.md").write_text("sub1", encoding="utf-8")
+            spec = {"body_file": "p.md", "priority": "p2", "sub_issues": [
+                {"title": "core", "body_file": "s1.md", "blocked_by": ["257"]}]}
+            spec_path = root / "spec.json"
+            spec_path.write_text(json.dumps(spec), encoding="utf-8")
+            runner = FakeRunner([
+                (["issue", "view", "257", "--repo", "o/r", "--json", "number"],
+                 _ok('{"number":257}')),
+                (["project", "field-list", "1", "--owner", "o"], _decompose_field_list()),
+                (["issue", "edit", "182", "--repo", "o/r", "--body-file"],
+                 _ok("https://github.com/o/r/issues/182\n")),
+                (["issue", "create", "--repo", "o/r", "--parent", "182", "--title", "core"],
+                 _ok("https://github.com/o/r/issues/183\n")),
+                (["issue", "edit", "183", "--repo", "o/r", "--add-blocked-by", "257"], _ok("")),
+            ])
+            with mock.patch.object(lb, "read_board_config",
+                                   return_value=lb.BoardConfig(owner="o", number=1, source="committed")):
+                out = lb.verb_decompose(182, str(spec_path), _ctx(str(root)), runner,
+                                        set_status=lambda *a, **k: {"stage": "planned",
+                                                                    "previous_stage": None},
+                                        deboard=lambda n, b, c, r: {"issue": n, "deboarded": True})
+            self.assertEqual(out["sub_issues"][0]["blocked_by"], [257])
+            self.assertEqual(runner.responses, [])
+
+    def test_missing_referenced_issue_writes_nothing(self) -> None:
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            (root / "p.md").write_text("parent", encoding="utf-8")
+            (root / "s1.md").write_text("sub1", encoding="utf-8")
+            spec = {"body_file": "p.md", "priority": "p2", "sub_issues": [
+                {"title": "core", "body_file": "s1.md", "blocked_by": ["#999999"]}]}
+            spec_path = root / "spec.json"
+            spec_path.write_text(json.dumps(spec), encoding="utf-8")
+            runner = FakeRunner([
+                (["issue", "view", "999999", "--repo", "o/r", "--json", "number"],
+                 subprocess.CompletedProcess(args=[], returncode=1, stdout="",
+                                             stderr="Could not resolve to an Issue")),
+            ])
+            with mock.patch.object(lb, "read_board_config",
+                                   return_value=lb.BoardConfig(owner="o", number=1, source="committed")):
+                with self.assertRaises(lb.BoardError) as cm:
+                    lb.verb_decompose(182, str(spec_path), _ctx(str(root)), runner,
+                                      set_status=lambda *a, **k: None)
+            self.assertEqual(cm.exception.code, "blocked_by_issue_missing")
+            # the failing view is the ONLY gh call: nothing was created or edited
+            self.assertEqual(len(runner.calls), 1)
+
+    def test_index_only_spec_makes_no_existence_check(self) -> None:
+        # Backward compatibility: an index-only spec produces exactly the argv
+        # it produced before cross-issue blocked_by existed.
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            (root / "p.md").write_text("parent", encoding="utf-8")
+            (root / "s1.md").write_text("sub1", encoding="utf-8")
+            (root / "s2.md").write_text("sub2", encoding="utf-8")
+            spec = {"body_file": "p.md", "priority": "p2", "sub_issues": [
+                {"title": "core", "body_file": "s1.md"},
+                {"title": "follow", "body_file": "s2.md", "blocked_by": [0]}]}
+            spec_path = root / "spec.json"
+            spec_path.write_text(json.dumps(spec), encoding="utf-8")
+            runner = FakeRunner([
+                (["project", "field-list", "1", "--owner", "o"], _decompose_field_list()),
+                (["issue", "edit", "182", "--repo", "o/r", "--body-file"],
+                 _ok("https://github.com/o/r/issues/182\n")),
+                (["issue", "create", "--repo", "o/r", "--parent", "182", "--title", "core"],
+                 _ok("https://github.com/o/r/issues/183\n")),
+                (["issue", "create", "--repo", "o/r", "--parent", "182", "--title", "follow"],
+                 _ok("https://github.com/o/r/issues/184\n")),
+                (["issue", "edit", "184", "--repo", "o/r", "--add-blocked-by", "183"], _ok("")),
+            ])
+            with mock.patch.object(lb, "read_board_config",
+                                   return_value=lb.BoardConfig(owner="o", number=1, source="committed")):
+                out = lb.verb_decompose(182, str(spec_path), _ctx(str(root)), runner,
+                                        set_status=lambda *a, **k: {"stage": "planned",
+                                                                    "previous_stage": None},
+                                        deboard=lambda n, b, c, r: {"issue": n, "deboarded": True})
+            self.assertEqual(out["sub_issues"][1]["blocked_by"], [183])
+            self.assertNotIn("view", [c[1] for c in runner.calls])
+            self.assertEqual(runner.responses, [])
+
+    @staticmethod
+    def _milestone_list(*rows: dict) -> "subprocess.CompletedProcess[str]":
+        """`gh api --paginate --jq '.[] | {number, title, state}'` emits one
+        JSON object per line — the shape resolve_milestone parses. Rows default
+        to open, the only state gh's own --milestone resolver can assign to."""
+        return _ok("".join(json.dumps({"state": "open", **r}) + "\n" for r in rows))
+
+    _MILESTONE_LIST_ARGV = ["api", "--paginate", "--jq", ".[] | {number, title, state}",
+                            "repos/o/r/milestones?state=all&per_page=100"]
+
+    def _milestone_spec_dir(self, root: Path, milestone: dict) -> Path:
+        (root / "p.md").write_text("parent", encoding="utf-8")
+        (root / "s1.md").write_text("sub1", encoding="utf-8")
+        spec = {"body_file": "p.md", "priority": "p2", "milestone": milestone,
+                "sub_issues": [{"title": "core", "body_file": "s1.md"}]}
+        spec_path = root / "spec.json"
+        spec_path.write_text(json.dumps(spec), encoding="utf-8")
+        return spec_path
+
+    def _run_decompose(self, root: Path, spec_path: Path, runner) -> dict:
+        with mock.patch.object(lb, "read_board_config",
+                               return_value=lb.BoardConfig(owner="o", number=1, source="committed")):
+            return lb.verb_decompose(182, str(spec_path), _ctx(str(root)), runner,
+                                     set_status=lambda *a, **k: {"stage": "planned",
+                                                                 "previous_stage": None},
+                                     deboard=lambda n, b, c, r: {"issue": n, "deboarded": True})
+
+    def test_absent_milestone_is_created_once_and_assigned_everywhere(self) -> None:
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            spec_path = self._milestone_spec_dir(
+                root, {"title": "Non-demo data", "description": "real sources"})
+            runner = FakeRunner([
+                (["project", "field-list", "1", "--owner", "o"], _decompose_field_list()),
+                (self._MILESTONE_LIST_ARGV,
+                 self._milestone_list({"number": 3, "title": "Something else"})),
+                (["api", "repos/o/r/milestones", "-f", "title=Non-demo data",
+                  "-f", "description=real sources"],
+                 _ok('{"number": 7, "title": "Non-demo data"}')),
+                (["issue", "edit", "182", "--repo", "o/r", "--body-file"],
+                 _ok("https://github.com/o/r/issues/182\n")),
+                (["issue", "create", "--repo", "o/r", "--parent", "182", "--title", "core"],
+                 _ok("https://github.com/o/r/issues/183\n")),
+            ])
+            out = self._run_decompose(root, spec_path, runner)
+
+            self.assertEqual(out["milestone"], {"title": "Non-demo data", "number": 7,
+                                                "created": True})
+            # membership rides --milestone on BOTH the parent edit and the sub create
+            parent_edit = next(c for c in runner.calls if c[:3] == ["issue", "edit", "182"])
+            sub_create = next(c for c in runner.calls if c[:2] == ["issue", "create"])
+            for argv in (parent_edit, sub_create):
+                self.assertIn("--milestone", argv)
+                self.assertEqual(argv[argv.index("--milestone") + 1], "Non-demo data")
+            self.assertEqual(runner.responses, [])
+
+    def test_new_parent_create_also_carries_the_milestone(self) -> None:
+        # The `issue is None` branch creates the parent instead of editing it.
+        # Without this case, dropping *milestone_args from the parent CREATE
+        # leaves every sub-issue in the milestone and the parent outside it,
+        # with green tests and a silently wrong grouping.
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            (root / "p.md").write_text("parent", encoding="utf-8")
+            (root / "s1.md").write_text("sub1", encoding="utf-8")
+            spec = {"body_file": "p.md", "parent_title": "epic", "priority": "p2",
+                    "milestone": {"title": "Non-demo data"},
+                    "sub_issues": [{"title": "core", "body_file": "s1.md"}]}
+            spec_path = root / "spec.json"
+            spec_path.write_text(json.dumps(spec), encoding="utf-8")
+            runner = FakeRunner([
+                (["project", "field-list", "1", "--owner", "o"], _decompose_field_list()),
+                (self._MILESTONE_LIST_ARGV,
+                 self._milestone_list({"number": 7, "title": "Non-demo data"})),
+                (["issue", "create", "--repo", "o/r", "--title", "epic"],
+                 _ok("https://github.com/o/r/issues/182\n")),
+                (["issue", "create", "--repo", "o/r", "--parent", "182", "--title", "core"],
+                 _ok("https://github.com/o/r/issues/183\n")),
+            ])
+            with mock.patch.object(lb, "read_board_config",
+                                   return_value=lb.BoardConfig(owner="o", number=1,
+                                                               source="committed")):
+                out = lb.verb_decompose(None, str(spec_path), _ctx(str(root)), runner,
+                                        set_status=lambda *a, **k: {"stage": "planned",
+                                                                    "previous_stage": None},
+                                        deboard=lambda n, b, c, r: {"issue": n, "deboarded": True})
+            self.assertEqual(out["parent"], 182)
+            parent_create = next(c for c in runner.calls
+                                 if c[:2] == ["issue", "create"] and "--parent" not in c)
+            self.assertEqual(parent_create[parent_create.index("--milestone") + 1],
+                             "Non-demo data")
+            self.assertEqual(runner.responses, [])
+
+    def test_near_miss_title_is_a_different_milestone(self) -> None:
+        # Matching is EXACT. A case- or spacing-variant is a different epic, and
+        # adopting it would silently file the work under the wrong grouping.
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            spec_path = self._milestone_spec_dir(root, {"title": "Non-demo data"})
+            runner = FakeRunner([
+                (["project", "field-list", "1", "--owner", "o"], _decompose_field_list()),
+                (self._MILESTONE_LIST_ARGV,
+                 self._milestone_list({"number": 3, "title": "Non-demo Data"},
+                                      {"number": 4, "title": "non-demo data"},
+                                      {"number": 5, "title": " Non-demo data"})),
+                (["api", "repos/o/r/milestones", "-f", "title=Non-demo data"],
+                 _ok('{"number": 9, "title": "Non-demo data"}')),
+                (["issue", "edit", "182", "--repo", "o/r", "--body-file"],
+                 _ok("https://github.com/o/r/issues/182\n")),
+                (["issue", "create", "--repo", "o/r", "--parent", "182", "--title", "core"],
+                 _ok("https://github.com/o/r/issues/183\n")),
+            ])
+            out = self._run_decompose(root, spec_path, runner)
+            self.assertEqual(out["milestone"], {"title": "Non-demo data", "number": 9,
+                                                "created": True})
+
+    def test_closed_same_title_milestone_fails_before_any_write(self) -> None:
+        # gh's own `--milestone <title>` resolver searches OPEN milestones only,
+        # so silently "reusing" a closed one would blow up later as an opaque
+        # issue-write failure. Diagnose it in preflight instead.
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            spec_path = self._milestone_spec_dir(root, {"title": "Non-demo data"})
+            runner = FakeRunner([
+                (["project", "field-list", "1", "--owner", "o"], _decompose_field_list()),
+                (self._MILESTONE_LIST_ARGV,
+                 self._milestone_list({"number": 7, "title": "Non-demo data",
+                                       "state": "closed"})),
+            ])
+            with mock.patch.object(lb, "read_board_config",
+                                   return_value=lb.BoardConfig(owner="o", number=1,
+                                                               source="committed")):
+                with self.assertRaises(lb.BoardError) as cm:
+                    lb.verb_decompose(182, str(spec_path), _ctx(str(root)), runner,
+                                      set_status=lambda *a, **k: None)
+            self.assertEqual(cm.exception.code, "milestone_closed")
+            self.assertNotIn("issue", [c[0] for c in runner.calls])
+
+    def test_milestone_title_is_stripped_once_at_resolution(self) -> None:
+        # A stray trailing space must not wedge the verb: the spec's title is
+        # normalized once, so the list match, the POST, and the --milestone argv
+        # all agree. Otherwise a retry POSTs a title GitHub already stores.
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            spec_path = self._milestone_spec_dir(root, {"title": "  Non-demo data  "})
+            runner = FakeRunner([
+                (["project", "field-list", "1", "--owner", "o"], _decompose_field_list()),
+                (self._MILESTONE_LIST_ARGV,
+                 self._milestone_list({"number": 7, "title": "Non-demo data"})),
+                (["issue", "edit", "182", "--repo", "o/r", "--body-file"],
+                 _ok("https://github.com/o/r/issues/182\n")),
+                (["issue", "create", "--repo", "o/r", "--parent", "182", "--title", "core"],
+                 _ok("https://github.com/o/r/issues/183\n")),
+            ])
+            out = self._run_decompose(root, spec_path, runner)
+            self.assertEqual(out["milestone"], {"title": "Non-demo data", "number": 7,
+                                                "created": False})
+            for argv in runner.calls:
+                if "--milestone" in argv:
+                    self.assertEqual(argv[argv.index("--milestone") + 1], "Non-demo data")
+
+    def test_existing_milestone_is_reused_without_a_second_create(self) -> None:
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            spec_path = self._milestone_spec_dir(root, {"title": "Non-demo data"})
+            runner = FakeRunner([
+                (["project", "field-list", "1", "--owner", "o"], _decompose_field_list()),
+                (self._MILESTONE_LIST_ARGV,
+                 self._milestone_list({"number": 3, "title": "Other"},
+                                      {"number": 7, "title": "Non-demo data"})),
+                (["issue", "edit", "182", "--repo", "o/r", "--body-file"],
+                 _ok("https://github.com/o/r/issues/182\n")),
+                (["issue", "create", "--repo", "o/r", "--parent", "182", "--title", "core"],
+                 _ok("https://github.com/o/r/issues/183\n")),
+            ])
+            out = self._run_decompose(root, spec_path, runner)
+            self.assertEqual(out["milestone"], {"title": "Non-demo data", "number": 7,
+                                                "created": False})
+            # re-running the same spec must never POST a second milestone
+            self.assertNotIn(["api", "repos/o/r/milestones"],
+                             [c[:2] for c in runner.calls])
+            self.assertEqual(runner.responses, [])
+
+    def test_invalid_milestone_object_makes_no_gh_call_at_all(self) -> None:
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            spec_path = self._milestone_spec_dir(root, {"titel": "typo"})
+            runner = FakeRunner([])  # must never be called
+            with mock.patch.object(lb, "read_board_config",
+                                   return_value=lb.BoardConfig(owner="o", number=1,
+                                                               source="committed")):
+                with self.assertRaises(lb.BoardError) as cm:
+                    lb.verb_decompose(182, str(spec_path), _ctx(str(root)), runner,
+                                      set_status=lambda *a, **k: None)
+            self.assertEqual(cm.exception.code, "invalid_decompose_spec")
+            self.assertEqual(runner.calls, [])
+
+    def test_milestone_list_failure_writes_nothing(self) -> None:
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            spec_path = self._milestone_spec_dir(root, {"title": "Non-demo data"})
+            runner = FakeRunner([
+                (["project", "field-list", "1", "--owner", "o"], _decompose_field_list()),
+                (self._MILESTONE_LIST_ARGV,
+                 subprocess.CompletedProcess(args=[], returncode=1, stdout="",
+                                             stderr="HTTP 404")),
+            ])
+            with mock.patch.object(lb, "read_board_config",
+                                   return_value=lb.BoardConfig(owner="o", number=1,
+                                                               source="committed")):
+                with self.assertRaises(lb.BoardError) as cm:
+                    lb.verb_decompose(182, str(spec_path), _ctx(str(root)), runner,
+                                      set_status=lambda *a, **k: None)
+            self.assertEqual(cm.exception.code, "milestone_list_failed")
+            self.assertNotIn("issue", [c[0] for c in runner.calls])
+
+    def test_omitted_milestone_leaves_argv_untouched(self) -> None:
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            (root / "p.md").write_text("parent", encoding="utf-8")
+            (root / "s1.md").write_text("sub1", encoding="utf-8")
+            spec = {"body_file": "p.md", "priority": "p2",
+                    "sub_issues": [{"title": "core", "body_file": "s1.md"}]}
+            spec_path = root / "spec.json"
+            spec_path.write_text(json.dumps(spec), encoding="utf-8")
+            runner = FakeRunner([
+                (["project", "field-list", "1", "--owner", "o"], _decompose_field_list()),
+                (["issue", "edit", "182", "--repo", "o/r", "--body-file"],
+                 _ok("https://github.com/o/r/issues/182\n")),
+                (["issue", "create", "--repo", "o/r", "--parent", "182", "--title", "core"],
+                 _ok("https://github.com/o/r/issues/183\n")),
+            ])
+            out = self._run_decompose(root, spec_path, runner)
+            self.assertIsNone(out["milestone"])
+            for argv in runner.calls:
+                self.assertNotIn("--milestone", argv)
+            self.assertEqual(runner.responses, [])
 
     def test_missing_later_sub_body_is_preflighted_before_parent_write(self) -> None:
         with tempfile.TemporaryDirectory() as d:
