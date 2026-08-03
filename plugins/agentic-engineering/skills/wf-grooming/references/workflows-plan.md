@@ -91,6 +91,55 @@ or provenance decision remains unresolved. In an unconfigured repository
 board yet, perform no tracker writes, and apply the same temporary-file
 cleanup.
 
+### Milestone scope
+
+A milestone is the tier above parent-plus-sub-issues: a named body of work
+grouping several parents. Reach for it when a groomed scope decomposes into
+more than one parent, or when it shrinks the scope of pre-existing issues. A
+single parent with its sub-issues needs no milestone.
+
+Two optional spec keys carry the tier:
+
+- `milestone` — a top-level `{title, description?}` object. The engine resolves
+  it create-or-reuse by **exact** title across open and closed milestones, then
+  assigns it to the parent and to every created sub-issue. Re-running the same
+  spec reuses the milestone instead of creating a second one.
+- `blocked_by` — entries may name an issue that **already exists** (`"#257"` or
+  `"257"`) alongside the earlier-index integers. The engine confirms every
+  referenced issue exists before creating anything; a closed blocker is a
+  satisfied dependency, not an error.
+
+```json
+{
+  "parent_title": "Load real source data",
+  "body_file": "<tmp>/parent.md",
+  "priority": "p2",
+  "milestone": {"title": "Non-demo data", "description": "Replace demo fixtures"},
+  "sub_issues": [
+    {"title": "Seed the loader", "body_file": "<tmp>/s1.md"},
+    {"title": "Cut over readers", "body_file": "<tmp>/s2.md", "blocked_by": [0, "#257"]}
+  ]
+}
+```
+
+`--decompose` reports the resolved milestone as `{title, number, created}`, or
+`null` when the spec omits the key.
+
+**Cross-milestone edges.** Express a dependency on work in another milestone as
+an existing-issue `blocked_by`, never as prose ordering or a "start here"
+pointer — the same rule the [ready boundary](#ready-boundary) applies to
+ordering within one item.
+
+**Carve-out comments.** When a groomed scope removes work from a pre-existing
+issue, comment on that issue recording what moved and where. Grooming owns
+this step; it is deliberately not an engine verb, because a carve-out is a
+single `gh issue comment` with no invariant to enforce.
+
+**What a milestone does not change.** Status and Priority stay parent-scoped,
+sub-issues stay de-boarded, and `--groom-verify` stays parent-scoped. A
+milestone groups work; it is not a lifecycle stage, and membership in one is
+never a readiness signal.
+
 ### Assess implementation complexity
 
 Grooming has full plan context, so it assesses complexity **once**, here. The
