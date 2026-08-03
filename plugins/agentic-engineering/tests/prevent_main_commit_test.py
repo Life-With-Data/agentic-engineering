@@ -1,10 +1,18 @@
 """Regression tests for ``scripts/prevent-main-commit.py``.
 
-This PreToolUse/Bash hook keeps work on feature branches: it blocks a
-``git commit`` while the current branch is ``main``/``master``, and blocks an
-explicit ``git push`` whose refspec targets ``main``/``master`` (regardless of
-the current branch). Everything else — feature-branch commits/pushes, unrelated
-commands, branches merely *named* like ``main-feature`` — must pass through.
+This PreToolUse/Bash hook keeps work on feature branches by blocking exactly one
+thing: a ``git commit`` while the current branch is ``main``/``master``.
+Everything else passes through — feature-branch commits, unrelated commands, and
+**every** ``git push`` phrasing.
+
+The hook deliberately does not police pushes. A client-side refspec check
+decides from the shape of the phrasing rather than from what the push would do
+(``git push`` from ``main`` updates remote ``main`` exactly as
+``git push origin main`` does), and it blocks a required step of the delivery
+lifecycle on forges without a PR flow. Push and force-push policy belongs on the
+server. The push tests below therefore assert the *category* — no push phrasing
+is blocked — generatively, so a reintroduced string check cannot silently pass
+by dodging a frozen list of literals.
 
 Because the hook reads the live branch via ``git branch --show-current``, the
 tests drive it as a subprocess inside throwaway git repos whose branch we
@@ -14,6 +22,7 @@ Run with: ``python3 -m unittest tests.prevent_main_commit_test``.
 """
 from __future__ import annotations
 
+import itertools
 import json
 import subprocess
 import sys
@@ -25,6 +34,22 @@ SCRIPT = Path(__file__).resolve().parent.parent / "scripts" / "prevent-main-comm
 
 BLOCK = 2
 ALLOW = 0
+
+# Generative push corpus: every combination of flag × remote × refspec, plus the
+# bare form and a few compound shapes. Generated rather than enumerated so the
+# suite covers phrasings nobody thought to list.
+PUSH_FLAGS = ("", "--force ", "--force-with-lease ", "-u ", "--no-verify ")
+PUSH_REMOTES = ("", "origin ", "upstream ")
+PUSH_REFSPECS = ("", "main", "master", "HEAD", "HEAD:main", "HEAD:refs/heads/main", "+main:main")
+
+PUSH_COMMANDS = [
+    f"git push {flag}{remote}{refspec}".strip()
+    for flag, remote, refspec in itertools.product(PUSH_FLAGS, PUSH_REMOTES, PUSH_REFSPECS)
+] + [
+    "git push origin main && gh pr create",
+    "git push origin main 2>&1 | tail -3",
+    "git checkout main && git merge --no-ff feature/x && git push origin main",
+]
 
 
 def _git(cwd: Path, *args: str) -> None:
@@ -88,32 +113,46 @@ class PreventMainCommitTest(unittest.TestCase):
         result = _run_payload({"command": 'git commit -m "wip"'}, self.repo)
         self.assertEqual(result.returncode, BLOCK)
 
-    # --- explicit push to a protected branch: MUST block -----------------
+    # --- pushes are never blocked, on any branch, in any phrasing --------
 
-    def test_blocks_push_to_main_from_feature_branch(self) -> None:
-        self._on_branch("feature/x")
-        self.assertEqual(_run("git push origin main", self.repo).returncode, BLOCK)
+    def test_allows_every_push_phrasing_on_main(self) -> None:
+        self._on_branch("main")
+        for command in PUSH_COMMANDS:
+            with self.subTest(command=command):
+                self.assertEqual(_run(command, self.repo).returncode, ALLOW)
 
-    def test_blocks_push_head_to_main(self) -> None:
+    def test_allows_every_push_phrasing_on_feature_branch(self) -> None:
         self._on_branch("feature/x")
-        self.assertEqual(_run("git push origin HEAD:main", self.repo).returncode, BLOCK)
+        for command in PUSH_COMMANDS:
+            with self.subTest(command=command):
+                self.assertEqual(_run(command, self.repo).returncode, ALLOW)
+
+    def test_push_rule_machinery_is_gone(self) -> None:
+        # Structural guard: the helpers existed only to serve the push rule.
+        source = SCRIPT.read_text()
+        for symbol in ("pushes_to_protected", "SEGMENT_SPLIT", "split_segments"):
+            with self.subTest(symbol=symbol):
+                self.assertNotIn(symbol, source)
+
+    # --- commits created by lifecycle operations on `main`: MUST allow ---
+    # Merging into `main` is the delivery lifecycle, not a bypass.
+
+    def test_allows_merge_and_friends_on_main(self) -> None:
+        self._on_branch("main")
+        for command in (
+            "git merge --no-ff feature/x",
+            "git cherry-pick abc1234",
+            "git revert abc1234",
+            "git am /tmp/patch.mbox",
+        ):
+            with self.subTest(command=command):
+                self.assertEqual(_run(command, self.repo).returncode, ALLOW)
 
     # --- feature-branch work: MUST allow ---------------------------------
 
     def test_allows_commit_on_feature_branch(self) -> None:
         self._on_branch("feature/awesome")
         self.assertEqual(_run('git commit -m "wip"', self.repo).returncode, ALLOW)
-
-    def test_allows_push_of_feature_branch(self) -> None:
-        self._on_branch("feature/awesome")
-        self.assertEqual(
-            _run("git push -u origin feature/awesome", self.repo).returncode, ALLOW
-        )
-
-    def test_allows_branch_named_like_main(self) -> None:
-        # `main-feature` is not `main` — the refspec regex must not over-match.
-        self._on_branch("feature/x")
-        self.assertEqual(_run("git push origin main-feature", self.repo).returncode, ALLOW)
 
     def test_commit_message_mentioning_main_does_not_trigger(self) -> None:
         self._on_branch("feature/x")
@@ -122,39 +161,12 @@ class PreventMainCommitTest(unittest.TestCase):
             ALLOW,
         )
 
-    # --- `main` token in a SIBLING segment of a compound command ---------
-    # The refspec check is scoped per `git push` segment, so a `main` in an
-    # unrelated chained command must not be attributed to the push.
-
-    def test_allows_feature_push_then_gh_pr_base_main(self) -> None:
-        self._on_branch("feature/x")
+    def test_quoted_mention_of_git_commit_does_not_trigger(self) -> None:
+        # `strip_quotes` keeps prose that merely names the verb from firing.
+        self._on_branch("main")
         self.assertEqual(
-            _run(
-                "git push -u origin feature/x && gh pr create --base main",
-                self.repo,
-            ).returncode,
+            _run('echo "run git commit on a branch instead"', self.repo).returncode,
             ALLOW,
-        )
-
-    def test_allows_gh_pr_create_base_main_without_push(self) -> None:
-        self._on_branch("feature/x")
-        self.assertEqual(
-            _run("gh pr create --base main --head feature/x", self.repo).returncode,
-            ALLOW,
-        )
-
-    def test_allows_feature_push_piped_to_tail(self) -> None:
-        self._on_branch("feature/x")
-        self.assertEqual(
-            _run("git push -u origin feature/x 2>&1 | tail -3", self.repo).returncode,
-            ALLOW,
-        )
-
-    def test_blocks_real_main_push_chained_before_gh(self) -> None:
-        # A genuine bypass in the first segment still fires despite a later gh cmd.
-        self._on_branch("feature/x")
-        self.assertEqual(
-            _run("git push origin main && gh pr create", self.repo).returncode, BLOCK
         )
 
     # --- unrelated commands: MUST allow ----------------------------------
@@ -162,6 +174,13 @@ class PreventMainCommitTest(unittest.TestCase):
     def test_allows_status(self) -> None:
         self._on_branch("main")
         self.assertEqual(_run("git status", self.repo).returncode, ALLOW)
+
+    def test_allows_gh_pr_create_base_main(self) -> None:
+        self._on_branch("feature/x")
+        self.assertEqual(
+            _run("gh pr create --base main --head feature/x", self.repo).returncode,
+            ALLOW,
+        )
 
     def test_ignores_non_bash_tools(self) -> None:
         self._on_branch("main")

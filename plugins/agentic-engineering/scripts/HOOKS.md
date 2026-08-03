@@ -67,16 +67,29 @@ commit` are allowed.
 
 ## `prevent-main-commit.py` — PreToolUse (Bash) / beforeShellExecution
 
-**Blocks** a `git commit` while the current branch is `main`/`master`, and an
-explicit `git push` whose refspec targets `main`/`master`
-(`git push origin main`, `git push origin HEAD:main`, …).
+**Blocks** a `git commit` while the current branch is `main`/`master`. That is
+the only rule; nothing else is blocked.
 
 **Why:** Work should land via a feature branch and a PR, so code review, CI, and
 the `land-pr` flow apply. Committing straight to `main` skips all three.
 
 **Precision:** Quoted commit messages can't false-trigger it (a message
-mentioning "merge main" is fine), and a branch merely *named* like `main`
-(e.g. `main-feature`) is not treated as the protected branch.
+mentioning "merge main" is fine). The rule reads the live branch from
+`git branch --show-current`, so it can't be evaded by rephrasing the command.
+
+**Not blocked, deliberately:**
+
+- **Every `git push` phrasing.** A client-side refspec check decides from the
+  shape of the phrasing, not from what the push would do — `git push` and
+  `git push --force origin HEAD` from `main` update remote `main` exactly as
+  `git push origin main` does. It also blocks `git push origin main`, a
+  required step of the delivery lifecycle on forges without a PR flow. Push and
+  force-push policy belongs on the server, where it binds every client,
+  identity, and phrasing: `buzz repos protect set --ref refs/heads/main --push
+  owner --no-force-push`, or a GitHub ruleset (`pull_request`,
+  `non_fast_forward`, `deletion`, `required_linear_history`).
+- **`git merge` / `cherry-pick` / `revert` / `am` on `main`.** These create
+  commits, but merging into `main` is the delivery lifecycle, not a bypass.
 
 **Correct alternative:** `git checkout -b <type>/<description>`, then open a PR.
 
