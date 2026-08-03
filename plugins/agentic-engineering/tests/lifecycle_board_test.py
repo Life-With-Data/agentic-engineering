@@ -3285,6 +3285,36 @@ class DecomposeVerbTest(unittest.TestCase):
                              [c[:2] for c in runner.calls])
             self.assertEqual(runner.responses, [])
 
+    def test_at_prefixed_spec_values_are_sent_literally_never_read_from_disk(self) -> None:
+        # GUARDRAIL — freeze the category (which gh field flag carries untrusted
+        # bytes), not the surrounding argv spelling.
+        #
+        # A milestone title/description is the first model-authored free-text
+        # value this engine sends to `gh api` as a request field; every other
+        # field call site carries git-derived scalars. gh's -F/--field expands a
+        # leading `@` into a FILE READ, while -f/--raw-field sends bytes
+        # literally. Grooming reads issue text, which the workflow treats as
+        # untrusted, so a -f -> -F swap here turns a prompt-injected spec title
+        # into local-file exfiltration with no error and no log entry.
+        # See docs/solutions/security-issues/
+        #     model-authored-strings-must-reach-gh-api-as-raw-fields.md
+        hostile = "@/etc/passwd"
+        runner = FakeRunner([
+            (self._MILESTONE_LIST_ARGV, self._milestone_list()),
+            (["api", "repos/o/r/milestones"], _ok('{"number": 9}')),
+        ])
+        lb.resolve_milestone({"title": hostile, "description": hostile}, _ctx("/tmp"), runner)
+        create = runner.calls[-1]
+        # the literal value reaches argv unchanged...
+        self.assertIn(f"title={hostile}", create)
+        self.assertIn(f"description={hostile}", create)
+        # ...and no @-expanding flag carries a spec-authored value.
+        for flag, value in zip(create, create[1:]):
+            if flag in ("-F", "--field"):
+                self.assertNotIn(hostile, value,
+                                 "spec-authored values must ride -f/--raw-field: "
+                                 "-F applies @-prefix file expansion")
+
     def test_invalid_milestone_object_makes_no_gh_call_at_all(self) -> None:
         with tempfile.TemporaryDirectory() as d:
             root = Path(d)
