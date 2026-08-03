@@ -172,8 +172,35 @@ correct. Confirm the mutation landed (`grep -c` the mutated token) as part of th
 Same thesis as the sections above, applied one level up: a verification that cannot distinguish
 present-from-absent gives false confidence, and that includes the verification of a verification.
 
+## Recurrence: the mutation landed, the restore did not (PR #357)
+
+The mirror image of PR #333. PR #357 mutation-checked a new Python guardrail by editing a tracked
+`lifecycle_board.py` in place, swapping `-f` for `-F`, running the single test (it went red as
+intended), then restoring the original in a `finally`. The restore ran. The next full-suite run
+still failed six tests, with a traceback pointing at a source line that, read on disk, was correct.
+
+Two caches conspired, both defeated by the mutation being **byte-length-identical**:
+
+- **Python bytecode.** `.pyc` invalidation compares the source's `st_mtime` and `st_size`. Same size,
+  and a restore inside the same mtime granularity, so the interpreter reused the *mutant* bytecode
+  while the file on disk read correct.
+- **Git's stat cache.** `git diff` skipped the content comparison for the same reason (same size,
+  racy timestamp) and reported a clean tree, which appeared to *confirm* the restore. `git
+  update-index --refresh` forced the real comparison.
+
+The general trap: a same-length edit is invisible to every optimization that fingerprints a file by
+`(size, mtime)` instead of content, and those optimizations then lie in the reassuring direction.
+Prefer mutating a **copy** outside the tracked tree; when mutating in place is unavoidable, verify
+the restore by content (`grep -c` the original token, or `git diff --stat` *after* `git update-index
+--refresh`), and clear `__pycache__` before trusting the next run. A restore is a mutation too, and
+it needs the same "did it land?" check PR #333 already demanded of the forward direction.
+
 ## Resources
 
+- Recurrence documented in: [PR #357](https://github.com/Life-With-Data/agentic-engineering/pull/357)
+  — `plugins/agentic-engineering/tests/lifecycle_board_test.py`, the `gh api -f` guardrail. No defect
+  shipped: the guardrail was proven load-bearing and the six failures were the mutation check's own
+  stale bytecode, cleared before merge.
 - Recurrence documented in: [PR #333](https://github.com/Life-With-Data/agentic-engineering/pull/333)
   — `tests/workflow-skill-architecture.test.ts`, the `scope-skeptic` grooming guardrail. No defect
   shipped; the invalid mutation was caught during verification, and all four mutations (both
