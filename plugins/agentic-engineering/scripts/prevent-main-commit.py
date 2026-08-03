@@ -20,7 +20,7 @@ The commit rule below decides from live branch state rather than from the
 command's stated target, so rewording the refspec cannot get around it. It is
 not airtight against every spelling of the verb itself: global git options
 between the words (`git -c x=y commit`, `git --no-pager commit`) are not
-matched today. See the follow-up issue tracking parity with
+matched today. See issue #364, tracking parity with
 `block-no-verify.py`'s sanitizer.
 """
 import json
