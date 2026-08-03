@@ -1092,6 +1092,14 @@ def route_for_groom(has_issue: bool, stage: Optional[str], plan_doc: Optional[st
 _ISSUE_URL_RE = re.compile(r"/issues/(\d+)\b")
 _BLOCKED_BY_ISSUE_RE = re.compile(r"^#?(\d+)$")
 
+# The CLOSED set of top-level decompose-spec keys. Enforced, not documentary: a
+# `milestones`/`prioritY` typo that merely fell through `spec.get` would write
+# nothing and be indistinguishable from deliberately omitting the key.
+DECOMPOSE_SPEC_KEYS = frozenset({
+    "body_file", "plan_path", "parent_title", "complexity",
+    "posture", "priority", "milestone", "sub_issues",
+})
+
 
 def blocked_by_issue_number(entry) -> Optional[int]:
     """The literal, already-existing issue number a `blocked_by` entry names,
@@ -1140,6 +1148,10 @@ def validate_decompose_spec(spec: dict, has_parent: bool,
                           "blocked_by:[earlier-index | \"#existing-issue\"...]}]}")
     if not isinstance(spec, dict):
         raise bad("spec must be a JSON object")
+    unknown_top = sorted(set(spec) - DECOMPOSE_SPEC_KEYS)
+    if unknown_top:
+        raise bad(f"spec has unsupported top-level key(s) {unknown_top}; supported keys are "
+                  f"{sorted(DECOMPOSE_SPEC_KEYS)}")
     body_file = spec.get("body_file") or spec.get("plan_path")  # legacy input alias
     if not isinstance(body_file, str) or not body_file.strip():
         raise bad("spec.body_file (string) is required")
@@ -1850,11 +1862,15 @@ def _deboard_subissue(number: int, board: BoardConfig, ctx: RepoContext,
 def resolve_milestone(milestone: dict, ctx: RepoContext, runner: GhRunner) -> dict:
     """Create-or-reuse a repository milestone by EXACT title.
 
-    Matching is exact and covers `state=all`: a closed milestone is still the
-    same grouping, and a near-miss title is a different one — adopting it would
-    silently file work under the wrong epic."""
-    title = milestone["title"]
-    listed = _run_gh_retry(runner, ["api", "--paginate", "--jq", ".[] | {number, title}",
+    Matching is exact: a near-miss title is a DIFFERENT grouping, and adopting
+    it would silently file work under the wrong epic.
+
+    The listing covers `state=all` for diagnosis, not for reuse. Membership is
+    assigned by gh's own `--milestone <title>` resolver, which searches OPEN
+    milestones only — so a closed same-title milestone is reported here, before
+    any mutation, rather than surfacing later as an opaque issue-write failure."""
+    title = milestone["title"].strip()
+    listed = _run_gh_retry(runner, ["api", "--paginate", "--jq", ".[] | {number, title, state}",
                                     f"repos/{ctx.slug}/milestones?state=all&per_page=100"])
     if listed.returncode != 0:
         raise BoardError("milestone_list_failed",
@@ -1865,10 +1881,23 @@ def resolve_milestone(milestone: dict, ctx: RepoContext, runner: GhRunner) -> di
             continue
         try:
             row = json.loads(line)
-        except ValueError:
+        except ValueError as exc:
+            raise BoardError("milestone_list_failed",
+                             f"could not parse a milestone row: {line.strip()[:120]!r}",
+                             "expected one JSON object per line from `gh api --jq`") from exc
+        if row.get("title") != title:
             continue
-        if row.get("title") == title:
+        if str(row.get("state", "")).lower() == "closed":
+            raise BoardError("milestone_closed",
+                             f"milestone {title!r} exists in {ctx.slug} but is CLOSED; "
+                             "issues can only be assigned to an open milestone",
+                             "Reopen the milestone, or use a different spec.milestone.title")
+        try:
             return {"title": title, "number": int(row["number"]), "created": False}
+        except (ValueError, KeyError, TypeError) as exc:
+            raise BoardError("milestone_list_failed",
+                             f"milestone row is missing a usable number: {line.strip()[:120]!r}",
+                             "expected {number, title, state} from `gh api --jq`") from exc
 
     args = ["api", f"repos/{ctx.slug}/milestones", "-f", f"title={title}"]
     if milestone.get("description"):

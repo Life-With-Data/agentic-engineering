@@ -101,9 +101,11 @@ single parent with its sub-issues needs no milestone.
 Two optional spec keys carry the tier:
 
 - `milestone` — a top-level `{title, description?}` object. The engine resolves
-  it create-or-reuse by **exact** title across open and closed milestones, then
-  assigns it to the parent and to every created sub-issue. Re-running the same
-  spec reuses the milestone instead of creating a second one.
+  it create-or-reuse by **exact** title, then assigns it to the parent and to
+  every created sub-issue. Re-running the same spec reuses the milestone
+  instead of creating a second one. Reuse requires an **open** milestone;
+  a closed one with the same title fails in preflight, before any write, since
+  issues cannot be assigned to it.
 - `blocked_by` — entries may name an issue that **already exists** (`"#257"` or
   `"257"`) alongside the earlier-index integers. The engine confirms every
   referenced issue exists before creating anything; a closed blocker is a
