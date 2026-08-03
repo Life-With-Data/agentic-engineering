@@ -2,7 +2,7 @@
 title: "A change can falsify a compounded learning, and no CI check will tell you — grep the `module:` backlinks"
 category: process
 tags: [compounding, docs-solutions, stale-docs, learnings-researcher, module-frontmatter, superseded, doc-health, backlink]
-module: docs/solutions/, .github/workflows/doc-health.yml
+module: docs/solutions/
 symptom: "A merged change silently inverted the central lesson of an existing docs/solutions entry, leaving the compounding layer teaching the opposite of the shipped code"
 root_cause: "docs/solutions entries record a conclusion that was true at a point in time, but nothing links a code change back to the entries whose lesson it invalidates — the module: frontmatter already names the coupling and no check reads it"
 ---
@@ -27,9 +27,10 @@ the same PR deleted.
 
 Nothing flagged it:
 
-- `docs/solutions/` has no PR-time check. `.github/workflows/doc-health.yml` is `schedule` +
+- `docs/solutions/` has no PR-time check. `.github/workflows/doc-health.yml` was `schedule` +
   `workflow_dispatch` only — and was itself calling a scanner deleted in #233, so it had been failing
-  on cron since (issue #313).
+  on cron since (issue #313). That workflow was deleted outright in #367; the gap it left unguarded
+  is unchanged, because it had not guarded anything since #233.
 - `bun test`, `typecheck`, `docs:check`, and `skills:check` do not read `docs/solutions/`.
 - The change's own guardrail tests passed, because they guard the *skill docs*, not the learnings.
 
@@ -85,8 +86,13 @@ Expected: every returned path has been opened and dispositioned in the same PR.
   `wf-delivery` land route already runs a mandatory final compounding disposition immediately before
   merge; the `module:` grep is the mechanical half of that judgment and costs one command.
 - **A cron-only doc check is not a check.** `doc-health.yml` running weekly meant its own breakage
-  went unnoticed indefinitely (#313). Anything meant to protect a durable invariant belongs on the
-  PR path, where it fails in front of the person who caused it.
+  went unnoticed indefinitely (#313), and it was eventually deleted rather than repaired (#367).
+  Anything meant to protect a durable invariant belongs on the PR path, where it fails in front of
+  the person who caused it.
+- **A check that cannot fail is worse than no check.** That workflow's agent tier ran `continue-on-
+  error` and gated on a structured output the agent never produced, so `jq -r '.must_fix // false'`
+  reported "No must-fix issues" from an empty string every week. Verify a gate by making it fire —
+  if no input can turn it red, it is reporting your intentions, not your repository.
 - **`module:` is load-bearing metadata, so keep it accurate.** An entry whose `module:` list omits a
   file it actually reasons about is invisible to this check. When amending a solution doc, re-check
   that its `module:` still names every file the lesson depends on.
