@@ -3160,6 +3160,20 @@ class DecomposeVerbTest(unittest.TestCase):
                              [c[:2] for c in runner.calls])
             self.assertEqual(runner.responses, [])
 
+    def test_invalid_milestone_object_makes_no_gh_call_at_all(self) -> None:
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            spec_path = self._milestone_spec_dir(root, {"titel": "typo"})
+            runner = FakeRunner([])  # must never be called
+            with mock.patch.object(lb, "read_board_config",
+                                   return_value=lb.BoardConfig(owner="o", number=1,
+                                                               source="committed")):
+                with self.assertRaises(lb.BoardError) as cm:
+                    lb.verb_decompose(182, str(spec_path), _ctx(str(root)), runner,
+                                      set_status=lambda *a, **k: None)
+            self.assertEqual(cm.exception.code, "invalid_decompose_spec")
+            self.assertEqual(runner.calls, [])
+
     def test_milestone_list_failure_writes_nothing(self) -> None:
         with tempfile.TemporaryDirectory() as d:
             root = Path(d)
