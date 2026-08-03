@@ -5,6 +5,18 @@ All notable changes to the agentic-engineering plugin will be documented in this
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [7.1.0](https://github.com/Life-With-Data/agentic-engineering/compare/agentic-engineering-v7.0.0...agentic-engineering-v7.1.0) (2026-08-03)
+
+
+### Features
+
+* **lifecycle:** milestone/epic scoping and cross-issue blocked_by in --decompose ([#358](https://github.com/Life-With-Data/agentic-engineering/issues/358)) ([3889e3d](https://github.com/Life-With-Data/agentic-engineering/commit/3889e3de21a56850651356555bc5d54ab10b2bbd))
+
+
+### Bug Fixes
+
+* **hooks:** drop the refspec push check from prevent-main-commit.py ([#362](https://github.com/Life-With-Data/agentic-engineering/issues/362)) ([de7b641](https://github.com/Life-With-Data/agentic-engineering/commit/de7b64101aaefcd47052b66fc4a3ad44e42e8df8))
+
 ## [7.0.0](https://github.com/Life-With-Data/agentic-engineering/compare/agentic-engineering-v6.0.0...agentic-engineering-v7.0.0) (2026-07-30)
 
 
