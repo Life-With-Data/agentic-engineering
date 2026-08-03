@@ -46,7 +46,7 @@ So a spec carrying:
 
 sent through `-F` would read that file and publish its contents as a GitHub milestone
 title — a local-file-read-to-exfiltration primitive reachable from prompt-injected issue
-text, with no error and no log entry. `-f` sends the 24 literal characters.
+text, with no error and no log entry. `-f` sends that path as a literal title string.
 
 The misleading signal is the flag naming: `--field` reads like the general-purpose choice
 and `--raw-field` reads like an escape hatch for awkward values. The safe default is the
