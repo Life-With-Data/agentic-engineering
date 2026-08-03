@@ -2308,6 +2308,32 @@ class DecomposeSpecValidationTest(unittest.TestCase):
                 lb.validate_decompose_spec(bad, has_parent=True)
             self.assertEqual(cm.exception.code, "invalid_decompose_spec")
 
+    def test_valid_milestone_accepted_with_and_without_description(self) -> None:
+        for milestone in ({"title": "Non-demo data"},
+                          {"title": "Non-demo data", "description": "why"}):
+            spec = {"plan_path": "p", "priority": "p2", "milestone": milestone, "sub_issues": []}
+            self.assertEqual(lb.validate_decompose_spec(spec, has_parent=True), [])
+
+    def test_omitted_or_null_milestone_still_valid(self) -> None:
+        for spec in ({"plan_path": "p", "priority": "p2", "sub_issues": []},
+                     {"plan_path": "p", "priority": "p2", "milestone": None, "sub_issues": []}):
+            self.assertEqual(lb.validate_decompose_spec(spec, has_parent=True), [])
+
+    def test_invalid_milestone_rejected(self) -> None:
+        for milestone in ("Non-demo data",            # not an object
+                          {},                          # no title
+                          {"title": ""},               # empty title
+                          {"title": "   "},            # whitespace-only title
+                          {"title": 7},                # wrong title type
+                          {"title": "a", "description": 7},   # wrong description type
+                          {"titel": "a"},              # typo: unknown key, no title
+                          {"title": "a", "due_on": "x"}):     # unsupported key
+            spec = {"plan_path": "p", "priority": "p2", "milestone": milestone, "sub_issues": []}
+            with self.assertRaises(lb.BoardError) as cm:
+                lb.validate_decompose_spec(spec, has_parent=True)
+            self.assertEqual(cm.exception.code, "invalid_decompose_spec")
+            self.assertIn("milestone", str(cm.exception))
+
     def test_existing_issue_blocked_by_accepted_in_both_spellings(self) -> None:
         # A dependency on an issue that ALREADY exists has no ordering problem —
         # both the bare and the hashed spelling name the same issue.
@@ -3056,6 +3082,124 @@ class DecomposeVerbTest(unittest.TestCase):
                                         deboard=lambda n, b, c, r: {"issue": n, "deboarded": True})
             self.assertEqual(out["sub_issues"][1]["blocked_by"], [183])
             self.assertNotIn("view", [c[1] for c in runner.calls])
+            self.assertEqual(runner.responses, [])
+
+    @staticmethod
+    def _milestone_list(*rows: dict) -> "subprocess.CompletedProcess[str]":
+        """`gh api --paginate --jq '.[] | {number, title}'` emits one JSON
+        object per line — the shape resolve_milestone parses."""
+        return _ok("".join(json.dumps(r) + "\n" for r in rows))
+
+    def _milestone_spec_dir(self, root: Path, milestone: dict) -> Path:
+        (root / "p.md").write_text("parent", encoding="utf-8")
+        (root / "s1.md").write_text("sub1", encoding="utf-8")
+        spec = {"body_file": "p.md", "priority": "p2", "milestone": milestone,
+                "sub_issues": [{"title": "core", "body_file": "s1.md"}]}
+        spec_path = root / "spec.json"
+        spec_path.write_text(json.dumps(spec), encoding="utf-8")
+        return spec_path
+
+    def _run_decompose(self, root: Path, spec_path: Path, runner) -> dict:
+        with mock.patch.object(lb, "read_board_config",
+                               return_value=lb.BoardConfig(owner="o", number=1, source="committed")):
+            return lb.verb_decompose(182, str(spec_path), _ctx(str(root)), runner,
+                                     set_status=lambda *a, **k: {"stage": "planned",
+                                                                 "previous_stage": None},
+                                     deboard=lambda n, b, c, r: {"issue": n, "deboarded": True})
+
+    def test_absent_milestone_is_created_once_and_assigned_everywhere(self) -> None:
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            spec_path = self._milestone_spec_dir(
+                root, {"title": "Non-demo data", "description": "real sources"})
+            runner = FakeRunner([
+                (["project", "field-list", "1", "--owner", "o"], _decompose_field_list()),
+                (["api", "--paginate", "--jq", ".[] | {number, title}",
+                  "repos/o/r/milestones?state=all&per_page=100"],
+                 self._milestone_list({"number": 3, "title": "Something else"})),
+                (["api", "repos/o/r/milestones", "-f", "title=Non-demo data",
+                  "-f", "description=real sources"],
+                 _ok('{"number": 7, "title": "Non-demo data"}')),
+                (["issue", "edit", "182", "--repo", "o/r", "--body-file"],
+                 _ok("https://github.com/o/r/issues/182\n")),
+                (["issue", "create", "--repo", "o/r", "--parent", "182", "--title", "core"],
+                 _ok("https://github.com/o/r/issues/183\n")),
+            ])
+            out = self._run_decompose(root, spec_path, runner)
+
+            self.assertEqual(out["milestone"], {"title": "Non-demo data", "number": 7,
+                                                "created": True})
+            # membership rides --milestone on BOTH the parent edit and the sub create
+            parent_edit = next(c for c in runner.calls if c[:3] == ["issue", "edit", "182"])
+            sub_create = next(c for c in runner.calls if c[:2] == ["issue", "create"])
+            for argv in (parent_edit, sub_create):
+                self.assertIn("--milestone", argv)
+                self.assertEqual(argv[argv.index("--milestone") + 1], "Non-demo data")
+            self.assertEqual(runner.responses, [])
+
+    def test_existing_milestone_is_reused_without_a_second_create(self) -> None:
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            spec_path = self._milestone_spec_dir(root, {"title": "Non-demo data"})
+            runner = FakeRunner([
+                (["project", "field-list", "1", "--owner", "o"], _decompose_field_list()),
+                (["api", "--paginate", "--jq", ".[] | {number, title}",
+                  "repos/o/r/milestones?state=all&per_page=100"],
+                 self._milestone_list({"number": 3, "title": "Other"},
+                                      {"number": 7, "title": "Non-demo data"})),
+                (["issue", "edit", "182", "--repo", "o/r", "--body-file"],
+                 _ok("https://github.com/o/r/issues/182\n")),
+                (["issue", "create", "--repo", "o/r", "--parent", "182", "--title", "core"],
+                 _ok("https://github.com/o/r/issues/183\n")),
+            ])
+            out = self._run_decompose(root, spec_path, runner)
+            self.assertEqual(out["milestone"], {"title": "Non-demo data", "number": 7,
+                                                "created": False})
+            # re-running the same spec must never POST a second milestone
+            self.assertNotIn(["api", "repos/o/r/milestones"],
+                             [c[:2] for c in runner.calls])
+            self.assertEqual(runner.responses, [])
+
+    def test_milestone_list_failure_writes_nothing(self) -> None:
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            spec_path = self._milestone_spec_dir(root, {"title": "Non-demo data"})
+            runner = FakeRunner([
+                (["project", "field-list", "1", "--owner", "o"], _decompose_field_list()),
+                (["api", "--paginate", "--jq", ".[] | {number, title}",
+                  "repos/o/r/milestones?state=all&per_page=100"],
+                 subprocess.CompletedProcess(args=[], returncode=1, stdout="",
+                                             stderr="HTTP 404")),
+            ])
+            with mock.patch.object(lb, "read_board_config",
+                                   return_value=lb.BoardConfig(owner="o", number=1,
+                                                               source="committed")):
+                with self.assertRaises(lb.BoardError) as cm:
+                    lb.verb_decompose(182, str(spec_path), _ctx(str(root)), runner,
+                                      set_status=lambda *a, **k: None)
+            self.assertEqual(cm.exception.code, "milestone_list_failed")
+            self.assertNotIn("issue", [c[0] for c in runner.calls])
+
+    def test_omitted_milestone_leaves_argv_untouched(self) -> None:
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            (root / "p.md").write_text("parent", encoding="utf-8")
+            (root / "s1.md").write_text("sub1", encoding="utf-8")
+            spec = {"body_file": "p.md", "priority": "p2",
+                    "sub_issues": [{"title": "core", "body_file": "s1.md"}]}
+            spec_path = root / "spec.json"
+            spec_path.write_text(json.dumps(spec), encoding="utf-8")
+            runner = FakeRunner([
+                (["project", "field-list", "1", "--owner", "o"], _decompose_field_list()),
+                (["issue", "edit", "182", "--repo", "o/r", "--body-file"],
+                 _ok("https://github.com/o/r/issues/182\n")),
+                (["issue", "create", "--repo", "o/r", "--parent", "182", "--title", "core"],
+                 _ok("https://github.com/o/r/issues/183\n")),
+            ])
+            out = self._run_decompose(root, spec_path, runner)
+            self.assertIsNone(out["milestone"])
+            for argv in runner.calls:
+                self.assertNotIn("--milestone", argv)
             self.assertEqual(runner.responses, [])
 
     def test_missing_later_sub_body_is_preflighted_before_parent_write(self) -> None:
