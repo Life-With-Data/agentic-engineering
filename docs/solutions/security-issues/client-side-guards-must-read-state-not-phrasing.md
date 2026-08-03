@@ -86,13 +86,26 @@ evasion surface and a blocked lifecycle step.
 - **Never place a heuristic guard on a required lifecycle path.** The cost of a
   false positive there is not an annoyance — it blocks delivery, and it trains
   everyone to reach for a bypass flag.
-- **Test guardrails by category, not by literal.** Assert *no push phrasing is
-  blocked* over a generated corpus (flag × remote × refspec), not a frozen list
-  of strings a reintroduced regex could dodge. A frozen list silently false-passes
-  the moment someone adds a phrasing it does not contain.
+- **Test guardrails by category, not by literal** — and check that the category
+  is real. Asserting over a generated corpus (flag × remote × refspec) instead of
+  a frozen list is necessary but not sufficient: a product of hand-frozen tuples
+  is still an enumeration, just a longer one. The first version of this PR's
+  corpus spelled every qualified form for `main` but only the bare form for
+  `master`, and included `--force` but not `-f`. Mutation testing found three
+  plausible reintroduced checks that passed it clean — including a force-push
+  guard spelled `-f`, the single most likely reintroduction of all.
+- **Verify a guardrail suite by mutating the guard, not by reading the tests.**
+  Reintroduce the check the tests exist to forbid and confirm the suite goes
+  red. Two of this hook's tests looked protective and were not: a source-text
+  assertion that the deleted helpers are absent passed against the full old rule
+  restored under renamed helpers, and no test pinned that the protected-branch
+  set is matched by equality until one was added — a substring match let
+  `main-feature` be treated as `main` with the suite still green.
 - **A guard that scans text will block prose about itself.** Commit messages, PR
   bodies, heredocs, and documentation all flow through the same argv. Strip
-  quotes and heredocs, or accept that writing about the rule will trip it.
+  quotes *and* heredocs, or accept that writing about the rule will trip it —
+  this hook strips quotes only, so a heredoc PR body discussing a commit still
+  false-blocks while on `main`.
 
 ## Resources
 

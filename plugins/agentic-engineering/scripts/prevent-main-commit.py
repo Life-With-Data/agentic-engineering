@@ -16,8 +16,12 @@ the server, where it binds every client, identity, and phrasing — buzz
 (`buzz repos protect set --ref refs/heads/main --push owner --no-force-push`)
 and GitHub rulesets both own it.
 
-The commit rule below reads live repository state, so it cannot be evaded by
-rephrasing.
+The commit rule below decides from live branch state rather than from the
+command's stated target, so rewording the refspec cannot get around it. It is
+not airtight against every spelling of the verb itself: global git options
+between the words (`git -c x=y commit`, `git --no-pager commit`) are not
+matched today. See the follow-up issue tracking parity with
+`block-no-verify.py`'s sanitizer.
 """
 import json
 import re

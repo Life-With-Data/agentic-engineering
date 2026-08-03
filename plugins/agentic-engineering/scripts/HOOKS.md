@@ -74,16 +74,20 @@ the only rule; nothing else is blocked.
 the `land-pr` flow apply. Committing straight to `main` skips all three.
 
 **Precision:** Quoted commit messages can't false-trigger it (a message
-mentioning "merge main" is fine). The rule reads the live branch from
-`git branch --show-current`, so it can't be evaded by rephrasing the command.
+mentioning "merge main" is fine), and a branch merely *named* like `main`
+(e.g. `main-feature`) is not treated as the protected branch. The rule reads the
+live branch from `git branch --show-current`, so rewording a command's target
+cannot get around it — but the verb match itself is literal `git commit`, and
+global git options between the words (`git -c x=y commit`) are not matched
+today.
 
 **Not blocked, deliberately:**
 
 - **Every `git push` phrasing.** A client-side refspec check decides from the
   shape of the phrasing, not from what the push would do — `git push` and
   `git push --force origin HEAD` from `main` update remote `main` exactly as
-  `git push origin main` does. It also blocks `git push origin main`, a
-  required step of the delivery lifecycle on forges without a PR flow. Push and
+  `git push origin main` does. Such a check also blocks `git push origin main`,
+  a required step of the delivery lifecycle on forges without a PR flow. Push and
   force-push policy belongs on the server, where it binds every client,
   identity, and phrasing: `buzz repos protect set --ref refs/heads/main --push
   owner --no-force-push`, or a GitHub ruleset (`pull_request`,

@@ -35,12 +35,30 @@ SCRIPT = Path(__file__).resolve().parent.parent / "scripts" / "prevent-main-comm
 BLOCK = 2
 ALLOW = 0
 
-# Generative push corpus: every combination of flag × remote × refspec, plus the
-# bare form and a few compound shapes. Generated rather than enumerated so the
-# suite covers phrasings nobody thought to list.
-PUSH_FLAGS = ("", "--force ", "--force-with-lease ", "-u ", "--no-verify ")
-PUSH_REMOTES = ("", "origin ", "upstream ")
-PUSH_REFSPECS = ("", "main", "master", "HEAD", "HEAD:main", "HEAD:refs/heads/main", "+main:main")
+# Generative push corpus: every combination of flag × remote × refspec, plus a
+# few compound shapes. Generated rather than enumerated so the suite covers
+# phrasings nobody thought to list.
+#
+# Both slots are deliberately wide, and the refspec slot is derived from the
+# protected-branch names rather than frozen: a corpus that spells every
+# qualified form for `main` but only the bare form for `master` is blind to a
+# check keyed on `refs/heads/master`, and one missing `-f` is blind to the
+# single most likely reintroduction of all. Mutation-tested — narrower versions
+# of these tuples let real push-blocking checks pass the suite.
+PROTECTED = ("main", "master")
+PUSH_FLAGS = (
+    "", "-f ", "--force ", "--force-with-lease ", "-u ",
+    "--no-verify ", "--all ", "--mirror ", "--tags ",
+)
+PUSH_REMOTES = ("", "origin ")
+PUSH_REFSPECS = ("", "HEAD") + tuple(
+    template.format(b=b)
+    for b in PROTECTED
+    for template in (
+        "{b}", "HEAD:{b}", "HEAD:refs/heads/{b}", "refs/heads/{b}",
+        "+{b}:{b}", "--delete {b}",
+    )
+)
 
 PUSH_COMMANDS = [
     f"git push {flag}{remote}{refspec}".strip()
@@ -121,18 +139,13 @@ class PreventMainCommitTest(unittest.TestCase):
             with self.subTest(command=command):
                 self.assertEqual(_run(command, self.repo).returncode, ALLOW)
 
-    def test_allows_every_push_phrasing_on_feature_branch(self) -> None:
+    def test_allows_push_to_protected_from_feature_branch(self) -> None:
+        # The corpus above runs on `main` only: a push command early-allows
+        # before the hook ever reads the branch, so running the full product on
+        # a second branch pins nothing and doubles the runtime. This one case
+        # pins that the branch genuinely does not matter for pushes.
         self._on_branch("feature/x")
-        for command in PUSH_COMMANDS:
-            with self.subTest(command=command):
-                self.assertEqual(_run(command, self.repo).returncode, ALLOW)
-
-    def test_push_rule_machinery_is_gone(self) -> None:
-        # Structural guard: the helpers existed only to serve the push rule.
-        source = SCRIPT.read_text()
-        for symbol in ("pushes_to_protected", "SEGMENT_SPLIT", "split_segments"):
-            with self.subTest(symbol=symbol):
-                self.assertNotIn(symbol, source)
+        self.assertEqual(_run("git push origin main", self.repo).returncode, ALLOW)
 
     # --- commits created by lifecycle operations on `main`: MUST allow ---
     # Merging into `main` is the delivery lifecycle, not a bypass.
@@ -152,6 +165,12 @@ class PreventMainCommitTest(unittest.TestCase):
 
     def test_allows_commit_on_feature_branch(self) -> None:
         self._on_branch("feature/awesome")
+        self.assertEqual(_run('git commit -m "wip"', self.repo).returncode, ALLOW)
+
+    def test_allows_commit_on_branch_named_like_main(self) -> None:
+        # `main-feature` is not `main`. The protected set is matched by equality,
+        # not substring; nothing else in the suite pins that.
+        self._on_branch("main-feature")
         self.assertEqual(_run('git commit -m "wip"', self.repo).returncode, ALLOW)
 
     def test_commit_message_mentioning_main_does_not_trigger(self) -> None:
