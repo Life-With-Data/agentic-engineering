@@ -176,11 +176,14 @@ ALL_POSTURE_LABELS = tuple(POSTURE_LABELS.values())
 # treat the ticket as cleared while it is present. Both directions deliberately
 # fail toward `standard` — clearance is a positive grant, never a leftover.
 POSTURE_LABEL_PREFIX = "posture:"
+# Descriptions are capped at 100 characters by GitHub; a longer one makes the
+# `gh label create --force` upsert below 422, aborting the run mid-write. The
+# limit is enforced across every `*_LABEL_META` map by a test, not at runtime.
 POSTURE_LABEL_META = {
     "posture:autonomous": (
         "5319E7",
-        "Delivery posture: cleared to run implementation -> review -> delivery "
-        "hands-off once Status >= ready_for_work",
+        "Posture: cleared to run implement -> review -> deliver hands-off "
+        "once Status >= ready_for_work",
     ),
 }
 
@@ -1602,7 +1605,7 @@ def verb_sub_status(issue: int, status: str, ctx: RepoContext, runner: GhRunner)
                                     "--color", color, "--description", desc, "--force"])
     if ensure.returncode != 0:
         raise BoardError("label_write_failed", f"ensuring {target} failed: {ensure.stderr.strip()[:200]}",
-                         "Verify issues-write (triage) permission on the repo")
+                         "Read the gh error above; it names the cause")
     remove = [lbl for lbl in present_status if lbl != target]
     add = [] if target in current else ["--add-label", target]
     edit_args = ["issue", "edit", str(issue), "--repo", ctx.slug, *add,
@@ -1676,7 +1679,7 @@ def apply_complexity_label(issue: int, tier: str, ctx: RepoContext, runner: GhRu
                                     "--color", color, "--description", desc, "--force"])
     if ensure.returncode != 0:
         raise BoardError("label_write_failed", f"ensuring {target} failed: {ensure.stderr.strip()[:200]}",
-                         "Verify issues-write (triage) permission on the repo")
+                         "Read the gh error above; it names the cause")
     present = [lbl for lbl in ALL_COMPLEXITY_LABELS if lbl in current]
     remove = [lbl for lbl in present if lbl != target]
     add = [] if target in current else ["--add-label", target]
@@ -1720,7 +1723,7 @@ def apply_posture_label(issue: int, posture: str, ctx: RepoContext, runner: GhRu
                                         "--color", color, "--description", desc, "--force"])
         if ensure.returncode != 0:
             raise BoardError("label_write_failed", f"ensuring {target} failed: {ensure.stderr.strip()[:200]}",
-                             "Verify issues-write (triage) permission on the repo")
+                             "Read the gh error above; it names the cause")
     # Strip by NAMESPACE, not by known-label membership. `ALL_POSTURE_LABELS`
     # holds only `posture:autonomous`, so a membership test would silently leave
     # a stray `posture:*` label (e.g. a hand-added `posture:standard`) in place —
