@@ -3684,6 +3684,43 @@ class PostureLabelGuardrailTest(unittest.TestCase):
         self.assertIn("apply_priority_field", inspect.getsource(lb.verb_decompose))
 
 
+class LabelDescriptionLengthGuardrailTest(unittest.TestCase):
+    """GitHub caps a label description at 100 characters. Every self-created
+    label family is upserted through the same `gh label create --force` path, so
+    one over-long description 422s mid-run and leaves a half-written board.
+
+    Walk the metadata maps by NAMESPACE SUFFIX, not by literal label name: a
+    guardrail pinned to today's spelling false-passes after a rename, and the
+    suffix walk also covers a label family added later without editing this
+    test."""
+
+    LIMIT = 100  # GitHub's documented cap on a label description
+
+    def _meta_maps(self) -> dict:
+        return {name: value for name, value in vars(lb).items()
+                if name.endswith("_LABEL_META") and isinstance(value, dict)}
+
+    def _over_limit(self, maps: dict) -> list:
+        return [(name, label, len(description))
+                for name, meta in maps.items()
+                for label, (_color, description) in meta.items()
+                if len(description) > self.LIMIT]
+
+    def test_metadata_maps_are_discoverable(self) -> None:
+        # Without this, a renamed convention would make the walk below iterate
+        # nothing and pass vacuously.
+        self.assertTrue(self._meta_maps(), "no *_LABEL_META maps found in lifecycle_board")
+
+    def test_every_description_fits_githubs_limit(self) -> None:
+        self.assertEqual([], self._over_limit(self._meta_maps()))
+
+    def test_the_walk_flags_an_over_long_description(self) -> None:
+        # Prove the walk actually measures, so the assertion above is a real gate.
+        synthetic = {"FUTURE_LABEL_META": {"future:label": ("FFFFFF", "x" * (self.LIMIT + 1))}}
+        self.assertEqual([("FUTURE_LABEL_META", "future:label", self.LIMIT + 1)],
+                         self._over_limit(synthetic))
+
+
 class GroomVerifyVerbTest(unittest.TestCase):
     """The postcondition verb: Status>=planned, with an
     exact sub-issue/blocked count straight from the parent's sub-issue nodes."""

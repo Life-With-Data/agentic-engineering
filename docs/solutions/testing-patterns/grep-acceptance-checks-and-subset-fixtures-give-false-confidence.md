@@ -110,6 +110,17 @@ again.
   command, and it should be a standard step in the Validation section for any plan whose Acceptance
   Criteria include a new test for a merge, union, or "also check a fallback source" change — not
   deferred to review as a nice-to-have.
+- **A provider-imposed limit on a value we hardcode needs a test at the authoring boundary.** GitHub
+  caps label descriptions at 100 characters; `POSTURE_LABEL_META` shipped 109, so every `--decompose`
+  carrying `posture: autonomous` 422'd mid-run and left the board half-written — parent already at
+  `planned`, complexity labels written, no JSON returned (issue #344). Nothing in the repository knew
+  the limit existed, and three label families are upserted through one `gh label create --force` path,
+  so any of them was one edit away from the same failure. Enforce it by walking the namespace
+  (`*_LABEL_META`), not a frozen list of label names, so a family added later is covered without
+  editing the test; a runtime guard would instead have silently shipped a truncated description.
+  Corollary on the error path: the writer's `fix` hint asserted a permission cause that the 422 body
+  already contradicted, which cost the debugging time the missing test would have saved — a hint that
+  guesses a cause is worse than one that points at the error text it already carries.
 - **A "zero references remain" acceptance criterion survives a single confirming grep only if that
   grep is scoped correctly the first time.** In this run, the orchestrator's own pre-PR grep repeated
   the sub-issue's exact scoping mistake — a second independent check with the *same* blind spot adds
@@ -197,6 +208,11 @@ it needs the same "did it land?" check PR #333 already demanded of the forward d
 
 ## Resources
 
+- Length guardrail added in: [PR #371](https://github.com/Life-With-Data/agentic-engineering/pull/371)
+  (issue #344) — `plugins/agentic-engineering/scripts/lifecycle_board.py` and
+  `plugins/agentic-engineering/tests/lifecycle_board_test.py`. The guardrail walks every
+  `*_LABEL_META` map by suffix rather than by label name, and was proven fail-first by padding a
+  description in a *different* label family than the one being fixed.
 - Recurrence documented in: [PR #357](https://github.com/Life-With-Data/agentic-engineering/pull/357)
   — `plugins/agentic-engineering/tests/lifecycle_board_test.py`, the `gh api -f` guardrail. No defect
   shipped: the guardrail was proven load-bearing and the six failures were the mutation check's own
