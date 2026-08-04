@@ -91,6 +91,20 @@ or provenance decision remains unresolved. In an unconfigured repository
 board yet, perform no tracker writes, and apply the same temporary-file
 cleanup.
 
+The verb is idempotent per spec: a repeat run against the same spec reports the
+recorded set as `reused: true` and mutates nothing, and `--force` re-creates it.
+Every run records its complete result at the returned `receipt_path`. Read that
+result JSON whole — never through `tail`, `head`, or another truncating filter,
+which is what prompted the re-invocation that created a duplicate issue set.
+Recover lost or truncated output from `receipt_path` or `gh issue list`, never
+by re-invoking the verb.
+
+A result carrying `partial: true` reports an issue set that exists while the
+verb's tail steps did not finish, so the parent may not be `planned` and the
+advisory labels may be absent. Complete those directly — `--set-status <parent>
+planned` and the label writes are issue-keyed and idempotent — rather than
+re-running `--decompose`.
+
 ### Milestone scope
 
 A milestone is the tier above parent-plus-sub-issues: a named body of work
