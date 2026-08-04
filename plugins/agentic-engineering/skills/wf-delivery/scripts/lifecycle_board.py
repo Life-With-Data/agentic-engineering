@@ -1605,7 +1605,7 @@ def verb_sub_status(issue: int, status: str, ctx: RepoContext, runner: GhRunner)
                                     "--color", color, "--description", desc, "--force"])
     if ensure.returncode != 0:
         raise BoardError("label_write_failed", f"ensuring {target} failed: {ensure.stderr.strip()[:200]}",
-                         "Read the gh error above; it names the cause")
+                         "Check the gh error above (description length limit, permissions)")
     remove = [lbl for lbl in present_status if lbl != target]
     add = [] if target in current else ["--add-label", target]
     edit_args = ["issue", "edit", str(issue), "--repo", ctx.slug, *add,
@@ -1679,7 +1679,7 @@ def apply_complexity_label(issue: int, tier: str, ctx: RepoContext, runner: GhRu
                                     "--color", color, "--description", desc, "--force"])
     if ensure.returncode != 0:
         raise BoardError("label_write_failed", f"ensuring {target} failed: {ensure.stderr.strip()[:200]}",
-                         "Read the gh error above; it names the cause")
+                         "Check the gh error above (description length limit, permissions)")
     present = [lbl for lbl in ALL_COMPLEXITY_LABELS if lbl in current]
     remove = [lbl for lbl in present if lbl != target]
     add = [] if target in current else ["--add-label", target]
@@ -1723,7 +1723,7 @@ def apply_posture_label(issue: int, posture: str, ctx: RepoContext, runner: GhRu
                                         "--color", color, "--description", desc, "--force"])
         if ensure.returncode != 0:
             raise BoardError("label_write_failed", f"ensuring {target} failed: {ensure.stderr.strip()[:200]}",
-                             "Read the gh error above; it names the cause")
+                             "Check the gh error above (description length limit, permissions)")
     # Strip by NAMESPACE, not by known-label membership. `ALL_POSTURE_LABELS`
     # holds only `posture:autonomous`, so a membership test would silently leave
     # a stray `posture:*` label (e.g. a hand-added `posture:standard`) in place —
