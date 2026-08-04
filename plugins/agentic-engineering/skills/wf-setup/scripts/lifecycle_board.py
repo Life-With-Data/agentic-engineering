@@ -33,9 +33,13 @@ CLI verbs (used by workflow commands; humans/CI may call them directly):
   --groom-entry [--issue N]      one-shot groom entry: reconcile + state read +
                                  provenance -> a Routing-Ladder
                                  verdict (the model decides only crisp-vs-vague)
-  --decompose <N> --spec FILE    create/update the canonical parent issue, create
-                                 each sub-issue, wire dependencies, Status=planned,
-                                 and write required Project Priority (p1/p2/p3)
+  --decompose <N> --spec FILE [--force]  create/update the canonical parent issue,
+                                 create each sub-issue, wire dependencies,
+                                 Status=planned, and write required Project
+                                 Priority (p1/p2/p3). Idempotent per spec: a
+                                 repeat run reports the recorded set
+                                 (`reused: true`) and mutates nothing; --force
+                                 re-creates it
   --groom-verify <N>             groom postcondition: assert stage >= planned and
                                  Priority is set — grooming's ceiling; entering work
                                  additionally requires the ready_for_work approval
@@ -50,6 +54,7 @@ from __future__ import annotations
 
 import dataclasses
 import datetime
+import hashlib
 import json
 import os
 import pathlib
@@ -611,6 +616,72 @@ def packet_path(issue: int, ctx: RepoContext) -> pathlib.Path:
         raise BoardError("packet_path_unsafe", "Packet path escaped its work-items directory",
                          "Fix the repository identity and retry")
     return candidate
+
+
+def decompose_receipt_key(slug: str, parent: Optional[int], spec: dict) -> str:
+    """Hash one `--decompose` invocation: repository, parent, and spec.
+
+    Canonical JSON (sorted keys, no whitespace drift) so two byte-different but
+    semantically identical spec files hash the same. Body-file *contents* are
+    deliberately excluded: a body-only edit that reaches the receipt should
+    report the existing set — whose body the `--decompose <parent>` path then
+    updates — rather than create a second one.
+    """
+    payload = json.dumps({"slug": slug, "parent": parent, "spec": spec},
+                         sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def decompose_receipt_path(key: str, ctx: RepoContext) -> pathlib.Path:
+    """Deterministic decompose-receipt path, guarded exactly like `packet_path`."""
+    if not re.fullmatch(r"[0-9a-f]{64}", key or ""):
+        raise BoardError("receipt_path_unsafe", f"unsafe receipt key {key!r}",
+                         "Pass a sha256 hex digest from decompose_receipt_key")
+    if not _OWNER_RE.fullmatch(ctx.origin_owner or ""):
+        raise BoardError("origin_unresolved", f"unsafe or missing origin owner {ctx.origin_owner!r}",
+                         "Fix the origin remote and retry")
+    if not re.fullmatch(r"[A-Za-z0-9_.-]+", ctx.origin_repo or ""):
+        raise BoardError("origin_unresolved", f"unsafe or missing origin repository {ctx.origin_repo!r}",
+                         "Fix the origin remote and retry")
+    common = git_common_dir(ctx)
+    agentic_dir = common / "agentic-engineering"
+    base = agentic_dir / "decompose-receipts"
+    for component in (agentic_dir, base):
+        if component.is_symlink():
+            raise BoardError("receipt_path_unsafe", f"Refusing symlinked receipt directory {component}",
+                             "Replace it with a real directory under Git's common directory")
+    candidate = base / f"{ctx.origin_owner}--{ctx.origin_repo}--{key[:16]}.json"
+    # Same explicit containment assertion as packet_path: components are
+    # validated above, but a future naming change must not be able to escape.
+    if candidate.parent != base:
+        raise BoardError("receipt_path_unsafe", "Receipt path escaped its receipts directory",
+                         "Fix the repository identity and retry")
+    return candidate
+
+
+def read_decompose_receipt(path: pathlib.Path) -> Optional[dict]:
+    """The recorded result, or None when absent, unreadable, or corrupt. A
+    corrupt receipt is a MISS, not an error: re-creating is recoverable, and
+    refusing to decompose because a local cache file rotted is not."""
+    try:
+        recorded = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    return recorded if isinstance(recorded, dict) else None
+
+
+def write_decompose_receipt(path: pathlib.Path, payload: dict) -> Optional[str]:
+    """Persist one receipt atomically; return an error string instead of raising.
+
+    Both call sites run AFTER the issue set exists, so discarding a real
+    decomposition over a failed local write would be strictly worse than the
+    duplication bug the receipt exists to prevent.
+    """
+    try:
+        _atomic_private_write(path, json.dumps(payload, indent=2) + "\n")
+    except BoardError as exc:
+        return f"{exc.code}: {exc}"
+    return None
 
 
 def load_cache(ctx: RepoContext) -> dict:
@@ -1918,7 +1989,7 @@ def resolve_milestone(milestone: dict, ctx: RepoContext, runner: GhRunner) -> di
 
 def verb_decompose(issue: Optional[int], spec_path: str, ctx: RepoContext, runner: GhRunner,
                    set_status: "Optional[Callable]" = None,
-                   deboard: "Optional[Callable]" = None) -> dict:
+                   deboard: "Optional[Callable]" = None, force: bool = False) -> dict:
     """the `wf-grooming` planning route Step 7 (`github-project` branch) as one atomic verb.
 
     Reads a model-authored JSON spec, then: creates or updates the canonical
@@ -1928,7 +1999,11 @@ def verb_decompose(issue: Optional[int], spec_path: str, ctx: RepoContext, runne
     `planned`, and best-effort de-boards each created sub (the Project tracks the
     parent). Sub-issue numbers are captured from gh's own returned URLs, so the
     count is exact by construction. `set_status`/`deboard` are injectable seams
-    for tests; production uses `verb_set_status`/`_deboard_subissue`."""
+    for tests; production uses `verb_set_status`/`_deboard_subissue`.
+
+    Idempotent per invocation via a local receipt (#349): a repeat run against
+    the same spec reports the recorded set instead of creating a second one.
+    `force=True` bypasses the receipt and re-creates."""
     set_status = set_status or verb_set_status
     deboard = deboard or _deboard_subissue
     board = _require_board(ctx)
@@ -1979,6 +2054,30 @@ def verb_decompose(issue: Optional[int], spec_path: str, ctx: RepoContext, runne
                              f"sub_issues[{i}].blocked_by references #{number}, which does not "
                              f"exist in {ctx.slug}: {r.stderr.strip()[:160]}",
                              "Fix the issue number in the --spec JSON, or drop the dependency")
+
+    # Idempotency receipt. `--decompose` is the only verb that creates durable
+    # structure from a non-issue-keyed input, so a repeat invocation otherwise
+    # creates a second complete, disjoint issue set (#349). Resolved here, with
+    # the other preflights and before the first GitHub mutation, so a hit costs
+    # zero writes. A path that cannot be resolved (no Git common directory, or
+    # an unsafe component) must NOT fail an otherwise valid decomposition: the
+    # run proceeds unguarded and says so through `receipt_error`.
+    receipt_path: Optional[pathlib.Path] = None
+    receipt_error: Optional[str] = None
+    try:
+        receipt_path = decompose_receipt_path(
+            decompose_receipt_key(ctx.slug, issue, spec), ctx)
+    except BoardError as exc:
+        receipt_error = f"{exc.code}: {exc}"
+    if receipt_path is not None and not force:
+        recorded = read_decompose_receipt(receipt_path)
+        if recorded is not None:
+            # A `partial: true` hit is returned unchanged and deliberately does
+            # not resume the tail steps: they are issue-keyed and individually
+            # idempotent (`--set-status <N> planned`, the label appliers), so the
+            # operator finishes them directly rather than through a second route
+            # into the same writes.
+            return {**recorded, "reused": True, "receipt_path": str(receipt_path)}
 
     # The board schema is a precondition of step 5's Status write, but it is read
     # for the first time thousands of lines of GitHub mutation later. Resolve it
@@ -2056,6 +2155,30 @@ def verb_decompose(issue: Optional[int], spec_path: str, ctx: RepoContext, runne
                                  "Verify the dependency exists; re-run wiring is idempotent")
             wired.append({"issue": created[i], "blocked_by": blocker})
 
+    def _sub_issue_records() -> "list[dict]":
+        return [{"number": created[i], "title": subs[i]["title"],
+                 "complexity": subs[i].get("complexity"),
+                 "blocked_by": [dep_number(d) for d in subs[i].get("blocked_by", [])]}
+                for i in range(len(subs))]
+
+    # 3b. GUARD RECEIPT. The durable structure now exists — parent, sub-issues,
+    #     edges — and every write from step 4 onward raises BoardError on
+    #     failure: `apply_complexity_label` and `apply_posture_label` both raise
+    #     `label_write_failed` from a failed `gh label create`. A receipt written
+    #     only at the end of the verb is never reached on those raises, leaving a
+    #     fully-created issue set with no receipt, so the operator's recovery
+    #     re-run duplicates all of it. That is the failure mode of two of the
+    #     three incidents recorded on #349, which is why this write must precede
+    #     step 4's set_status rather than follow the de-board step. `partial`
+    #     marks the tail steps as unfinished so a later hit cannot be mistaken
+    #     for a completed decomposition.
+    if receipt_path is not None:
+        receipt_error = write_decompose_receipt(receipt_path, {
+            "parent": parent, "body_file": spec[body_key],
+            "sub_issues": _sub_issue_records(), "sub_issue_count": len(created),
+            "dependencies_wired": len(wired), "partial": True,
+            "receipt_path": str(receipt_path)})
+
     # 4. Advance the parent to planned (board-adds if needed) — the transition.
     #    This happens BEFORE Priority / complexity / posture writes below so a
     #    field or label write can never gate or break the `planned` transition
@@ -2098,18 +2221,26 @@ def verb_decompose(issue: Optional[int], spec_path: str, ctx: RepoContext, runne
     #    the async auto-add usually has not fired yet, and the reconciler's
     #    rule 6 is the convergence guarantee for any board item that lands later.
     deboarded = [deboard(number, board, ctx, runner) for number in created]
-    return {"parent": parent, "body_file": spec[body_key], "stage": st.get("stage"),
-            "previous_stage": st.get("previous_stage"),
-            "parent_priority": parent_priority,
-            "parent_complexity": parent_tier,
-            "parent_posture": parent_posture,
-            "milestone": milestone,
-            "sub_issues": [{"number": created[i], "title": subs[i]["title"],
-                            "complexity": subs[i].get("complexity"),
-                            "blocked_by": [dep_number(d) for d in subs[i].get("blocked_by", [])]}
-                           for i in range(len(subs))],
-            "sub_issue_count": len(created), "dependencies_wired": len(wired),
-            "deboarded": deboarded}
+    result = {"parent": parent, "body_file": spec[body_key], "stage": st.get("stage"),
+              "previous_stage": st.get("previous_stage"),
+              "parent_priority": parent_priority,
+              "parent_complexity": parent_tier,
+              "parent_posture": parent_posture,
+              "milestone": milestone,
+              "sub_issues": _sub_issue_records(),
+              "sub_issue_count": len(created), "dependencies_wired": len(wired),
+              "deboarded": deboarded, "partial": False, "reused": False,
+              "receipt_path": str(receipt_path) if receipt_path is not None else None}
+
+    # 7. Overwrite the guard receipt with the complete result. `_atomic_private_write`
+    #    makes the replacement safe, so a crash between the two writes leaves the
+    #    valid guard receipt rather than a truncated file. A failed overwrite still
+    #    leaves the guard receipt in place, so the re-run stays guarded.
+    if receipt_path is not None:
+        receipt_error = write_decompose_receipt(receipt_path, result)
+    result["receipt_written"] = receipt_error is None
+    result["receipt_error"] = receipt_error
+    return result
 
 
 def verb_groom_verify(issue: int, ctx: RepoContext, runner: GhRunner,
@@ -3351,7 +3482,7 @@ def main(argv: "list[str]") -> int:
             if not args.spec:
                 raise BoardError("spec_required", "--decompose requires --spec FILE",
                                  "Pass --spec pointing at the JSON decomposition spec")
-            return _emit(verb_decompose(parent, args.spec, ctx, run_gh))
+            return _emit(verb_decompose(parent, args.spec, ctx, run_gh, force=args.force))
         if args.groom_verify is not None:
             result = verb_groom_verify(args.groom_verify, ctx, run_gh)
             _emit(result)

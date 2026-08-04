@@ -10,6 +10,7 @@ from __future__ import annotations
 import importlib.util
 import inspect
 import json
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -3610,6 +3611,241 @@ class DecomposeVerbTest(unittest.TestCase):
                                           deboard=lambda number, board, ctx, run: {
                                               "issue": number, "deboarded": False})
                     self.assertEqual(seen["call"], (182, "planned"))
+
+
+class DecomposeReceiptTest(unittest.TestCase):
+    """`--decompose` idempotency, receipt-backed (#349 / #355).
+
+    Two identical invocations used to create two complete, disjoint issue sets.
+    Every double-invocation case here queues the second run with an EMPTY
+    FakeRunner, so a regression fails loudly on an unexpected argv rather than
+    passing on a lenient count assertion.
+
+    These cases need a REAL git repository: the receipt lives under Git's common
+    directory, and the sibling decompose tests run in plain temp directories,
+    which exercise the unguarded fallback instead.
+    """
+
+    SUBS = [{"title": "core", "body_file": "s1.md"},
+            {"title": "follow", "body_file": "s2.md", "blocked_by": [0]}]
+
+    def setUp(self) -> None:
+        patch = mock.patch.object(lb, "apply_priority_field",
+                                  return_value={"item_id": "IT_1", "priority": "p2"})
+        patch.start()
+        self.addCleanup(patch.stop)
+
+    def _repo(self, spec: dict) -> "tuple[Path, dict]":
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        root = Path(tmp.name)
+        subprocess.run(["git", "-C", str(root), "init", "-q"], check=True,
+                       capture_output=True, text=True)
+        for name, text in (("p.md", "parent"), ("s1.md", "sub1"), ("s2.md", "sub2")):
+            (root / name).write_text(text, encoding="utf-8")
+        (root / "spec.json").write_text(json.dumps(spec), encoding="utf-8")
+        return root, spec
+
+    def _run(self, root: Path, runner, parent=182, force=False, set_status=None) -> dict:
+        with mock.patch.object(lb, "read_board_config",
+                               return_value=lb.BoardConfig(owner="o", number=1,
+                                                           source="committed")):
+            return lb.verb_decompose(
+                parent, str(root / "spec.json"), _ctx(str(root)), runner,
+                set_status=set_status or (lambda *a, **k: {"stage": "planned",
+                                                           "previous_stage": None}),
+                deboard=lambda n, b, c, r: {"issue": n, "deboarded": True},
+                force=force)
+
+    @staticmethod
+    def _receipt_path(root: Path, parent, spec: dict) -> Path:
+        return lb.decompose_receipt_path(
+            lb.decompose_receipt_key("o/r", parent, spec), _ctx(str(root)))
+
+    @staticmethod
+    def _existing_parent_runner():
+        return FakeRunner([
+            (["project", "field-list", "1", "--owner", "o"], _decompose_field_list()),
+            (["issue", "edit", "182", "--repo", "o/r", "--body-file"],
+             _ok("https://github.com/o/r/issues/182\n")),
+            (["issue", "create", "--repo", "o/r", "--parent", "182", "--title", "core"],
+             _ok("https://github.com/o/r/issues/183\n")),
+            (["issue", "create", "--repo", "o/r", "--parent", "182", "--title", "follow"],
+             _ok("https://github.com/o/r/issues/184\n")),
+            (["issue", "edit", "184", "--repo", "o/r", "--add-blocked-by", "183"], _ok("")),
+        ])
+
+    def test_repeat_new_parent_run_creates_one_issue_set(self) -> None:
+        # AC1 + AC3: `--decompose --spec X` twice, no --issue.
+        root, spec = self._repo({"body_file": "p.md", "parent_title": "epic",
+                                 "priority": "p2", "sub_issues": self.SUBS})
+        first = self._run(root, FakeRunner([
+            (["project", "field-list", "1", "--owner", "o"], _decompose_field_list()),
+            (["issue", "create", "--repo", "o/r", "--title", "epic"],
+             _ok("https://github.com/o/r/issues/265\n")),
+            (["issue", "create", "--repo", "o/r", "--parent", "265", "--title", "core"],
+             _ok("https://github.com/o/r/issues/266\n")),
+            (["issue", "create", "--repo", "o/r", "--parent", "265", "--title", "follow"],
+             _ok("https://github.com/o/r/issues/267\n")),
+            (["issue", "edit", "267", "--repo", "o/r", "--add-blocked-by", "266"], _ok("")),
+        ]), parent=None)
+        self.assertFalse(first["reused"])
+        self.assertEqual(first["parent"], 265)
+
+        # No responses at all: any gh call in the second run raises.
+        second_runner = FakeRunner([])
+        second = self._run(root, second_runner, parent=None)
+        self.assertEqual(second_runner.calls, [])
+        self.assertTrue(second["reused"])
+        self.assertEqual(second["parent"], 265)
+        self.assertEqual([s["number"] for s in second["sub_issues"]], [266, 267])
+
+    def test_repeat_existing_parent_run_creates_one_sub_issue_set(self) -> None:
+        # AC2: `--decompose <N> --spec X` twice bounds duplication to the sub
+        # set today, which is still a duplicate set under the same parent.
+        root, spec = self._repo({"body_file": "p.md", "priority": "p2",
+                                 "sub_issues": self.SUBS})
+        first = self._run(root, self._existing_parent_runner())
+        self.assertEqual([s["number"] for s in first["sub_issues"]], [183, 184])
+
+        second_runner = FakeRunner([])
+        second = self._run(root, second_runner)
+        self.assertEqual(second_runner.calls, [])
+        self.assertTrue(second["reused"])
+        self.assertEqual([s["number"] for s in second["sub_issues"]], [183, 184])
+        self.assertFalse(second["partial"])
+
+    def test_completed_run_records_the_full_result_on_disk(self) -> None:
+        # AC3 + AC4: `reused` and `receipt_path` on every result; a run that
+        # reaches the end leaves the complete result JSON with partial: false.
+        root, spec = self._repo({"body_file": "p.md", "priority": "p2",
+                                 "sub_issues": self.SUBS})
+        out = self._run(root, self._existing_parent_runner())
+        self.assertFalse(out["reused"])
+        self.assertFalse(out["partial"])
+        self.assertTrue(out["receipt_written"])
+        self.assertIsNone(out["receipt_error"])
+
+        path = self._receipt_path(root, 182, spec)
+        self.assertEqual(out["receipt_path"], str(path))
+        recorded = json.loads(path.read_text(encoding="utf-8"))
+        self.assertFalse(recorded["partial"])
+        self.assertEqual(recorded["stage"], "planned")
+        self.assertEqual(recorded["dependencies_wired"], 1)
+        self.assertEqual([s["number"] for s in recorded["sub_issues"]], [183, 184])
+
+    def test_force_recreates_the_set_and_overwrites_the_receipt(self) -> None:
+        # AC5: the deliberate escape hatch after the recorded set was closed.
+        root, spec = self._repo({"body_file": "p.md", "priority": "p2",
+                                 "sub_issues": self.SUBS})
+        self._run(root, self._existing_parent_runner())
+        forced = self._run(root, FakeRunner([
+            (["project", "field-list", "1", "--owner", "o"], _decompose_field_list()),
+            (["issue", "edit", "182", "--repo", "o/r", "--body-file"],
+             _ok("https://github.com/o/r/issues/182\n")),
+            (["issue", "create", "--repo", "o/r", "--parent", "182", "--title", "core"],
+             _ok("https://github.com/o/r/issues/283\n")),
+            (["issue", "create", "--repo", "o/r", "--parent", "182", "--title", "follow"],
+             _ok("https://github.com/o/r/issues/284\n")),
+            (["issue", "edit", "284", "--repo", "o/r", "--add-blocked-by", "283"], _ok("")),
+        ]), force=True)
+        self.assertFalse(forced["reused"])
+        self.assertEqual([s["number"] for s in forced["sub_issues"]], [283, 284])
+        recorded = json.loads(Path(forced["receipt_path"]).read_text(encoding="utf-8"))
+        self.assertEqual([s["number"] for s in recorded["sub_issues"]], [283, 284])
+
+    def test_failing_receipt_write_is_reported_not_fatal(self) -> None:
+        # AC6: the issue set already exists by the time either write runs, so
+        # discarding the result over a failed local write is strictly worse.
+        root, _ = self._repo({"body_file": "p.md", "priority": "p2",
+                              "sub_issues": self.SUBS})
+        boom = lb.BoardError("packet_write_failed", "disk is full", "free space")
+        with mock.patch.object(lb, "_atomic_private_write", side_effect=boom):
+            out = self._run(root, self._existing_parent_runner())
+        self.assertEqual([s["number"] for s in out["sub_issues"]], [183, 184])
+        self.assertFalse(out["receipt_written"])
+        self.assertIn("packet_write_failed", out["receipt_error"])
+
+    def test_receipt_path_refuses_symlinks_and_stays_contained(self) -> None:
+        # AC7: the same guards packet_path applies.
+        root, _ = self._repo({"body_file": "p.md", "priority": "p2", "sub_issues": []})
+        ctx = _ctx(str(root))
+        key = lb.decompose_receipt_key("o/r", 182, {"a": 1})
+        path = lb.decompose_receipt_path(key, ctx)
+        base = lb.git_common_dir(ctx) / "agentic-engineering" / "decompose-receipts"
+        self.assertEqual(path.parent, base)
+        self.assertEqual(path.name, f"o--r--{key[:16]}.json")
+
+        # a symlinked directory component is refused, not followed
+        elsewhere = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, str(elsewhere), True)
+        base.parent.mkdir(parents=True, exist_ok=True)
+        base.symlink_to(elsewhere, target_is_directory=True)
+        with self.assertRaises(lb.BoardError) as cm:
+            lb.decompose_receipt_path(key, ctx)
+        self.assertEqual(cm.exception.code, "receipt_path_unsafe")
+
+        # a key that is not a sha256 digest never reaches the filesystem
+        for bad in ("../../escape", "", "nothex"):
+            with self.assertRaises(lb.BoardError) as cm:
+                lb.decompose_receipt_path(bad, ctx)
+            self.assertEqual(cm.exception.code, "receipt_path_unsafe")
+
+    def test_guard_receipt_lands_before_set_status_and_survives_a_label_raise(self) -> None:
+        # AC9 — the load-bearing case. Reproduces the #344 / agent-leverage#2168
+        # shape: the posture `label create` hard-errors at step 5b, AFTER the
+        # parent, sub-issues, edges and the planned stamp already exist. An
+        # end-of-verb receipt is never reached on that raise, so the recovery
+        # re-run duplicates the whole set. Asserting the guard write lands
+        # BEFORE the first set_status argv is what an end-of-run receipt cannot
+        # satisfy; asserting only that a receipt exists would false-pass.
+        root, spec = self._repo({"body_file": "p.md", "priority": "p2",
+                                 "posture": "autonomous", "sub_issues": self.SUBS})
+        path = self._receipt_path(root, 182, spec)
+        at_set_status = {}
+
+        def fake_set_status(parent, stage, ctx, run, force=False):
+            at_set_status["receipt"] = lb.read_decompose_receipt(path)
+            return {"issue": parent, "stage": stage, "previous_stage": None}
+
+        failing_label = subprocess.CompletedProcess(
+            args=[], returncode=1, stdout="",
+            stderr="HTTP 422: description is too long (maximum is 100 characters)")
+        first_runner = FakeRunner([
+            (["project", "field-list", "1", "--owner", "o"], _decompose_field_list()),
+            (["issue", "edit", "182", "--repo", "o/r", "--body-file"],
+             _ok("https://github.com/o/r/issues/182\n")),
+            (["issue", "create", "--repo", "o/r", "--parent", "182", "--title", "core"],
+             _ok("https://github.com/o/r/issues/183\n")),
+            (["issue", "create", "--repo", "o/r", "--parent", "182", "--title", "follow"],
+             _ok("https://github.com/o/r/issues/184\n")),
+            (["issue", "edit", "184", "--repo", "o/r", "--add-blocked-by", "183"], _ok("")),
+            (["issue", "view", "182", "--repo", "o/r", "--json", "labels"],
+             _ok('{"labels": []}')),
+            (["label", "create", "posture:autonomous", "--repo", "o/r"], failing_label),
+        ])
+        with self.assertRaises(lb.BoardError) as cm:
+            self._run(root, first_runner, set_status=fake_set_status)
+        self.assertEqual(cm.exception.code, "label_write_failed")
+
+        # the guard receipt was already on disk when set_status was called
+        guard = at_set_status["receipt"]
+        self.assertIsNotNone(guard, "guard receipt must precede the set_status write")
+        self.assertTrue(guard["partial"])
+        self.assertEqual([s["number"] for s in guard["sub_issues"]], [183, 184])
+        self.assertEqual(guard["dependencies_wired"], 1)
+        # it records the durable structure only — not the tail steps that raised
+        self.assertNotIn("stage", guard)
+
+        # ...and it survived the raise, so the recovery re-run creates nothing.
+        on_disk = json.loads(path.read_text(encoding="utf-8"))
+        self.assertTrue(on_disk["partial"])
+        second_runner = FakeRunner([])
+        second = self._run(root, second_runner)
+        self.assertEqual(second_runner.calls, [])
+        self.assertTrue(second["reused"])
+        self.assertTrue(second["partial"])
+        self.assertEqual([s["number"] for s in second["sub_issues"]], [183, 184])
 
 
 class ComplexityLabelGuardrailTest(unittest.TestCase):
