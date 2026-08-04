@@ -624,8 +624,10 @@ def decompose_receipt_key(slug: str, parent: Optional[int], spec: dict) -> str:
     Canonical JSON (sorted keys, no whitespace drift) so two byte-different but
     semantically identical spec files hash the same. Body-file *contents* are
     deliberately excluded: a body-only edit that reaches the receipt should
-    report the existing set — whose body the `--decompose <parent>` path then
-    updates — rather than create a second one.
+    report the existing set rather than create a second one. Update that body
+    with `gh issue edit <parent> --body-file` — NOT by re-invoking
+    `--decompose <parent>`, whose sub-issue creation loop is unconditional and
+    would append a duplicate sub-set (the #349 root cause).
     """
     payload = json.dumps({"slug": slug, "parent": parent, "spec": spec},
                          sort_keys=True, separators=(",", ":"))
@@ -659,15 +661,60 @@ def decompose_receipt_path(key: str, ctx: RepoContext) -> pathlib.Path:
     return candidate
 
 
-def read_decompose_receipt(path: pathlib.Path) -> Optional[dict]:
-    """The recorded result, or None when absent, unreadable, or corrupt. A
-    corrupt receipt is a MISS, not an error: re-creating is recoverable, and
-    refusing to decompose because a local cache file rotted is not."""
+def read_decompose_receipt(path: pathlib.Path,
+                           key: Optional[str] = None) -> "tuple[Optional[dict], Optional[str]]":
+    """`(recorded, anomaly)`. ABSENT is the only routine miss.
+
+    `load_cache`'s "swallow everything as a miss" rule is inverted here and must
+    not be copied: a cache miss costs one API call, but a receipt miss costs a
+    duplicate GitHub issue set — the exact outcome this receipt exists to
+    prevent, and the one that needs manual issue cleanup to undo. So a receipt
+    that is present but unreadable, unparseable, or not shaped like a receipt is
+    still a MISS (refusing to decompose over a rotted local file would be worse),
+    but it is reported through `receipt_error` rather than passed off as "no
+    previous run". `_atomic_private_write`'s O_EXCL + fsync + os.replace makes a
+    torn write impossible, so any of these is anomalous, never routine.
+
+    `key` — when given, the recorded key must match. The filename carries only
+    the first 16 hex chars of the digest, so the path alone does not identify an
+    invocation; a receipt copied or renamed between clones would otherwise be
+    reported as this spec's own result, silently suppressing a real
+    decomposition and naming another one's issues.
+    """
     try:
-        recorded = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return None
-    return recorded if isinstance(recorded, dict) else None
+        raw = path.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        return None, None
+    except OSError as exc:
+        return None, f"receipt_unreadable: {exc}"
+    try:
+        recorded = json.loads(raw)
+    except ValueError as exc:
+        return None, f"receipt_corrupt: {exc}"
+    if (not isinstance(recorded, dict) or "parent" not in recorded
+            or not isinstance(recorded.get("sub_issues"), list)):
+        return None, f"receipt_corrupt: {path.name} is not a decompose receipt"
+    if key is not None and recorded.get("key") != key:
+        return None, (f"receipt_corrupt: {path.name} records a different invocation "
+                      "(key mismatch); treating as no previous run")
+    return recorded, None
+
+
+def _warn_unguarded(receipt_error: Optional[str]) -> None:
+    """Announce an unguarded run on stderr, immediately.
+
+    `receipt_error` otherwise reaches a caller only through the verb's `return`,
+    so every raise between the guard write and that return discards it — and a
+    raise after the issue set exists is precisely when the operator must know
+    whether a recovery re-run is safe. Without this, a failed guard write and a
+    successful one produce byte-identical output on the `label_write_failed`
+    path that the guard exists to cover. stdout stays pure JSON (`_emit`'s
+    contract), so this goes to stderr.
+    """
+    if receipt_error:
+        print(f"warning: --decompose is running UNGUARDED ({receipt_error}). If this run "
+              "fails after creating issues, re-running the same spec will create a SECOND "
+              "issue set — inspect the parent on GitHub before any retry.", file=sys.stderr)
 
 
 def write_decompose_receipt(path: pathlib.Path, payload: dict) -> Optional[str]:
@@ -2064,13 +2111,23 @@ def verb_decompose(issue: Optional[int], spec_path: str, ctx: RepoContext, runne
     # run proceeds unguarded and says so through `receipt_error`.
     receipt_path: Optional[pathlib.Path] = None
     receipt_error: Optional[str] = None
+    receipt_key: Optional[str] = None
     try:
-        receipt_path = decompose_receipt_path(
-            decompose_receipt_key(ctx.slug, issue, spec), ctx)
+        receipt_key = decompose_receipt_key(ctx.slug, issue, spec)
+        receipt_path = decompose_receipt_path(receipt_key, ctx)
     except BoardError as exc:
         receipt_error = f"{exc.code}: {exc}"
+    receipt_anomaly: Optional[str] = None
     if receipt_path is not None and not force:
-        recorded = read_decompose_receipt(receipt_path)
+        recorded, receipt_anomaly = read_decompose_receipt(receipt_path, receipt_key)
+        if receipt_anomaly is not None:
+            # Distinct from `receipt_error`, deliberately: this run still writes a
+            # fresh receipt and ends up guarded, so folding the two together would
+            # report `receipt_written: false` for a receipt that was written.
+            print(f"warning: ignoring an unusable decompose receipt ({receipt_anomaly}). "
+                  "This run creates a new issue set and records a fresh receipt; if a "
+                  "previous run already created one, inspect the parent on GitHub first.",
+                  file=sys.stderr)
         if recorded is not None:
             # A `partial: true` hit is returned unchanged and deliberately does
             # not resume the tail steps: they are issue-keyed and individually
@@ -2078,6 +2135,7 @@ def verb_decompose(issue: Optional[int], spec_path: str, ctx: RepoContext, runne
             # operator finishes them directly rather than through a second route
             # into the same writes.
             return {**recorded, "reused": True, "receipt_path": str(receipt_path)}
+    _warn_unguarded(receipt_error)
 
     # The board schema is a precondition of step 5's Status write, but it is read
     # for the first time thousands of lines of GitHub mutation later. Resolve it
@@ -2174,10 +2232,14 @@ def verb_decompose(issue: Optional[int], spec_path: str, ctx: RepoContext, runne
     #     for a completed decomposition.
     if receipt_path is not None:
         receipt_error = write_decompose_receipt(receipt_path, {
+            "key": receipt_key,
             "parent": parent, "body_file": spec[body_key],
             "sub_issues": _sub_issue_records(), "sub_issue_count": len(created),
             "dependencies_wired": len(wired), "partial": True,
             "receipt_path": str(receipt_path)})
+        # Announce now, not at the return: every raise below discards it, and a
+        # failed guard write is exactly what makes the coming raises unsafe.
+        _warn_unguarded(receipt_error)
 
     # 4. Advance the parent to planned (board-adds if needed) — the transition.
     #    This happens BEFORE Priority / complexity / posture writes below so a
@@ -2221,7 +2283,11 @@ def verb_decompose(issue: Optional[int], spec_path: str, ctx: RepoContext, runne
     #    the async auto-add usually has not fired yet, and the reconciler's
     #    rule 6 is the convergence guarantee for any board item that lands later.
     deboarded = [deboard(number, board, ctx, runner) for number in created]
-    result = {"parent": parent, "body_file": spec[body_key], "stage": st.get("stage"),
+    # `key` rides the result so the overwrite at step 7 keeps it: a receipt
+    # without it fails the next run's key check, is treated as a miss, and
+    # duplicates the set — the bug this verb exists to prevent.
+    result = {"key": receipt_key,
+              "parent": parent, "body_file": spec[body_key], "stage": st.get("stage"),
               "previous_stage": st.get("previous_stage"),
               "parent_priority": parent_priority,
               "parent_complexity": parent_tier,
@@ -2240,6 +2306,9 @@ def verb_decompose(issue: Optional[int], spec_path: str, ctx: RepoContext, runne
         receipt_error = write_decompose_receipt(receipt_path, result)
     result["receipt_written"] = receipt_error is None
     result["receipt_error"] = receipt_error
+    # A pre-existing receipt that was present but unusable. Survives a successful
+    # write, which `receipt_error` must not: the two answer different questions.
+    result["receipt_anomaly"] = receipt_anomaly
     return result
 
 
