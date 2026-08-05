@@ -46,6 +46,19 @@ OWNED_TRANSITIONS: dict[str, tuple[str, ...]] = {
     "wf-delivery": ("--reconcile", "--delete-packet"),
 }
 
+# Head-bound review gate (issue #405): a `ready` wf-review verdict binds to the
+# reviewed head SHA, and any later commit invalidates it. wf-review states the
+# binding, wf-orchestrate defines review-ready in those terms, and wf-delivery
+# treats a moved head as a stale verdict. Tokens are category-level (head/SHA
+# binding + invalidation wording), matched anywhere in the skill's concatenated
+# text — never a frozen sentence or line position, per this module's guardrail
+# policy (see the docstring above).
+HEAD_BOUND_REVIEW_GATE: dict[str, tuple[str, ...]] = {
+    "wf-review": ("head SHA", "invalidates"),
+    "wf-orchestrate": ("current head", "invalidates", "single-lens"),
+    "wf-delivery": ("reviewed SHA", "stale"),
+}
+
 # Coarse inverse-guard keyword: a `wf-*` skill whose `Owns:` block claims a
 # "transition" but is absent from OWNED_TRANSITIONS must be added to the map (and
 # route to its engine procedure). Single keyword by design — a prompt to update
@@ -174,6 +187,22 @@ class InverseTransitionOwnershipGuardTest(unittest.TestCase):
                     f"is not in OWNED_TRANSITIONS. Add the transition's lifecycle_board.py "
                     f"engine procedure to the skill and an entry to the map (with a #262 "
                     f"rationale) so the transition-to-procedure invariant is enforced for it.",
+                )
+
+
+class HeadBoundReviewGateIntegrationTest(unittest.TestCase):
+    """Each mapped skill's real files must state the head-binding invariant."""
+
+    def test_mapped_skills_bind_review_verdict_to_head(self) -> None:
+        for skill_name, required in HEAD_BOUND_REVIEW_GATE.items():
+            with self.subTest(skill=skill_name):
+                text = _concatenated_skill_text(skill_name)
+                absent = missing_tokens(text, required)
+                self.assertEqual(
+                    absent,
+                    [],
+                    f"{skill_name}: missing head-bound review gate tokens {absent} "
+                    f"(issue #405) in SKILL.md + references/*.md.",
                 )
 
 

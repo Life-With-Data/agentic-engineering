@@ -48,7 +48,7 @@ selection, and the inline fallback:
 4. Require reproducible evidence for findings.
 5. Deduplicate and classify findings by impact.
 6. Require re-verification evidence for any fixes made during review.
-7. Produce a clear ready/not-ready decision and return it with its findings to the caller (`wf-orchestrate` in the standard pipeline); a not-ready verdict names the blocking findings for the development stage.
+7. Produce a clear ready/not-ready decision and return it with its findings to the caller (`wf-orchestrate` in the standard pipeline). A not-ready verdict names the blocking findings for the development stage; a ready verdict records the reviewed head SHA so downstream stages can check freshness.
 
 ## Wrong-layer recovery
 
