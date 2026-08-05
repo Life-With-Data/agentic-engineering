@@ -1542,8 +1542,8 @@ class ComplexityLabelWriterTest(unittest.TestCase):
 class PostureLabelWriterTest(unittest.TestCase):
     """apply_posture_label drives the mutually-exclusive `posture:*` labels
     board-free, mirroring the complexity writer's upsert-then-attach path —
-    with one asymmetry: `standard` has no label, so applying it is a PURE
-    removal (the case complexity has no analogue for)."""
+    with one asymmetry: `autonomous` (the default) has no label, so applying
+    it is a PURE removal (the case complexity has no analogue for)."""
 
     def setUp(self) -> None:
         self.ctx = lb.RepoContext(root=".", main_root=".", origin_owner="acme",
@@ -1564,103 +1564,109 @@ class PostureLabelWriterTest(unittest.TestCase):
         runner = FakeRunner([
             (["issue", "view", "7", "--repo", "acme/widget", "--json", "labels"],
              self._view([])),
-            (["label", "create", "posture:autonomous", "--repo", "acme/widget"], _ok("")),
+            (["label", "create", "posture:standard", "--repo", "acme/widget"], _ok("")),
             (["issue", "edit", "7", "--repo", "acme/widget",
-              "--add-label", "posture:autonomous"], _ok("")),
+              "--add-label", "posture:standard"], _ok("")),
         ])
-        result = lb.apply_posture_label(7, "autonomous", self.ctx, runner)
+        result = lb.apply_posture_label(7, "standard", self.ctx, runner)
         self.assertEqual((result["posture"], result["label"]),
-                         ("autonomous", "posture:autonomous"))
+                         ("standard", "posture:standard"))
         self.assertEqual(result["removed_labels"], [])
         self.assertIn("--force", runner.calls[1])  # idempotent upsert
 
-    def test_reapplying_autonomous_is_a_noop_edit(self) -> None:
+    def test_reapplying_standard_is_a_noop_edit(self) -> None:
         runner = FakeRunner([
             (["issue", "view", "9", "--repo", "acme/widget", "--json", "labels"],
-             self._view(["posture:autonomous"])),
-            (["label", "create", "posture:autonomous", "--repo", "acme/widget"], _ok("")),
+             self._view(["posture:standard"])),
+            (["label", "create", "posture:standard", "--repo", "acme/widget"], _ok("")),
         ])
-        result = lb.apply_posture_label(9, "autonomous", self.ctx, runner)
-        self.assertEqual(result["posture"], "autonomous")
+        result = lb.apply_posture_label(9, "standard", self.ctx, runner)
+        self.assertEqual(result["posture"], "standard")
         self.assertFalse(any(c[:2] == ["issue", "edit"] for c in runner.calls))
 
-    def test_standard_strips_an_existing_autonomous_label(self) -> None:
-        # The case complexity has no analogue for: `standard` writes no label
-        # of its own, so applying it to an issue carrying `posture:autonomous`
-        # must be a PURE removal — a real downgrade path, not a no-op.
+    def test_autonomous_strips_an_existing_standard_label(self) -> None:
+        # The case complexity has no analogue for: `autonomous` writes no label
+        # of its own, so applying it to an issue carrying `posture:standard`
+        # must be a PURE removal — the path back to the hands-off default, not
+        # a no-op.
         runner = FakeRunner([
             (["issue", "view", "8", "--repo", "acme/widget", "--json", "labels"],
-             self._view(["posture:autonomous", "bug"])),
-            (["issue", "edit", "8", "--repo", "acme/widget",
-              "--remove-label", "posture:autonomous"], _ok("")),
-        ])
-        result = lb.apply_posture_label(8, "standard", self.ctx, runner)
-        self.assertEqual(result["posture"], "standard")
-        self.assertIsNone(result["label"])
-        self.assertEqual(result["removed_labels"], ["posture:autonomous"])
-        # No `label create` call — "standard" has no label to ensure/self-heal.
-        self.assertFalse(any(c[:2] == ["label", "create"] for c in runner.calls))
-
-    def test_stray_posture_label_is_stripped_when_clearing(self) -> None:
-        # Regression (review of PR #304): `present` used to be computed by
-        # membership in ALL_POSTURE_LABELS, which holds only
-        # `posture:autonomous` — so a hand-added `posture:standard` survived,
-        # leaving BOTH labels on the issue. Strip by namespace instead.
-        runner = FakeRunner([
-            (["issue", "view", "11", "--repo", "acme/widget", "--json", "labels"],
              self._view(["posture:standard", "bug"])),
-            (["label", "create", "posture:autonomous", "--repo", "acme/widget"], _ok("")),
-            (["issue", "edit", "11", "--repo", "acme/widget",
-              "--add-label", "posture:autonomous",
+            (["issue", "edit", "8", "--repo", "acme/widget",
               "--remove-label", "posture:standard"], _ok("")),
         ])
-        result = lb.apply_posture_label(11, "autonomous", self.ctx, runner)
+        result = lb.apply_posture_label(8, "autonomous", self.ctx, runner)
+        self.assertEqual(result["posture"], "autonomous")
+        self.assertIsNone(result["label"])
         self.assertEqual(result["removed_labels"], ["posture:standard"])
+        # No `label create` call — "autonomous" has no label to ensure/self-heal.
+        self.assertFalse(any(c[:2] == ["label", "create"] for c in runner.calls))
+
+    def test_stray_posture_label_is_stripped_when_supervising(self) -> None:
+        # Regression (review of PR #304): `present` used to be computed by
+        # membership in ALL_POSTURE_LABELS, which holds only the one written
+        # label — so a stray `posture:*` label from outside the vocabulary
+        # (e.g. a legacy `posture:autonomous`) survived, leaving BOTH labels
+        # on the issue. Strip by namespace instead.
+        runner = FakeRunner([
+            (["issue", "view", "11", "--repo", "acme/widget", "--json", "labels"],
+             self._view(["posture:autonomous", "bug"])),
+            (["label", "create", "posture:standard", "--repo", "acme/widget"], _ok("")),
+            (["issue", "edit", "11", "--repo", "acme/widget",
+              "--add-label", "posture:standard",
+              "--remove-label", "posture:autonomous"], _ok("")),
+        ])
+        result = lb.apply_posture_label(11, "standard", self.ctx, runner)
+        self.assertEqual(result["removed_labels"], ["posture:autonomous"])
 
     def test_case_variant_stray_label_is_stripped(self) -> None:
         # Second review pass on PR #304: the namespace scan was case-SENSITIVE,
-        # so a hand-typed `Posture:Standard` was invisible to it. GitHub treats
+        # so a hand-typed case-variant label was invisible to it. GitHub treats
         # label names case-insensitively for uniqueness, so that label is one a
-        # human can really create — and missing it made clearance fail OPEN.
+        # human can really create — and missing it would leave two `posture:*`
+        # labels on the issue.
         runner = FakeRunner([
             (["issue", "view", "13", "--repo", "acme/widget", "--json", "labels"],
-             self._view(["Posture:Standard"])),
-            (["label", "create", "posture:autonomous", "--repo", "acme/widget"], _ok("")),
+             self._view(["Posture:Autonomous"])),
+            (["label", "create", "posture:standard", "--repo", "acme/widget"], _ok("")),
             (["issue", "edit", "13", "--repo", "acme/widget",
-              "--add-label", "posture:autonomous",
-              "--remove-label", "Posture:Standard"], _ok("")),
+              "--add-label", "posture:standard",
+              "--remove-label", "Posture:Autonomous"], _ok("")),
         ])
-        result = lb.apply_posture_label(13, "autonomous", self.ctx, runner)
-        self.assertEqual(result["removed_labels"], ["Posture:Standard"])
+        result = lb.apply_posture_label(13, "standard", self.ctx, runner)
+        self.assertEqual(result["removed_labels"], ["Posture:Autonomous"])
 
     def test_vocabulary_and_prefix_cannot_drift(self) -> None:
         # POSTURE_LABEL_PREFIX is what both the writer and the reader police; if
         # it ever stopped matching the label POSTURE_LABELS actually writes, the
-        # scan would match nothing and autonomy would silently never engage.
+        # scan would match nothing and a supervision opt-out would silently
+        # never engage.
         for label in lb.POSTURE_LABELS.values():
             self.assertTrue(label.startswith(lb.POSTURE_LABEL_PREFIX), label)
         for label in lb.ALL_POSTURE_LABELS:
             self.assertTrue(label.startswith(lb.POSTURE_LABEL_PREFIX), label)
 
-    def test_stray_posture_label_is_removable_via_standard(self) -> None:
-        # Same regression, the other direction: applying `standard` to an issue
-        # carrying only a stray `posture:*` label used to issue NO edit at all,
-        # making the stray label unremovable through the engine.
+    def test_stray_posture_label_is_removable_via_autonomous(self) -> None:
+        # Same regression, the other direction: applying `autonomous` to an
+        # issue carrying only a stray `posture:*` label used to issue NO edit
+        # at all, making the stray label unremovable through the engine — and,
+        # under the any-label-is-supervision read, pinning the ticket to
+        # `standard` forever.
         runner = FakeRunner([
             (["issue", "view", "12", "--repo", "acme/widget", "--json", "labels"],
-             self._view(["posture:standard"])),
+             self._view(["posture:autonomous"])),
             (["issue", "edit", "12", "--repo", "acme/widget",
-              "--remove-label", "posture:standard"], _ok("")),
+              "--remove-label", "posture:autonomous"], _ok("")),
         ])
-        result = lb.apply_posture_label(12, "standard", self.ctx, runner)
-        self.assertEqual(result["removed_labels"], ["posture:standard"])
+        result = lb.apply_posture_label(12, "autonomous", self.ctx, runner)
+        self.assertEqual(result["removed_labels"], ["posture:autonomous"])
 
-    def test_standard_on_a_bare_issue_is_a_noop(self) -> None:
+    def test_autonomous_on_a_bare_issue_is_a_noop(self) -> None:
         runner = FakeRunner([
             (["issue", "view", "10", "--repo", "acme/widget", "--json", "labels"],
              self._view([])),
         ])
-        result = lb.apply_posture_label(10, "standard", self.ctx, runner)
+        result = lb.apply_posture_label(10, "autonomous", self.ctx, runner)
         self.assertEqual(result["removed_labels"], [])
         self.assertFalse(any(c[:2] == ["issue", "edit"] for c in runner.calls))
 
@@ -1671,55 +1677,51 @@ class PostureLabelWriterTest(unittest.TestCase):
             (["issue", "view", "99", "--repo", "acme/widget", "--json", "labels"], miss),
         ])
         with self.assertRaises(lb.BoardError) as caught:
-            lb.apply_posture_label(99, "autonomous", self.ctx, runner)
+            lb.apply_posture_label(99, "standard", self.ctx, runner)
         self.assertEqual(caught.exception.code, "issue_not_found")
 
 
 class ResolveClearanceTest(unittest.TestCase):
-    """The pure read-side core. `posture` answers "what did this resolve to";
-    `posture_source` answers the question `posture` alone cannot — "did the
-    ticket say anything at all", which is the ONLY thing that licenses a
-    fallback to the repository `delivery_mode` default."""
+    """The pure read-side core: autonomous unless the ticket opted into
+    supervision. Any `posture:*` label — recognized, hand-typed, legacy, or
+    from a future vocabulary — resolves `standard`; a label can only reduce
+    autonomy, never grant it."""
 
-    # (labels, expected posture, expected posture_source, why)
+    # (labels, expected posture, why)
     TRUTH_TABLE = [
-        ([], "standard", "unset",
-         "no posture label — the only state that may fall back to the repo default"),
-        (["complexity:high", "status:in-progress"], "standard", "unset",
+        ([], "autonomous",
+         "unlabeled is the hands-off default"),
+        (["complexity:high", "status:in-progress"], "autonomous",
          "other namespaces are not posture labels"),
-        (["posture:autonomous"], "autonomous", "ticket",
-         "the one recognized grant"),
-        (["complexity:high", "posture:autonomous"], "autonomous", "ticket",
-         "an unrelated namespace does not disturb the grant"),
-        (["posture:standard"], "standard", "ticket",
-         "hand-added de-escalation: outside the writer's vocabulary, but the "
-         "ticket HAS spoken — the repo default must not override it"),
-        (["posture:autonomous", "posture:standard"], "standard", "ticket",
-         "the #304 conflict case — ambiguous clearance is not clearance"),
-        (["posture:supervised"], "standard", "ticket",
+        (["posture:standard"], "standard",
+         "the one written opt-out"),
+        (["complexity:high", "posture:standard"], "standard",
+         "an unrelated namespace does not disturb the opt-out"),
+        (["posture:autonomous"], "standard",
+         "a legacy grant label now de-escalates — any label reduces autonomy"),
+        (["posture:autonomous", "posture:standard"], "standard",
+         "conflicting labels still resolve toward supervision"),
+        (["posture:supervised"], "standard",
          "a value from a future vocabulary is never read as permission"),
-        (["Posture:Autonomous"], "autonomous", "ticket",
+        (["Posture:Standard"], "standard",
          "the namespace scan is case-insensitive"),
-        (["posture:autonomous", "Posture:Standard"], "standard", "ticket",
-         "case-variant conflict still fails toward standard"),
     ]
 
     def test_truth_table(self) -> None:
-        for labels, posture, source, why in self.TRUTH_TABLE:
+        for labels, posture, why in self.TRUTH_TABLE:
             with self.subTest(labels=labels, why=why):
                 self.assertEqual(lb.resolve_clearance(labels),
-                                 {"posture": posture, "posture_source": source})
+                                 {"posture": posture})
 
-    def test_any_posture_label_suppresses_the_repo_default_fallback(self) -> None:
+    def test_any_posture_label_deescalates(self) -> None:
         # The property stated as one invariant rather than read off the table:
-        # `unset` is reachable ONLY with zero `posture:*` labels. Everything
-        # else — recognized, unrecognized, or conflicting — is `ticket`, so a
-        # `delivery_mode: autonomous` repo can never re-grant what a ticket
-        # declined.
-        for labels, _posture, source, why in self.TRUTH_TABLE:
+        # `autonomous` is reachable ONLY with zero `posture:*` labels.
+        # Everything else — recognized, unrecognized, or conflicting — is
+        # `standard`, so no label edit can ever grant hands-off execution.
+        for labels, posture, why in self.TRUTH_TABLE:
             with self.subTest(labels=labels, why=why):
                 has_posture_label = any(l.lower().startswith("posture:") for l in labels)
-                self.assertEqual(source, "ticket" if has_posture_label else "unset")
+                self.assertEqual(posture, "standard" if has_posture_label else "autonomous")
 
 
 class ConfigTest(unittest.TestCase):
@@ -4273,7 +4275,7 @@ class DecomposeReceiptTest(unittest.TestCase):
         # BEFORE the first set_status argv is what an end-of-run receipt cannot
         # satisfy; asserting only that a receipt exists would false-pass.
         root, spec = self._repo({"body_file": "p.md", "priority": "p2",
-                                 "posture": "autonomous", "sub_issues": self.SUBS})
+                                 "posture": "standard", "sub_issues": self.SUBS})
         path = self._receipt_path(root, 182, spec)
         at_set_status = {}
 
@@ -4295,7 +4297,7 @@ class DecomposeReceiptTest(unittest.TestCase):
             (["issue", "edit", "184", "--repo", "o/r", "--add-blocked-by", "183"], _ok("")),
             (["issue", "view", "182", "--repo", "o/r", "--json", "labels"],
              _ok('{"labels": []}')),
-            (["label", "create", "posture:autonomous", "--repo", "o/r"], failing_label),
+            (["label", "create", "posture:standard", "--repo", "o/r"], failing_label),
         ])
         with self.assertRaises(lb.BoardError) as cm:
             self._run(root, first_runner, set_status=fake_set_status)
@@ -4584,98 +4586,60 @@ class GroomVerifyVerbTest(unittest.TestCase):
             self.assertFalse(out["groomed"])
             self.assertTrue(any("priority is" in f for f in out["failures"]))
 
-    def test_reports_standard_posture_when_unlabeled(self) -> None:
-        # Unlabeled (and legacy) issues resolve to the safe `standard` default,
-        # and `unset` marks them as the one state where a consumer may fall back
-        # to the repository `delivery_mode` default.
+    def test_reports_autonomous_posture_when_unlabeled(self) -> None:
+        # Unlabeled issues resolve to the hands-off default, so an attested
+        # unlabeled parent is cleared with no label write anywhere.
         with tempfile.TemporaryDirectory() as d:
             out = self._run(Path(d), "planned", [])
+            self.assertEqual(out["posture"], "autonomous")
+            self.assertTrue(out["cleared"])
+            self.assertNotIn("posture_source", out)
+
+    def test_reports_standard_posture_from_the_label(self) -> None:
+        with tempfile.TemporaryDirectory() as d:
+            out = self._run(Path(d), "planned", [], labels=["posture:standard"])
             self.assertEqual(out["posture"], "standard")
-            self.assertEqual(out["posture_source"], "unset")
             self.assertFalse(out["cleared"])
 
-    def test_reports_autonomous_posture_from_the_label(self) -> None:
-        with tempfile.TemporaryDirectory() as d:
-            out = self._run(Path(d), "planned", [], labels=["posture:autonomous"])
-            self.assertEqual(out["posture"], "autonomous")
-            self.assertEqual(out["posture_source"], "ticket")
-
     def test_cleared_fuses_attestation_and_clearance(self) -> None:
-        # The whole point of the field: hands-off execution needs BOTH halves,
-        # and the routing boundary should read one value instead of
-        # reassembling the conjunction from labels plus Status.
+        # The routing boundary reads one value instead of reassembling the
+        # attestation-plus-posture pair from labels plus Status.
         with tempfile.TemporaryDirectory() as d:
-            out = self._run(Path(d), "planned", [], labels=["posture:autonomous"])
+            out = self._run(Path(d), "planned", [])
             self.assertTrue(out["groomed"])
             self.assertTrue(out["cleared"])
 
-    def test_clearance_without_attestation_is_not_cleared(self) -> None:
-        # A posture label on an un-groomed issue grants nothing. This is the
-        # half that label-add privilege alone cannot satisfy: Project Status is
-        # a separate write scope, and that separation IS the defense.
+    def test_default_without_attestation_is_not_cleared(self) -> None:
+        # The autonomous default on an un-groomed issue grants nothing:
+        # grooming attestation is the half no posture can satisfy.
         with tempfile.TemporaryDirectory() as d:
-            out = self._run(Path(d), "stub", [], labels=["posture:autonomous"])
+            out = self._run(Path(d), "stub", [])
             self.assertFalse(out["groomed"])
             self.assertEqual(out["posture"], "autonomous")
             self.assertFalse(out["cleared"])
 
-    def test_explicitly_standard_is_distinguishable_from_unset(self) -> None:
-        # The distinction #306 exists for: both resolve `standard`, but only the
-        # unlabeled one may inherit a `delivery_mode: autonomous` repo default.
+    def test_any_posture_label_blocks_cleared(self) -> None:
+        # Every labeled state — the written opt-out, a legacy grant label, a
+        # conflict, a case variant, or an unknown value — resolves `standard`
+        # AND `cleared: false`, even on an attested issue.
+        labeled = [["posture:standard"],
+                   ["posture:autonomous"],
+                   ["posture:autonomous", "posture:standard"],
+                   ["posture:autonomous", "Posture:Standard"],
+                   ["posture:experimental"]]
         with tempfile.TemporaryDirectory() as d:
-            labeled = self._run(Path(d), "planned", [], labels=["posture:standard"])
-            unset = self._run(Path(d), "planned", [])
-        self.assertEqual(labeled["posture"], unset["posture"])       # both standard
-        self.assertNotEqual(labeled["posture_source"], unset["posture_source"])
-        self.assertEqual(labeled["posture_source"], "ticket")
-        self.assertEqual(unset["posture_source"], "unset")
-
-    def test_ambiguous_clearance_never_reports_cleared(self) -> None:
-        # Safe-wins survives the fusion: every ambiguous label state resolves
-        # `standard` AND `cleared: false`, even on an attested issue.
-        ambiguous = [["posture:autonomous", "posture:standard"],
-                     ["posture:autonomous", "Posture:Standard"],
-                     ["posture:experimental"]]
-        with tempfile.TemporaryDirectory() as d:
-            for labels in ambiguous:
+            for labels in labeled:
                 with self.subTest(labels=labels):
                     out = self._run(Path(d), "planned", [], labels=labels)
                     self.assertTrue(out["groomed"])
                     self.assertEqual(out["posture"], "standard")
                     self.assertFalse(out["cleared"])
 
-    def test_conflicting_posture_labels_resolve_standard(self) -> None:
-        # Regression (review of PR #304): a ticket carrying `posture:autonomous`
-        # alongside any other `posture:*` label used to resolve `autonomous`,
-        # so a human de-escalating in the GitHub UI by ADDING `posture:standard`
-        # silently granted clearance instead of revoking it. Ambiguous clearance
-        # is not clearance — it must fail toward `standard`.
-        with tempfile.TemporaryDirectory() as d:
-            out = self._run(Path(d), "planned", [],
-                            labels=["posture:standard", "posture:autonomous"])
-            self.assertEqual(out["posture"], "standard")
-
-    def test_case_variant_conflict_resolves_standard(self) -> None:
-        # The read-side twin of the writer regression: a case-sensitive scan saw
-        # only `posture:autonomous` here and answered `autonomous`, handing
-        # hands-off clearance to a ticket a human had just de-escalated.
-        with tempfile.TemporaryDirectory() as d:
-            out = self._run(Path(d), "planned", [],
-                            labels=["posture:autonomous", "Posture:Standard"])
-            self.assertEqual(out["posture"], "standard")
-
-    def test_unknown_posture_label_alone_resolves_standard(self) -> None:
-        # A value from a future vocabulary this build does not know must never
-        # be read as permission.
-        with tempfile.TemporaryDirectory() as d:
-            out = self._run(Path(d), "planned", [], labels=["posture:experimental"])
-            self.assertEqual(out["posture"], "standard")
-
     def test_unrelated_namespaces_do_not_affect_posture(self) -> None:
         # `complexity:*` and `status:*` share the issue but not the namespace.
         with tempfile.TemporaryDirectory() as d:
             out = self._run(Path(d), "planned", [],
-                            labels=["complexity:high", "posture:autonomous"])
+                            labels=["complexity:high", "status:in-progress"])
             self.assertEqual(out["posture"], "autonomous")
 
     def test_no_warnings_when_no_sub_is_boarded(self) -> None:
@@ -4757,32 +4721,31 @@ class GroomVerifyVerbTest(unittest.TestCase):
     def test_approved_and_cleared_are_independent_fields(self) -> None:
         # #321: `approved` (work-entry authority) and `cleared` (unattended-
         # execution authority) are orthogonal — pin that a ticket can be
-        # approved without being cleared (no autonomous posture label) and
-        # that `cleared`'s own posture-fusion semantics are untouched by the
-        # new field, assert by the posture category it depends on, not a
-        # frozen literal.
+        # approved without being cleared (a supervision label) and cleared
+        # without being approved (attested, unlabeled), asserting by the
+        # posture category, not a frozen literal.
         with tempfile.TemporaryDirectory() as d:
-            approved_not_cleared = self._run(Path(d), "ready_for_work", [])
+            approved_not_cleared = self._run(Path(d), "ready_for_work", [],
+                                             labels=["posture:standard"])
             self.assertTrue(approved_not_cleared["approved"])
             self.assertFalse(approved_not_cleared["cleared"])
 
-            cleared_not_approved = self._run(Path(d), "planned", [],
-                                             labels=["posture:autonomous"])
+            cleared_not_approved = self._run(Path(d), "planned", [])
             self.assertFalse(cleared_not_approved["approved"])
             self.assertTrue(cleared_not_approved["cleared"])
 
     def test_cleared_semantics_unchanged_by_the_approved_field(self) -> None:
         # Regression: `cleared` must remain `groomed and posture ==
-        # "autonomous"` — byte-identical behavior — for every stage/posture
-        # combination, now that `approved` rides alongside it. Assert by the
-        # posture category the field is documented to depend on (per repo
-        # policy: category, not a frozen literal).
+        # "autonomous"` for every stage/posture combination, now that
+        # `approved` and `hands_off` ride alongside it. Assert by the posture
+        # category the field is documented to depend on (per repo policy:
+        # category, not a frozen literal).
         cases = [
-            ("planned", (), False),
-            ("planned", ("posture:autonomous",), True),
-            ("ready_for_work", (), False),
-            ("ready_for_work", ("posture:autonomous",), True),
-            ("brainstormed", ("posture:autonomous",), False),  # not groomed
+            ("planned", (), True),
+            ("planned", ("posture:standard",), False),
+            ("ready_for_work", (), True),
+            ("ready_for_work", ("posture:standard",), False),
+            ("brainstormed", (), False),  # not groomed
         ]
         with tempfile.TemporaryDirectory() as d:
             for stage, labels, expected_cleared in cases:
@@ -4791,6 +4754,41 @@ class GroomVerifyVerbTest(unittest.TestCase):
                     self.assertEqual(out["cleared"], expected_cleared)
                     self.assertEqual(out["cleared"],
                                      out["groomed"] and out["posture"] == "autonomous")
+
+    def test_hands_off_requires_all_three_legs(self) -> None:
+        # #401: the fused dispatch verdict. True exactly when approved AND
+        # groomed AND posture resolves autonomous; each single missing leg
+        # yields false. The engine owns the conjunction so no consumer ever
+        # reassembles it from parts.
+        with tempfile.TemporaryDirectory() as d:
+            all_legs = self._run(Path(d), "ready_for_work", [])
+            self.assertTrue(all_legs["hands_off"])
+
+            not_approved = self._run(Path(d), "planned", [])
+            self.assertTrue(not_approved["cleared"])
+            self.assertFalse(not_approved["hands_off"])
+
+            supervised = self._run(Path(d), "ready_for_work", [],
+                                   labels=["posture:standard"])
+            self.assertTrue(supervised["approved"])
+            self.assertFalse(supervised["hands_off"])
+
+            not_groomed = self._run(Path(d), "ready_for_work", [], priority=None)
+            self.assertTrue(not_groomed["approved"])
+            self.assertFalse(not_groomed["groomed"])
+            self.assertFalse(not_groomed["hands_off"])
+
+    def test_hands_off_equals_approved_and_cleared(self) -> None:
+        # The invariant across every combination the other tests visit.
+        cases = [("planned", ()), ("planned", ("posture:standard",)),
+                 ("ready_for_work", ()), ("ready_for_work", ("posture:standard",)),
+                 ("brainstormed", ()), ("in_progress", ())]
+        with tempfile.TemporaryDirectory() as d:
+            for stage, labels in cases:
+                with self.subTest(stage=stage, labels=labels):
+                    out = self._run(Path(d), stage, [], labels=list(labels))
+                    self.assertEqual(out["hands_off"],
+                                     out["approved"] and out["cleared"])
 
 
 class PacketVerbTest(unittest.TestCase):

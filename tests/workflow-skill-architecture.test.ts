@@ -277,21 +277,18 @@ describe("workflow skill architecture", () => {
     // sentence (see docs/solutions/testing-patterns/
     // grep-acceptance-checks-and-subset-fixtures-give-false-confidence.md).
     expect(planningRoute).toContain("`posture`");
-    expect(planningRoute).toContain("delivery_mode_resolved");
-    expect(planningRoute).toContain("posture:autonomous");
     expect(planningRoute).toContain("parent_posture");
-    // Issue #306: the verb reports the TICKET's clearance, not the
-    // repository-resolved posture, so the route must name the three-state
-    // surface rather than the old "resolved posture" claim it displaced.
-    expect(planningRoute).toContain("posture_source");
-    expect(planningRoute).toContain("`cleared`");
-    // Issue #389: on a standard-mode repo the resolved posture is REPORTED in
-    // the decompose report, not raised as an interactive offer — the #262/#298
-    // proactive offer added nothing over the silent default. Category tokens:
-    // require the report line, ban the offer verb (whitespace-normalized so a
-    // reflow across the hard wrap does not false-fail/false-pass).
+    // Issue #401: autonomous is the default; the route documents the opt-out
+    // label write and the fused hands_off read, never a repo-default tier.
+    expect(planningRoute).toContain("posture: standard");
+    expect(planningRoute).toContain("hands_off");
+    expect(planningRoute).not.toContain("delivery_mode");
+    expect(planningRoute).not.toContain("posture_source");
+    // Issues #389/#401: the posture step is non-interactive — no offer, no
+    // question (whitespace-normalized so a reflow across the hard wrap does
+    // not false-fail/false-pass).
     const flowPlanning = planningRoute.replace(/\s+/g, " ");
-    expect(flowPlanning).toContain("decompose report");
+    expect(flowPlanning).toContain("non-interactive");
     expect(flowPlanning).not.toContain("proactively offer");
 
     const publicWorkflowDocs = [
@@ -397,12 +394,13 @@ describe("workflow skill architecture", () => {
   });
 
   test("posture clearance is documented as failing toward standard", () => {
-    // Review of PR #304, revised by #306. The engine's resolve_clearance is
-    // safe-wins, and the routing boundary now READS that verdict (`cleared` /
-    // `posture_source` off --groom-verify) instead of re-deriving it from
-    // labels in prose. So the assertion moved with it: the doc must name the
-    // machine-read surface and keep stating the safe-wins property, but it must
-    // NOT restate the label-resolution rule — that duplication is the defect.
+    // Review of PR #304, revised by #306 and #401. The engine's
+    // resolve_clearance is safe-wins (any `posture:*` label de-escalates),
+    // and the routing boundary READS the fused `hands_off` verdict off
+    // --groom-verify instead of re-deriving or reassembling it in prose. So
+    // the assertion moved with it: the doc must name the machine-read surface
+    // and keep stating the safe-wins property, but it must NOT restate the
+    // label-resolution rule — that duplication is the defect.
     // Category-level: assert the rule is present, not its wording.
     const orchestrate = readFileSync(
       path.join(SKILLS, "wf-orchestrate", "references", "orchestrate.md"),
@@ -413,27 +411,23 @@ describe("workflow skill architecture", () => {
     // meaning changing — the false-positive twin of a frozen spelling.
     const flow = (s: string) => s.replace(/\s+/g, " ");
     expect(orchestrate).toContain("--groom-verify");
-    expect(orchestrate).toContain("posture_source");
-    expect(orchestrate).toContain("`cleared: true`");
-    expect(flow(orchestrate)).toContain("fails toward `standard`");
-    // `cleared: false` is label-derived, so it must never be documented as a
-    // denial on its own — that misread would block work an autonomous-mode repo
-    // legitimately clears.
-    expect(flow(orchestrate)).toContain("not by itself a denial");
+    expect(orchestrate).toContain("`hands_off: true`");
+    expect(flow(orchestrate)).toContain("toward `standard`");
+    // #401 no-new-stops invariant: the supervised branch is a dispatch mode —
+    // the doc must never phrase `hands_off: false` as a halt awaiting input.
+    expect(flow(orchestrate)).toContain("never a halt");
+    // The repo-default tier is deleted; no doc may resurrect it.
+    expect(orchestrate).not.toContain("delivery_mode");
+    expect(orchestrate).not.toContain("posture_source");
 
-    // Grooming must not claim that declining an offer revokes an existing
-    // clearance — omitting `posture` leaves a cleared ticket cleared.
+    // Grooming must not claim that omitting `posture` supervises a ticket —
+    // an omitted value leaves the ticket's labels untouched.
     const plan = readFileSync(
       path.join(SKILLS, "wf-grooming", "references", "workflows-plan.md"),
       "utf8",
     );
-    expect(plan).toContain("Revoking takes an explicit write");
-    // Positive, not negative: the claim "a no resolves to standard" is only true
-    // for a ticket with no clearance yet, so require the qualifier rather than
-    // banning the phrase — the corrected sentence necessarily still contains it.
-    expect(flow(plan)).toContain(
-      "On a ticket that carries no clearance yet, silence or a no writes nothing",
-    );
+    expect(flow(plan)).toContain("takes an explicit write");
+    expect(flow(plan)).toContain('an omitted value means "no posture intent expressed"');
 
     // The posture read must be resolvable from land-pr's own standalone entry:
     // the parent issue number is captured in step 1, BEFORE the step-4 merge
@@ -662,11 +656,10 @@ describe("workflow skill architecture", () => {
     );
     const orchestrate = readFileSync(orchestratePath, "utf8");
 
-    // The precedence chain: tokens for each of its three ranked sources.
-    const CHAIN = "Per-invocation argument tokens > per-ticket posture label > repository";
+    // The precedence chain: tokens for each of its two ranked sources and the
+    // autonomous default (#401 deleted the repository tier).
+    const CHAIN = "Per-invocation argument tokens > per-ticket posture label > `autonomous`.";
     expect(orchestrate).toContain(CHAIN);
-    expect(orchestrate).toContain("`delivery_mode` default");
-    expect(orchestrate).toContain("defaults to `standard`");
 
     // The chain is stated in full exactly once across the plugin's skill tree;
     // every other mention must be a relative link instead of a restatement.
@@ -677,81 +670,65 @@ describe("workflow skill architecture", () => {
     );
     expect(chainOccurrences).toBe(1);
 
-    // The approval-attestation-AND-clearance gate, verbatim once.
+    // The fused hands-off gate, verbatim once.
     //
     // This is a DELIBERATE exception to the freeze-the-category rule the rest of
-    // this file follows: issue #302 acceptance criterion 5 required that this
-    // sentence "appears verbatim once", so here the literal IS the contract and
-    // an exact match is the only assertion that can check it. Issue #324
-    // (epic #319) superseded the two-part framing #302 froze with a three-part
-    // one — a human approval stamp (`ready_for_work`) is now a third
-    // independent precondition alongside attestation and clearance.
-    //
-    // Be honest about what now backs this: #302 mandated its sentence verbatim,
-    // which is what justified a byte-exact assertion. #324 mandated only the
-    // three-part SEMANTICS, not this exact wording — so the string below is the
-    // repository's own prose, and the guardrail is that the three preconditions
-    // stay stated together in one place, not that these bytes are sacred. It
-    // still cannot silently false-pass (a reword breaks the exact match), but a
-    // future reflow should update this assertion rather than treat it as a
-    // frozen external contract. If this paragraph is reworded again, keep the
-    // three named preconditions and re-pin.
+    // this file follows: issue #302 required its gate sentence verbatim, #324
+    // added the approval leg, and #401 fused the conjunction into the engine's
+    // `hands_off` verdict. The string below is the repository's own prose; the
+    // guardrail is that the three preconditions stay stated together in one
+    // place and that the doc names the ENGINE as their computer. A reword
+    // should update this assertion rather than treat the bytes as sacred —
+    // keep the three named preconditions and re-pin.
     const GATE =
-      "Hands-off execution requires **all three**: a human's approval stamp\n" +
-      "(`Status >= ready_for_work`, verifiable as `approved` on `--groom-verify N`),\n" +
-      "grooming attestation (`Status >= planned`, verifiable as `groomed` on the same\n" +
-      "call), **and** the ticket's autonomous clearance (a `posture:autonomous`\n" +
-      "label, or an overriding per-invocation token). Any one missing is not enough.";
+      "Autonomous is the default. Hands-off execution is authorized by the engine's\n" +
+      "single fused verdict: `hands_off` on `--groom-verify N`, true exactly when a\n" +
+      "human's approval stamp (`Status >= ready_for_work`), grooming attestation\n" +
+      "(`Status >= planned`), and the ticket's posture (autonomous unless a\n" +
+      "`posture:*` label opts it out) all hold.";
     expect(orchestrate).toContain(GATE);
 
     // Reading the posture: parent, claim/routing boundary, once per work item,
-    // fixed for the run, ReadyItem does not carry labels, preflight fallback.
+    // fixed for the run, ReadyItem does not carry labels.
     //
     // Issue #306 replaced the model-interpreted `gh issue view --json labels`
-    // read with the engine's fused verdict, so the assertion tracks the SURFACE
-    // (the verb plus the fields the boundary branches on), not the command
+    // read with the engine's fused verdict, and #401 collapsed the branch to
+    // the single `hands_off` field — so the assertion tracks the SURFACE (the
+    // verb plus the one field the boundary branches on), not the command
     // string that happened to carry it.
     expect(orchestrate).toContain("--groom-verify <parent>");
-    expect(orchestrate).toContain("`cleared: true`");
-    expect(orchestrate).toContain('`posture_source: "unset"`');
-    expect(orchestrate).toContain('`posture_source: "ticket"`');
+    expect(orchestrate).toContain("`hands_off: true`");
     expect(orchestrate).toContain("the **parent** at the claim / routing boundary");
     expect(orchestrate).toContain("once per work item");
     expect(orchestrate).toContain("Posture is fixed for the run at that read");
     expect(orchestrate).toContain("Mid-run revocation is out of scope");
     expect(orchestrate).toContain("`ReadyItem` is\n  `{number, title, priority, repo}`");
     expect(orchestrate).toContain("merge_ready_legs");
-    expect(orchestrate).toContain("delivery_mode_resolved");
 
-    // Issue #306: the trust boundary must be named — label-add privilege IS the
-    // authority to grant unattended execution, and the two standard escalation
-    // paths that must never attach the label are called out. Asserted by
-    // category token (the template key, the Actions scope), never by sentence.
-    expect(orchestrate).toContain("Who may grant clearance");
+    // #401: a label only de-escalates, so the template-`labels:`/Actions
+    // surfaces are documented as unable to grant autonomy — and the doc must
+    // still name both by category token (the template key, the Actions scope).
+    expect(orchestrate).toContain("Who may set posture");
     expect(orchestrate).toContain("`labels:` key");
     expect(orchestrate).toContain("`issues: write`");
     // Whitespace-normalized so a pure reflow of the paragraph cannot fail this.
     expect(orchestrate.replace(/\s+/g, " ")).toContain(
-      "Adding `posture:autonomous` to an issue is the act of authorizing unattended execution",
+      "A `posture:*` label only reduces autonomy",
     );
 
     // Queue drains: no separate opt-in, heterogeneous drains are intended.
     expect(orchestrate).toContain("`/loop` and scheduled queue drains get no separate posture opt-in");
     expect(orchestrate).toContain("heterogeneous");
 
-    // The four-cell routing table: {approved, not approved} x {cleared, not
-    // cleared}. Issue #324 moved this from a {groomed, un-groomed} axis to an
-    // {approved, not approved} one — a `planned`-but-unapproved item now
-    // shares the "not approved" row with an ungroomed item instead of
-    // proceeding hands-off on grooming attestation alone.
-    expect(orchestrate).toContain("Approved (`Status >= ready_for_work`) | cleared");
-    expect(orchestrate).toContain("Approved | not cleared");
-    expect(orchestrate).toContain("Not approved (ungroomed, or `planned` awaiting the approval stamp) | cleared");
-    expect(orchestrate).toContain("Not approved | not cleared");
-    expect(orchestrate).toContain("Proceed hands-off through implementation -> review -> delivery");
-    expect(orchestrate).toContain("Standard: plan approval, findings triage, merge `[y/N]`");
-    expect(orchestrate).toContain("Clearance does not survive a missing approval");
-    expect(orchestrate).toContain("Route to the human the same way (today's behavior)");
+    // The routing table branches on the fused verdict. Issue #324 put approval
+    // ahead of clearance; #401 folded that ordering into `hands_off` itself,
+    // so the table's three rows are the verdict plus the `approved` reporter —
+    // and the supervised row must proceed, not halt (#401 no-new-stops).
+    expect(orchestrate).toContain("`hands_off: true` | Proceed hands-off");
+    expect(orchestrate).toContain("`hands_off: false`, `approved: false` | Route to the human");
+    expect(orchestrate).toContain("`hands_off: false`, `approved: true` | Proceed **immediately** in standard mode");
+    expect(orchestrate).toContain("plan approval, findings triage, merge `[y/N]`");
+    expect(orchestrate).toContain("Posture never bypasses approval");
     expect(orchestrate).toContain("Not-yet-approved input routes to the human regardless of posture");
 
     // land-pr: resolved posture is a third autonomous trigger, in both the merge

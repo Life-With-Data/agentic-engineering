@@ -193,46 +193,30 @@ a short judgment from the plan is enough.
 
 ### Decide delivery posture
 
-Grooming decides delivery **posture** in the same conversation and the same
-`--decompose` call. The spec MAY carry `posture` (`standard` or `autonomous`)
-at the parent level only; posture governs the claimed parent across
-implement → review → deliver, never a single dispatch unit. Advisory, never a
-gate — attestation (`Status = planned`, *this is ready*) and clearance
-(`posture:autonomous`, *this may run unattended*) travel together but neither
-gates the other.
+Autonomous is the default; grooming writes posture only to opt a ticket
+**out**. The spec MAY carry `posture` (`standard` or `autonomous`) at the
+parent level only; posture governs the claimed parent across
+implement → review → deliver, never a single dispatch unit.
 
-Read the repo default from the preflight JSON's `delivery_mode_resolved`:
-
-- `delivery_mode: autonomous` repo — write `posture: autonomous` by default;
-  the human may opt a ticket out in the grooming conversation, and that
-  conversational decision is what gets recorded.
-- `delivery_mode: standard` repo — do **not** raise an interactive offer
-  (issue #389 reversed the earlier proactive-offer mandate: the offer added
-  nothing over the silent default in every measured case). Instead, record
-  the resolved posture as one line in the decompose report on any pass that
-  reaches decomposition, including a re-groom — e.g. "posture resolves to
-  `standard`; label the parent `posture:autonomous` or say so before the
-  `ready_for_work` stamp to clear it". An explicit yes in the grooming
-  conversation still writes `posture: autonomous`. On a ticket that carries
-  no clearance yet, silence or a no writes nothing, which resolves to
-  `standard`.
-
-The stamp is a recorded outcome of the grooming conversation, never something
+The step is **non-interactive**: never raise a posture question or offer
+(issue #389 removed the proactive offer; #401 made autonomous the default).
+When the grooming conversation asked for supervision, write
+`posture: standard` — the engine attaches the `posture:standard` label.
+Otherwise write nothing: an unlabeled ticket resolves `autonomous`. The
+stamp is a recorded outcome of the grooming conversation, never something
 the engine decides unattended.
 
 `--decompose` returns the written value as `parent_posture`. `--groom-verify`
-reports the **ticket's own** clearance — `posture`, `posture_source`, and the
-fused `cleared` boolean; read-side semantics are owned by
+reports the ticket's clearance and the fused `hands_off` verdict; read-side
+semantics are owned by
 [orchestrate](../../wf-orchestrate/references/orchestrate.md#delivery-posture).
 
-**Revoking takes an explicit write.** On a ticket that already carries
-clearance, omitting `posture` leaves it **intact** — an omitted value means
-"no posture intent expressed", not "standard". When the human de-escalates a
-cleared ticket, write `posture: standard` explicitly; writing nothing would
-silently keep the ticket cleared while the conversation recorded the
-opposite. A human may also revoke directly at any time by removing the
-`posture:autonomous` label on the issue — a deliberate human edit the
-lifecycle never fights.
+**Returning to the default takes an explicit write.** On a ticket that
+already carries `posture:standard`, omitting `posture` leaves it **intact** —
+an omitted value means "no posture intent expressed". When the human lifts
+supervision, write `posture: autonomous` explicitly; the engine strips every
+`posture:*` label. A human may equally remove the label directly on the
+issue — a deliberate human edit the lifecycle never fights.
 
 After a successful GitHub update:
 

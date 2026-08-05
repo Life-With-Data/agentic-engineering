@@ -78,12 +78,16 @@ class InventoryShapeTest(unittest.TestCase):
             config_registry.verb_get(self.ctx, "nonexistent_flag")
         self.assertEqual(cm.exception.code, "unknown_flag")
 
-    def test_delivery_mode_is_in_the_inventory_with_standard_default(self) -> None:
-        row = config_registry.verb_get(self.ctx, "delivery_mode")
-        self.assertEqual(row["default"], "standard")
-        self.assertEqual(row["effective"], "standard")
-        self.assertEqual(row["kind"], "enum")
-        self.assertFalse(row["set"])
+    def test_delivery_mode_tier_is_gone_from_the_registry(self) -> None:
+        # #401: delivery posture is ticket-label-owned (lifecycle_board.py);
+        # no repo-level default flag exists under any delivery/posture
+        # spelling.
+        offenders = [f.key for f in config_registry.CONFIG_FLAGS
+                     if "delivery" in f.key or "posture" in f.key]
+        self.assertEqual(offenders, [])
+        with self.assertRaises(lifecycle_board.BoardError) as cm:
+            config_registry.verb_get(self.ctx, "delivery_mode")
+        self.assertEqual(cm.exception.code, "unknown_flag")
 
 
 class ValidationTest(unittest.TestCase):
@@ -92,13 +96,6 @@ class ValidationTest(unittest.TestCase):
         for value in ("true", "false", "True", "FALSE"):
             self.assertTrue(config_registry._validate(flag, value))
         for value in ("yes", "1", "maybe", ""):
-            self.assertFalse(config_registry._validate(flag, value))
-
-    def test_delivery_mode_enum_accepts_only_standard_or_autonomous(self) -> None:
-        flag = config_registry._BY_KEY["delivery_mode"]
-        for value in ("standard", "autonomous", "AUTONOMOUS"):
-            self.assertTrue(config_registry._validate(flag, value))
-        for value in ("hands-off", "yolo", ""):
             self.assertFalse(config_registry._validate(flag, value))
 
 
@@ -112,11 +109,11 @@ class InvalidStaleValueTest(unittest.TestCase):
         # A stale or malformed override must surface as invalid, not raise
         # and not silently pass through.
         Path(self.ctx.root, "agentic-engineering.local.md").write_text(
-            "---\ndelivery_mode: yolo\n---\n", encoding="utf-8")
-        row = config_registry.verb_get(self.ctx, "delivery_mode")
+            "---\nnudge_todowrite: maybe\n---\n", encoding="utf-8")
+        row = config_registry.verb_get(self.ctx, "nudge_todowrite")
         self.assertTrue(row["set"])
         self.assertFalse(row["valid"])
-        self.assertEqual(row["effective"], "standard")  # falls back to default
+        self.assertEqual(row["effective"], "false")  # falls back to default
 
 
 class SetTest(unittest.TestCase):
@@ -140,17 +137,9 @@ class SetTest(unittest.TestCase):
         self.assertEqual(result["previous"], "true")
         self.assertEqual(result["value"], "false")
 
-    def test_set_delivery_mode_to_autonomous_round_trips(self) -> None:
-        result = config_registry.verb_set(self.ctx, "delivery_mode", "autonomous")
-        self.assertEqual(result["value"], "autonomous")
-        self.assertIsNone(result["previous"])
-        row = config_registry.verb_get(self.ctx, "delivery_mode")
-        self.assertEqual(row["effective"], "autonomous")
-        self.assertEqual(row["source"], "local")
-
     def test_set_invalid_value_refused(self) -> None:
         with self.assertRaises(lifecycle_board.BoardError) as cm:
-            config_registry.verb_set(self.ctx, "delivery_mode", "bogus")
+            config_registry.verb_set(self.ctx, "nudge_todowrite", "bogus")
         self.assertEqual(cm.exception.code, "invalid_value")
         self.assertFalse(Path(self.ctx.root, "agentic-engineering.local.md").exists())
 

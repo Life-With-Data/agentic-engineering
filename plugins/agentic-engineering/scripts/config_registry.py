@@ -62,25 +62,6 @@ CONFIG_FLAGS = [
         file="local",
     ),
     ConfigFlag(
-        key="delivery_mode",
-        kind="enum",
-        default="standard",
-        description=(
-            "Default post-grooming posture this repo stamps onto newly groomed "
-            "work items, and the fallback for items carrying no posture label. "
-            "'standard' keeps downstream check-ins (plan approval, findings "
-            "triage, merge y/N). 'autonomous' means grooming stamps "
-            "posture:autonomous by default, clearing an attested item "
-            "(Status >= planned) to run implementation -> review -> delivery "
-            "hands-off, stopping only for the escalation contract's named "
-            "exceptions. The per-ticket label wins over this default; "
-            "per-invocation argument tokens win over both."
-        ),
-        owner="scripts/workflow-repo-preflight.py",
-        file="local",
-        choices=("standard", "autonomous"),
-    ),
-    ConfigFlag(
         key="github_project_owner",
         kind="identity",
         default="",

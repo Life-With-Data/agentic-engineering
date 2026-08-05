@@ -1,6 +1,6 @@
 # Config Flags
 
-Discoverability front door for the plugin's opt-in, per-repo configuration flags (`delivery_mode`, `nudge_todowrite`, etc.). Complements the [`lifecycle-doctor`](lifecycle-doctor.md) reference: doctor reports the health of what's *currently* configured; this command shows *everything that could be* configured and lets you change it. Unlike doctor, it is not silent by design — every flag is always listed, regardless of state.
+Discoverability front door for the plugin's opt-in, per-repo configuration flags (`nudge_todowrite`, etc.). Complements the [`lifecycle-doctor`](lifecycle-doctor.md) reference: doctor reports the health of what's *currently* configured; this command shows *everything that could be* configured and lets you change it. Unlike doctor, it is not silent by design — every flag is always listed, regardless of state.
 
 ## Step 1: Run the inventory verb
 

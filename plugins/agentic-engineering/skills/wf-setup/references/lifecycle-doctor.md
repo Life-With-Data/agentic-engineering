@@ -94,7 +94,7 @@ final **Ready for first work item: no** and return a failing result. Never repor
 python3 "<skill-directory>/scripts/config_registry.py" --inventory
 ```
 
-Render a **Configuration** section beneath the board-health report, one row per flag: **SET** (`set: true`) or **UNSET** (`set: false`, showing the default in use). This is a different judgment from the PASS/WARN/FAIL/SKIP checks above — it reports what a repo has *chosen*, not whether the repo is healthy — so use the SET/UNSET vocabulary here, not the health glyphs. The one exception: a row whose `valid` is `false` (a stale or malformed override, e.g. `delivery_mode: turbo`) renders as **⚠️ WARN — invalid, falling back to default** — this is the sole place WARN appears in this section, and it never changes the overall `ready` verdict from Step 3 (configuration state is not board health).
+Render a **Configuration** section beneath the board-health report, one row per flag: **SET** (`set: true`) or **UNSET** (`set: false`, showing the default in use). This is a different judgment from the PASS/WARN/FAIL/SKIP checks above — it reports what a repo has *chosen*, not whether the repo is healthy — so use the SET/UNSET vocabulary here, not the health glyphs. The one exception: a row whose `valid` is `false` (a stale or malformed override, e.g. `nudge_todowrite: maybe`) renders as **⚠️ WARN — invalid, falling back to default** — this is the sole place WARN appears in this section, and it never changes the overall `ready` verdict from Step 3 (configuration state is not board health).
 
 If `config_registry.py` is missing or `--inventory` fails, render "Configuration inventory unavailable" and continue — this section is best-effort and must never block the rest of the report.
 
