@@ -1,6 +1,6 @@
 {
   "name": "agentic-engineering",
-  "version": "7.1.1",
+  "version": "8.0.0",
   "description": "AI-powered development tools. 25 agents, 8 workflow skills, 1 MCP server for code review, research, design, and workflow automation.",
   "author": {
     "name": "Anthony Agnone",
