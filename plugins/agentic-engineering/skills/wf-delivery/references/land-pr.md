@@ -118,12 +118,16 @@ waive the compounding gate in step 5.
   ```
   Branch on the fused `hands_off` verdict
   ([delivery posture](../../wf-orchestrate/references/orchestrate.md#delivery-posture)
-  owns the semantics): `hands_off: true` proceeds hands-off; on
-  `hands_off: false` (or a non-zero exit, or an empty `N`), an explicit
-  per-invocation `--auto` clears the run anyway, and otherwise the
-  interactive merge gate applies. Then merge without asking once all
-  conditions hold — do not bounce "say the word and I'll merge" back to the
-  user. A genuinely unmet condition is escalated as a specific blocker,
+  owns the semantics). `approved: false` or a non-zero exit is never
+  mergeable — route to the human; no `--auto` token overrides a missing
+  approval stamp, because tokens sit in the posture chain, not above
+  approval. With `approved: true`: `hands_off: true` proceeds hands-off,
+  and on `hands_off: false` (the ticket opted into supervision) an explicit
+  per-invocation `--auto` clears the run anyway, otherwise the interactive
+  merge gate applies. An empty `N` (no tracked ticket) has no approval to
+  read: only an explicit `--auto` clears it. Then merge without asking once
+  all conditions hold — do not bounce "say the word and I'll merge" back to
+  the user. A genuinely unmet condition is escalated as a specific blocker,
   never merged through.
 
 ### 5. Final compounding gate

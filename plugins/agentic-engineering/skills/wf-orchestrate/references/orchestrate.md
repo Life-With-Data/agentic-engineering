@@ -54,7 +54,9 @@ python3 "<skill-directory>/scripts/lifecycle_board.py" --groom-verify <parent>
 Component fields (`approved`, `groomed`, `posture`, `cleared`) exist to
 report *why* a run is not hands-off, never to re-derive the verdict. The one
 thing outside the engine's sight is a per-invocation argument token, which
-overrides `hands_off` for that invocation only.
+overrides the **posture** leg for that invocation only — approval and
+attestation still gate, and a token never substitutes for the
+`ready_for_work` stamp.
 
 **The engine owns the label-resolution rule; this document does not restate
 it.** A `posture:*` label only reduces autonomy — every labeled state fails

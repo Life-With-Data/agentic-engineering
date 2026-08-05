@@ -741,6 +741,17 @@ describe("workflow skill architecture", () => {
     const postureTriggerMentions = landPr.split("resolved delivery posture").length - 1;
     expect(postureTriggerMentions).toBe(2);
     expect(landPr).not.toContain(CHAIN);
+
+    // Review of PR #402: a token overrides only the POSTURE leg. The merge
+    // gate must route a missing approval stamp (or a groom-verify hard
+    // failure) to the human unconditionally — `--auto` never substitutes for
+    // `ready_for_work`. Category tokens in both documents, whitespace-
+    // normalized against reflow.
+    const flowed = (s: string) => s.replace(/\s+/g, " ");
+    expect(flowed(landPr)).toContain("overrides a missing approval stamp");
+    expect(flowed(orchestrate)).toContain(
+      "a token never substitutes for the `ready_for_work` stamp",
+    );
   });
 
   test("every agent name cited in skill prose resolves to a shipped agent", () => {
