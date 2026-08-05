@@ -25,6 +25,16 @@ Record in-scope behavior, explicit exclusions, acceptance criteria, validation
 expectations, dependencies, and product decisions. Ask the user only for
 decisions that cannot be resolved from repository evidence or the issue.
 
+**Default-and-note rule:** when a scope question resolves to a minimal
+defensible default from repository evidence, do not ask — pick the default,
+record it as a stated assumption in the issue body, and let the human revise
+it at the `ready_for_work` stamp. Examples:
+
+- "stream-job and delete-job share the userId-only gate — include them?" →
+  default: include both (same root cause), record the assumption.
+- "which of two equivalent naming patterns?" → default: the dominant existing
+  pattern, note it.
+
 Before settling that scope, dispatch the `scope-skeptic` agent to argue the case
 for cutting it — whether the item should exist at all and which proposed work
 earns its place. The agent reports; the orchestrator still owns every scope

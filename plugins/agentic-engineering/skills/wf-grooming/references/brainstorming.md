@@ -38,7 +38,7 @@ If requirements are clear, suggest: "Your requirements seem clear. Consider proc
 
 ### Phase 1: Understand the Idea
 
-Ask questions **one at a time** to understand the user's intent. Avoid overwhelming with multiple questions.
+Ask questions **one at a time** to understand the user's intent. Avoid overwhelming with multiple questions. The interview asks what repository evidence cannot answer — intent, priorities, preferences — not everything askable; resolve factual questions from the repository and state the resolution instead.
 
 **Question Techniques:**
 
@@ -134,11 +134,10 @@ repository brainstorm or plan file, branch, commit, or plan-only pull request.
 
 ### Phase 4: Handoff
 
-Present clear options for what to do next:
-
-1. **Proceed to planning** → Run the `wf-grooming` planning route
-2. **Refine further** → Continue exploring the design
-3. **Done for now** → User will return later
+The pipeline order is fixed, so announce the next stage and continue rather
+than presenting a menu: "Proceeding to the `wf-grooming` planning route; say
+stop to redirect." Honor a redirect — refine further, or stop for now — when
+the user gives one.
 
 ## YAGNI Principles
 

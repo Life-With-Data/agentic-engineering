@@ -825,4 +825,63 @@ describe("workflow skill architecture", () => {
     // them, not a pinned phrase.
     expect(beforePersist).toMatch(/\bskip\b[\s\S]{0,300}\balready\b/i);
   });
+
+  test("grooming hands off with proceed-statements and throttles asks (issue #388)", () => {
+    // Category-token assertions per repo guardrail policy: freeze the category,
+    // never a frozen literal spelling (see docs/solutions/testing-patterns/
+    // grep-acceptance-checks-and-subset-fixtures-give-false-confidence.md).
+    const references = path.join(SKILLS, "wf-grooming", "references");
+    // Whitespace-normalized so a pure reflow of a sentence cannot fail this.
+    const flow = (s: string) => s.replace(/\s+/g, " ");
+
+    // 1. Handoff sites are proceed-statements, not menus. The pipeline order is
+    // fixed, so the old AskUserQuestion-driven next-steps menu carried no
+    // information; the handoff must announce the next stage and continue.
+    const brainstormRoute = readFileSync(
+      path.join(references, "workflows-brainstorm.md"),
+      "utf8",
+    );
+    // Menu token gone: no next-steps menu presentation at the handoff.
+    expect(brainstormRoute).not.toContain("present next steps");
+    expect(brainstormRoute).not.toContain("What would you like to do next?");
+    // Proceed-statement token present at BOTH former menu sites (Phase 4
+    // handoff and the post-document-review continuation).
+    const proceedMentions = flow(brainstormRoute).split("say stop to redirect").length - 1;
+    expect(proceedMentions).toBeGreaterThanOrEqual(2);
+    // The handoff phase itself no longer drives an AskUserQuestion menu.
+    // (AskUserQuestion stays legitimate earlier, in the interview phases.)
+    const handoffStart = brainstormRoute.indexOf("### Phase 4: Handoff");
+    expect(handoffStart).toBeGreaterThan(-1);
+    expect(brainstormRoute.slice(handoffStart)).not.toContain("AskUserQuestion");
+
+    // The duplicate handoff menu in the brainstorming reference is also a
+    // proceed-statement now. (Per-section validation pauses are untouched and
+    // deliberately unasserted — they are in scope for validation, not handoff.)
+    const brainstorming = readFileSync(
+      path.join(references, "brainstorming.md"),
+      "utf8",
+    );
+    const refHandoff = brainstorming.indexOf("### Phase 4: Handoff");
+    expect(refHandoff).toBeGreaterThan(-1);
+    expect(flow(brainstorming.slice(refHandoff))).toContain("say stop to redirect");
+
+    // 2. The groom route's ask throttle carries the default-and-note rule:
+    // resolvable scope questions get a recorded default, revisable at the
+    // human's ready_for_work stamp, instead of an ask.
+    const groom = readFileSync(
+      path.join(references, "workflows-groom.md"),
+      "utf8",
+    );
+    expect(groom).toContain("Default-and-note");
+    expect(groom).toContain("ready_for_work");
+
+    // 3. Triage no longer asks for priority — it is estimated and recorded
+    // without asking (aligned with workflows-plan.md's no-ask priority rule);
+    // asks are reserved for product-scope judgment.
+    const triage = readFileSync(path.join(references, "triage.md"), "utf8");
+    expect(triage).not.toContain("Ask for a decision when priority");
+    expect(triage.replace(/\s+/g, " ")).toContain(
+      "Estimate priority and record it without asking",
+    );
+  });
 });
