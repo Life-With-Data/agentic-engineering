@@ -5,6 +5,14 @@ All notable changes to the agentic-engineering plugin will be documented in this
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [7.1.1](https://github.com/Life-With-Data/agentic-engineering/compare/agentic-engineering-v7.1.0...agentic-engineering-v7.1.1) (2026-08-05)
+
+
+### Bug Fixes
+
+* **lifecycle:** keep posture label description under GitHub's 100-char cap ([#371](https://github.com/Life-With-Data/agentic-engineering/issues/371)) ([53cd329](https://github.com/Life-With-Data/agentic-engineering/commit/53cd329ed3595bf6dc564ee57c89a8f1257a2b17))
+* **lifecycle:** make --decompose idempotent via a local spec receipt ([#370](https://github.com/Life-With-Data/agentic-engineering/issues/370)) ([acc35b3](https://github.com/Life-With-Data/agentic-engineering/commit/acc35b33f7e0598a7a541b96049867b912beca72))
+
 ## [7.1.0](https://github.com/Life-With-Data/agentic-engineering/compare/agentic-engineering-v7.0.0...agentic-engineering-v7.1.0) (2026-08-03)
 
 
