@@ -608,6 +608,38 @@ describe("workflow skill architecture", () => {
     expect(work).toContain("written back as a `human`-labeled comment");
   });
 
+  test("document-review carves out non-interactive invocation (issue #391)", () => {
+    // Category-level assertions (freeze the category, not the spelling):
+    // document-review's Step 5 approval gate and Step 6 menu must be governed
+    // by an invocation-mode carve-out — non-interactive/workflow callers get
+    // auto-fix-and-report (substantive changes flagged, not gated on
+    // approval) and control returned to the caller, while standalone
+    // interactive sessions keep the ask-before-substantive-change behavior.
+    // Whitespace-normalized so a pure reflow cannot fail this.
+    const flow = (s: string) => s.replace(/\s+/g, " ");
+    const review = flow(readFileSync(
+      path.join(SKILLS, "wf-documentation", "references", "document-review.md"),
+      "utf8",
+    ));
+
+    // The carve-out names both modes and covers both sites (Steps 5-6).
+    expect(review).toContain("Non-interactive invocation");
+    expect(review).toContain("Standalone interactive session");
+    expect(review).toContain("both Step 5 and Step 6");
+
+    // Non-interactive branch: auto-fix and report, substantive changes
+    // flagged in the report rather than gated on approval, no menu, control
+    // returned to the calling workflow.
+    expect(review).toContain("do not pause for approval");
+    expect(review).toContain("do not offer the Step 6 menu");
+    expect(review).toContain("including substantive changes");
+    expect(review).toContain("flagging substantive changes");
+    expect(review).toContain("return control to the calling workflow");
+
+    // Interactive behavior is unchanged: the Step 5 approval gate survives.
+    expect(review).toContain("**Ask approval** before substantive changes");
+  });
+
   test("orchestrate honors per-ticket delivery posture at the routing boundary", () => {
     // Guardrail (issue #302): the validation section of the source issue asked
     // for a skill-routing case matrix under tests/skill-routing-cases/, but
