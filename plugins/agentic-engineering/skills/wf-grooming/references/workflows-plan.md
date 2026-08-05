@@ -192,11 +192,16 @@ Read the repo default from the preflight JSON's `delivery_mode_resolved`:
 - `delivery_mode: autonomous` repo — write `posture: autonomous` by default;
   the human may opt a ticket out in the grooming conversation, and that
   conversational decision is what gets recorded.
-- `delivery_mode: standard` repo — proactively offer the autonomous stamp at
-  decomposition (any pass that reaches decomposition, including a re-groom);
-  do not repeat the offer at other stages. An explicit yes writes
-  `posture: autonomous`. On a ticket that carries no clearance yet, silence
-  or a no writes nothing, which resolves to `standard`.
+- `delivery_mode: standard` repo — do **not** raise an interactive offer
+  (issue #389 reversed the earlier proactive-offer mandate: the offer added
+  nothing over the silent default in every measured case). Instead, record
+  the resolved posture as one line in the decompose report on any pass that
+  reaches decomposition, including a re-groom — e.g. "posture resolves to
+  `standard`; label the parent `posture:autonomous` or say so before the
+  `ready_for_work` stamp to clear it". An explicit yes in the grooming
+  conversation still writes `posture: autonomous`. On a ticket that carries
+  no clearance yet, silence or a no writes nothing, which resolves to
+  `standard`.
 
 The stamp is a recorded outcome of the grooming conversation, never something
 the engine decides unattended.

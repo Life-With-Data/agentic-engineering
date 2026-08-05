@@ -282,6 +282,14 @@ describe("workflow skill architecture", () => {
     // surface rather than the old "resolved posture" claim it displaced.
     expect(planningRoute).toContain("posture_source");
     expect(planningRoute).toContain("`cleared`");
+    // Issue #389: on a standard-mode repo the resolved posture is REPORTED in
+    // the decompose report, not raised as an interactive offer — the #262/#298
+    // proactive offer added nothing over the silent default. Category tokens:
+    // require the report line, ban the offer verb (whitespace-normalized so a
+    // reflow across the hard wrap does not false-fail/false-pass).
+    const flowPlanning = planningRoute.replace(/\s+/g, " ");
+    expect(flowPlanning).toContain("decompose report");
+    expect(flowPlanning).not.toContain("proactively offer");
 
     const publicWorkflowDocs = [
       path.join(PLUGIN, "README.md"),
