@@ -15,9 +15,7 @@ Does not contain: invented repository commands, guessed credentials, product imp
 
 ## Start here
 
-Scripts are bundled beside this `SKILL.md`; resolve `<skill-directory>` to that
-directory, never through a plugin root. Run the strict validator from any path
-inside the repository checkout:
+Run the strict validator from any path inside the repository checkout:
 
 ```bash
 python3 <skill-directory>/scripts/repository-context.py
@@ -53,6 +51,8 @@ Setup is complete only when:
 6. Lifecycle adoption, when selected, meets the setup-completion checklist in
    [lifecycle bootstrap](references/lifecycle-bootstrap.md), including the
    chosen forward binding and live verification.
+
+After setup completes, engineering work enters through `wf-orchestrate`.
 
 ## Wrong-layer recovery
 

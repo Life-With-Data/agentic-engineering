@@ -1,6 +1,7 @@
 import { readFileSync, existsSync } from "fs";
 import path from "path";
 import { formatFrontmatter } from "../utils/frontmatter";
+import { normalizeName as baseNormalizeName, sanitizeDescription, uniqueName } from "../utils/names";
 import type {
   ClaudeAgent,
   ClaudeCommand,
@@ -15,13 +16,9 @@ import type {
   KiroSkill,
   KiroSteeringFile,
 } from "../types/kiro";
-import type { ClaudeToOpenCodeOptions } from "./claude-to-opencode";
-
-export type ClaudeToKiroOptions = ClaudeToOpenCodeOptions;
+import type { ConvertOptions } from "./claude-to-opencode";
 
 const KIRO_SKILL_NAME_MAX_LENGTH = 64;
-const KIRO_SKILL_NAME_PATTERN = /^[a-z][a-z0-9-]*$/;
-const KIRO_DESCRIPTION_MAX_LENGTH = 1024;
 
 const CLAUDE_TO_KIRO_TOOLS: Record<string, string> = {
   Bash: "shell",
@@ -36,7 +33,7 @@ const CLAUDE_TO_KIRO_TOOLS: Record<string, string> = {
 
 export function convertClaudeToKiro(
   plugin: ClaudePlugin,
-  _options: ClaudeToKiroOptions
+  _options: ConvertOptions
 ): KiroBundle {
   const usedSkillNames = new Set<string>();
 
@@ -245,18 +242,10 @@ function buildSteeringFiles(
   return [{ name: "agentic-engineering", content: transformed }];
 }
 
+// Kiro names add two constraints on top of the shared normalizer:
+// a 64-char cap (truncated at a hyphen boundary) and a leading letter.
 function normalizeName(value: string): string {
-  const trimmed = value.trim();
-  if (!trimmed) return "item";
-  let normalized = trimmed
-    .toLowerCase()
-    .replace(/[\\/]+/g, "-")
-    .replace(/[:\s]+/g, "-")
-    .replace(/[^a-z0-9_-]+/g, "-")
-    .replace(/-+/g, "-") // Collapse consecutive hyphens (Agent Skills standard)
-    .replace(/^-+|-+$/g, "");
-
-  // Enforce max length (truncate at last hyphen boundary)
+  let normalized = baseNormalizeName(value);
   if (normalized.length > KIRO_SKILL_NAME_MAX_LENGTH) {
     normalized = normalized.slice(0, KIRO_SKILL_NAME_MAX_LENGTH);
     const lastHyphen = normalized.lastIndexOf("-");
@@ -265,38 +254,8 @@ function normalizeName(value: string): string {
     }
     normalized = normalized.replace(/-+$/g, "");
   }
-
-  // Ensure name starts with a letter
   if (normalized.length === 0 || !/^[a-z]/.test(normalized)) {
     return "item";
   }
-
   return normalized;
-}
-
-function sanitizeDescription(
-  value: string,
-  maxLength = KIRO_DESCRIPTION_MAX_LENGTH
-): string {
-  const normalized = value.replace(/\s+/g, " ").trim();
-  if (normalized.length <= maxLength) return normalized;
-  const ellipsis = "...";
-  return (
-    normalized.slice(0, Math.max(0, maxLength - ellipsis.length)).trimEnd() +
-    ellipsis
-  );
-}
-
-function uniqueName(base: string, used: Set<string>): string {
-  if (!used.has(base)) {
-    used.add(base);
-    return base;
-  }
-  let index = 2;
-  while (used.has(`${base}-${index}`)) {
-    index += 1;
-  }
-  const name = `${base}-${index}`;
-  used.add(name);
-  return name;
 }

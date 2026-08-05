@@ -9,6 +9,7 @@ import { describe, expect, test } from "bun:test"
 import { existsSync, readFileSync } from "fs"
 import path from "path"
 import { parseFrontmatter } from "../src/utils/frontmatter"
+import { splitSections } from "./helpers"
 
 const ROOT = path.resolve(import.meta.dir, "..")
 const REGISTRY = path.join(ROOT, "docs/upstream-sources.md")
@@ -25,12 +26,7 @@ const { data: fm, body } = parseFrontmatter(raw)
 // Strip HTML comments (the schema doc) so field checks see only real content.
 const content = body.replace(/<!--[\s\S]*?-->/g, "")
 
-type Source = { slug: string; block: string }
-const sources: Source[] = [...content.matchAll(/^## (.+)$/gm)].map((m, i, all) => {
-  const start = m.index! + m[0].length
-  const end = i + 1 < all.length ? all[i + 1].index! : content.length
-  return { slug: m[1].trim(), block: content.slice(start, end) }
-})
+const sources = splitSections(content)
 
 describe("registry frontmatter", () => {
   test("registry file exists", () => {

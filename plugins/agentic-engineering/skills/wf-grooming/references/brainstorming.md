@@ -2,20 +2,6 @@
 
 This reference provides detailed process knowledge for effective brainstorming sessions that clarify **WHAT** to build before diving into **HOW** to build it.
 
-## When to Use This Skill
-
-Brainstorming is valuable when:
-- Requirements are unclear or ambiguous
-- Multiple approaches could solve the problem
-- Trade-offs need to be explored with the user
-- The user hasn't fully articulated what they want
-- The feature scope needs refinement
-
-Brainstorming can be skipped when:
-- Requirements are explicit and detailed
-- The user knows exactly what they want
-- The task is a straightforward bug fix or well-defined change
-
 ## Core Process
 
 ### Phase 0: Assess Requirement Clarity
@@ -138,37 +124,6 @@ The pipeline order is fixed, so announce the next stage and continue rather
 than presenting a menu: "Proceeding to the `wf-grooming` planning route; say
 stop to redirect." Honor a redirect — refine further, or stop for now — when
 the user gives one.
-
-## YAGNI Principles
-
-During brainstorming, actively resist complexity:
-
-- **Don't design for hypothetical future requirements**
-- **Choose the simplest approach that solves the stated problem**
-- **Prefer boring, proven patterns over clever solutions**
-- **Ask "Do we really need this?" when complexity emerges**
-- **Defer decisions that don't need to be made now**
-
-## Incremental Validation
-
-Keep sections short—200-300 words maximum. After each section of output, pause to validate understanding:
-
-- "Does this match what you had in mind?"
-- "Any adjustments before we continue?"
-- "Is this the direction you want to go?"
-
-This prevents wasted effort on misaligned designs.
-
-## Anti-Patterns to Avoid
-
-| Anti-Pattern | Better Approach |
-|--------------|-----------------|
-| Asking 5 questions at once | Ask one at a time |
-| Jumping to implementation details | Stay focused on WHAT, not HOW |
-| Proposing overly complex solutions | Start simple, add complexity only if needed |
-| Ignoring existing codebase patterns | Research what exists first |
-| Making assumptions without validating | State assumptions explicitly and confirm |
-| Creating an overlong brainstorm body | Keep it concise—implementation detail goes in the issue's plan sections |
 
 ## Integration with Planning
 

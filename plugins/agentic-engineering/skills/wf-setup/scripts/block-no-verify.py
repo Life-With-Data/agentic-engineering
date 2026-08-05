@@ -32,7 +32,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from hook_payload import emit_allow, normalize
+from hook_payload import emit_allow, normalize, strip_quotes
 
 COMMIT_BYPASS = re.compile(r"\bgit\s+commit\b[^&|;]*?(?:^|\s)(?:-n|--no-verify)\b")
 PUSH_BYPASS = re.compile(r"\bgit\s+push\b[^&|;]*?(?:^|\s)--no-verify\b")
@@ -97,8 +97,7 @@ HEREDOC = re.compile(
 
 def sanitize(command: str) -> str:
     command = HEREDOC.sub("", command)           # here-document bodies (PR/issue bodies)
-    command = re.sub(r"'[^']*'", "", command)
-    command = re.sub(r'"[^"]*"', "", command)
+    command = strip_quotes(command)
     command = re.sub(r"#.*", "", command)
     return command
 

@@ -90,3 +90,9 @@ export type ClaudeHookMatcher = {
 export type ClaudeHooks = {
   hooks: Record<string, ClaudeHookMatcher[]>
 }
+
+// Shared bundle piece: a pass-through skill directory (identical across all targets).
+export type SkillDir = {
+  name: string
+  sourceDir: string
+}

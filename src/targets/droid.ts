@@ -29,22 +29,12 @@ export async function writeDroidBundle(outputRoot: string, bundle: DroidBundle):
 }
 
 function resolveDroidPaths(outputRoot: string) {
-  const base = path.basename(outputRoot)
-  // If pointing directly at ~/.factory or .factory, write into it
-  if (base === ".factory") {
-    return {
-      root: outputRoot,
-      commandsDir: path.join(outputRoot, "commands"),
-      droidsDir: path.join(outputRoot, "droids"),
-      skillsDir: path.join(outputRoot, "skills"),
-    }
-  }
-
-  // Otherwise nest under .factory
+  // Write directly into a .factory root; otherwise nest under .factory.
+  const dir = path.basename(outputRoot) === ".factory" ? outputRoot : path.join(outputRoot, ".factory")
   return {
     root: outputRoot,
-    commandsDir: path.join(outputRoot, ".factory", "commands"),
-    droidsDir: path.join(outputRoot, ".factory", "droids"),
-    skillsDir: path.join(outputRoot, ".factory", "skills"),
+    commandsDir: path.join(dir, "commands"),
+    droidsDir: path.join(dir, "droids"),
+    skillsDir: path.join(dir, "skills"),
   }
 }

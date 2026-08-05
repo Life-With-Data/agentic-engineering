@@ -161,7 +161,7 @@ never a readiness signal.
 Grooming has full plan context, so it assesses complexity **once**, here. The
 spec MAY carry an optional `complexity` on the parent and each `sub_issues[]`
 entry; the engine persists it as a `complexity:*` label that `wf-development`
-reads to [pick an agent tier at dispatch](../../wf-development/references/workflows-orchestrate.md).
+reads to [pick an agent tier at dispatch](../../wf-orchestrate/references/orchestrate.md).
 Advisory, never a gate. Use the engine vocabulary exactly:
 
 | `complexity` | When it fits |
@@ -221,12 +221,9 @@ The stamp is a recorded outcome of the grooming conversation, never something
 the engine decides unattended.
 
 `--decompose` returns the written value as `parent_posture`. `--groom-verify`
-reports the **ticket's own** clearance — `posture`, `posture_source`
-(`ticket` when any `posture:*` label exists, `unset` when none), and the fused
-`cleared` boolean. It reports the ticket's posture, not the
-repository-resolved one; only `posture_source: unset` licenses falling back to
-the repository default, resolved by the consumer
-([wf-development's orchestration entry point](../../wf-development/references/workflows-orchestrate.md)).
+reports the **ticket's own** clearance — `posture`, `posture_source`, and the
+fused `cleared` boolean; read-side semantics are owned by
+[orchestrate](../../wf-orchestrate/references/orchestrate.md#delivery-posture).
 
 **Revoking takes an explicit write.** On a ticket that already carries
 clearance, omitting `posture` leaves it **intact** — an omitted value means

@@ -50,19 +50,11 @@ export async function writeGeminiBundle(outputRoot: string, bundle: GeminiBundle
 }
 
 function resolveGeminiPaths(outputRoot: string) {
-  const base = path.basename(outputRoot)
-  // If already pointing at .gemini, write directly into it
-  if (base === ".gemini") {
-    return {
-      geminiDir: outputRoot,
-      skillsDir: path.join(outputRoot, "skills"),
-      commandsDir: path.join(outputRoot, "commands"),
-    }
-  }
-  // Otherwise nest under .gemini
+  // Write directly into a .gemini root; otherwise nest under .gemini.
+  const geminiDir = path.basename(outputRoot) === ".gemini" ? outputRoot : path.join(outputRoot, ".gemini")
   return {
-    geminiDir: path.join(outputRoot, ".gemini"),
-    skillsDir: path.join(outputRoot, ".gemini", "skills"),
-    commandsDir: path.join(outputRoot, ".gemini", "commands"),
+    geminiDir,
+    skillsDir: path.join(geminiDir, "skills"),
+    commandsDir: path.join(geminiDir, "commands"),
   }
 }

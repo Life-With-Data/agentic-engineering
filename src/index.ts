@@ -1,7 +1,6 @@
 #!/usr/bin/env bun
 import { defineCommand, runMain } from "citty"
-import convert from "./commands/convert"
-import install from "./commands/install"
+import { convert, install } from "./commands/convert"
 import listCommand from "./commands/list"
 import sync from "./commands/sync"
 import worktrees from "./commands/worktrees"

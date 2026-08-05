@@ -929,12 +929,12 @@ class ForwardBindingBootstrapTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             ctx, summary = self._run(tmp, self._CFG_BARE, forward_binding="auto-add")
             self.assertTrue(summary["auto_add_scaffold"]["scaffolded"])
-            self.assertEqual(lb.find_auto_add_workflow(ctx), bs.WORKFLOW_FILENAME)
+            self.assertEqual(lb._auto_add_candidates(ctx)[0][0], bs.WORKFLOW_FILENAME)
         # workflow-only → nothing scaffolded.
         with tempfile.TemporaryDirectory() as tmp:
             ctx, summary = self._run(tmp, self._CFG_BARE, forward_binding="workflow-only")
             self.assertIsNone(summary["auto_add_scaffold"])
-            self.assertIsNone(lb.find_auto_add_workflow(ctx))
+            self.assertEqual(lb._auto_add_candidates(ctx), [])
 
     def test_rerun_preserves_a_malformed_recorded_binding_not_clobber(self) -> None:
         # A typo'd (invalid enum) recorded binding must be PRESERVED on re-run,
@@ -985,7 +985,7 @@ class ScaffoldAutoAddTest(unittest.TestCase):
         text = (root / bs.WORKFLOW_FILENAME).read_text(encoding="utf-8")
         self.assertIn("https://github.com/users/acme/projects/5", text)
         # Cross-consistency: the doctor's detector must find what bootstrap wrote.
-        self.assertEqual(lb.find_auto_add_workflow(ctx), bs.WORKFLOW_FILENAME)
+        self.assertEqual(lb._auto_add_candidates(ctx)[0][0], bs.WORKFLOW_FILENAME)
 
     def test_scaffolds_org_url(self) -> None:
         ctx, root = self._ctx()

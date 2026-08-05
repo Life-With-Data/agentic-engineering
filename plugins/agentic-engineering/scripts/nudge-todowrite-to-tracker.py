@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """
 PreToolUse (TodoWrite) — NON-BLOCKING nudge toward the repo's durable issue
-tracker. Reuses the exact resolution chain workflow-repo-preflight.py already
-establishes (local override > committed board config -> github-project,
-otherwise "unconfigured"), so the reminder always names the tracker the rest
-of the plugin's lifecycle tooling agrees on.
+tracker. Reuses the exact resolution workflow-repo-preflight.py already
+establishes (committed board config -> github-project, otherwise
+"unconfigured"), so the reminder always names the tracker the rest of the
+plugin's lifecycle tooling agrees on.
 
 Silent (exit 0, no output) unless BOTH:
   - the repo has opted in via `nudge_todowrite: true` in
@@ -80,7 +80,7 @@ def nudge_opted_in(repo_root: str) -> bool:
     return meta.get("nudge_todowrite", "").strip().lower() == "true"
 
 
-def resolve_message(repo_root: str) -> "str | None":
+def resolve_message() -> "str | None":
     board = None
     try:
         board_ctx = lifecycle_board.repo_context()
@@ -88,10 +88,7 @@ def resolve_message(repo_root: str) -> "str | None":
     except lifecycle_board.BoardError:
         board = None
 
-    tracker_info = preflight.resolve_issue_tracker(
-        repo_root=repo_root,
-        board_configured=board is not None,
-    )
+    tracker_info = preflight.resolve_issue_tracker(board_configured=board is not None)
     return MESSAGES.get(tracker_info["resolved"])
 
 
@@ -108,7 +105,7 @@ def _main() -> int:
     if not repo_root or not nudge_opted_in(repo_root):
         return 0
 
-    message = resolve_message(repo_root)
+    message = resolve_message()
     if not message:
         return 0
 

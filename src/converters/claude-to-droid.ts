@@ -1,9 +1,8 @@
 import { formatFrontmatter } from "../utils/frontmatter"
+import { flattenCommandName, normalizeName, replaceSlashCommands } from "../utils/names"
 import type { ClaudeAgent, ClaudeCommand, ClaudePlugin } from "../types/claude"
 import type { DroidBundle, DroidCommandFile, DroidAgentFile } from "../types/droid"
-import type { ClaudeToOpenCodeOptions } from "./claude-to-opencode"
-
-export type ClaudeToDroidOptions = ClaudeToOpenCodeOptions
+import type { ConvertOptions } from "./claude-to-opencode"
 
 const CLAUDE_TO_DROID_TOOLS: Record<string, string> = {
   read: "Read",
@@ -41,7 +40,7 @@ const VALID_DROID_TOOLS = new Set([
 
 export function convertClaudeToDroid(
   plugin: ClaudePlugin,
-  _options: ClaudeToDroidOptions,
+  _options: ConvertOptions,
 ): DroidBundle {
   const commands = plugin.commands.map((command) => convertCommand(command))
   const droids = plugin.agents.map((agent) => convertAgent(agent))
@@ -132,13 +131,7 @@ function transformContentForDroid(body: string): string {
 
   // 2. Transform slash command references
   // /workflows:plan → /plan, /command-name stays as-is
-  const slashCommandPattern = /(?<![:\w])\/([a-z][a-z0-9_:-]*?)(?=[\s,."')\]}`]|$)/gi
-  result = result.replace(slashCommandPattern, (match, commandName: string) => {
-    if (commandName.includes('/')) return match
-    if (['dev', 'tmp', 'etc', 'usr', 'var', 'bin', 'home'].includes(commandName)) return match
-    const flattened = flattenCommandName(commandName)
-    return `/${flattened}`
-  })
+  result = replaceSlashCommands(result, (commandName) => `/${flattenCommandName(commandName)}`)
 
   // 3. Transform @agent-name references to droid references
   const agentRefPattern = /@agent-([a-z][a-z0-9-]*)/gi
@@ -147,28 +140,4 @@ function transformContentForDroid(body: string): string {
   })
 
   return result
-}
-
-/**
- * Flatten a command name by stripping the namespace prefix.
- * "workflows:plan" → "plan"
- * "plan_review" → "plan_review"
- */
-function flattenCommandName(name: string): string {
-  const colonIndex = name.lastIndexOf(":")
-  const base = colonIndex >= 0 ? name.slice(colonIndex + 1) : name
-  return normalizeName(base)
-}
-
-function normalizeName(value: string): string {
-  const trimmed = value.trim()
-  if (!trimmed) return "item"
-  const normalized = trimmed
-    .toLowerCase()
-    .replace(/[\\/]+/g, "-")
-    .replace(/[:\s]+/g, "-")
-    .replace(/[^a-z0-9_-]+/g, "-")
-    .replace(/-+/g, "-")
-    .replace(/^-+|-+$/g, "")
-  return normalized || "item"
 }

@@ -18,11 +18,10 @@
 //      prompts (must NOT rank their skill #1; an `owner` skill must outrank it).
 //
 // If a collision fails: the right fix is almost always to sharpen one of the two
-// descriptions, not to relax the threshold. A genuinely intentional overlap goes
-// in COLLISION_ALLOWLIST below (validator-owned, with a reason) — never by
-// watering down a skill's frontmatter. If a routing case fails: tune the *prompt*
-// to how users actually talk, or fix the description if it truly lacks the
-// vocabulary — never edit the description just to pass a contrived prompt.
+// descriptions, not to relax the threshold — never water down a skill's
+// frontmatter. If a routing case fails: tune the *prompt* to how users actually
+// talk, or fix the description if it truly lacks the vocabulary — never edit the
+// description just to pass a contrived prompt.
 
 import { describe, expect, test } from "bun:test"
 import { existsSync, readdirSync, readFileSync } from "fs"
@@ -40,6 +39,7 @@ const DEFAULT_TOP_K = 3
 // The complete public workflow set must carry routing cases, so the fixed set
 // cannot drift or lose frontmatter selection coverage.
 const REQUIRED_CASE_SKILLS = [
+  "wf-orchestrate",
   "wf-grooming",
   "wf-development",
   "wf-testing",
@@ -48,15 +48,6 @@ const REQUIRED_CASE_SKILLS = [
   "wf-documentation",
   "wf-setup",
 ] as const
-
-// Intentionally-overlapping description pairs, exempted from the collision
-// error. Anti-bypass by design: an exemption lives HERE, in the validator, with
-// a reason — never as watered-down frontmatter in the skills themselves, which
-// would degrade real routing to silence a test. Each entry must reference two
-// real skills that genuinely still collide (>= ERROR); the self-check below
-// fails on any stale entry. Empty today: no pair on the current catalog reaches
-// even the 0.50 warn threshold.
-const COLLISION_ALLOWLIST: { a: string; b: string; reason: string }[] = []
 
 // ---- text pipeline (stemmed TF-IDF) ----------------------------------------
 // A deliberately light lexical model: enough to cluster morphological variants
@@ -210,12 +201,6 @@ function pct(sim: number): string {
   return `${(sim * 100).toFixed(0)}%`
 }
 
-function isAllowlisted(a: string, b: string): boolean {
-  return COLLISION_ALLOWLIST.some(
-    (e) => (e.a === a && e.b === b) || (e.a === b && e.b === a),
-  )
-}
-
 function similarity(a: string, b: string): number {
   return cosine(toVector(corpus.docs.get(a)!, corpus.idf), toVector(corpus.docs.get(b)!, corpus.idf))
 }
@@ -265,17 +250,9 @@ describe("skill-description routing collisions (all-pairs cosine over TF-IDF)", 
       }
     }
     const unexpected = flaggedPairs
-      .filter((p) => p.sim >= COLLISION_ERROR && !isAllowlisted(p.a, p.b))
+      .filter((p) => p.sim >= COLLISION_ERROR)
       .map((p) => `${p.a} <-> ${p.b} @ ${pct(p.sim)}`)
     expect(unexpected).toEqual([])
-  })
-
-  test("every COLLISION_ALLOWLIST entry references real skills and still collides", () => {
-    for (const e of COLLISION_ALLOWLIST) {
-      expect(skillNames.has(e.a)).toBe(true)
-      expect(skillNames.has(e.b)).toBe(true)
-      expect(similarity(e.a, e.b)).toBeGreaterThanOrEqual(COLLISION_ERROR)
-    }
   })
 })
 

@@ -67,11 +67,11 @@ bash <skill-directory>/scripts/get-pr-comments PR_NUMBER
 ```
 
 Should return an empty array `[]`. If threads remain, repeat from step 1 —
-bounded: a thread that survives ~2 passes without measurable progress (an
-unanswered reviewer question, a product decision, a bot that re-opens on
-every push) is a blocker to escalate to the user, not a reason to keep
-looping (stall bounds per the `wf-development`
-[escalation contract](../../wf-development/references/escalation-contract.md)).
+bounded at ~2 passes: a surviving thread (an unanswered reviewer question, a
+product decision, a bot that re-opens on every push) is a blocker to escalate
+to the user, not a reason to keep looping —
+[escalation contract](../../wf-orchestrate/references/escalation-contract.md)
+item (d) defines a dry attempt.
 
 ## Scripts
 

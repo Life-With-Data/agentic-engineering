@@ -1,15 +1,12 @@
 import { formatFrontmatter } from "../utils/frontmatter"
+import { normalizeName, sanitizeDescription, uniqueName } from "../utils/names"
 import type { ClaudeAgent, ClaudeCommand, ClaudeMcpServer, ClaudePlugin } from "../types/claude"
 import type { GeminiBundle, GeminiCommand, GeminiMcpServer, GeminiSkill } from "../types/gemini"
-import type { ClaudeToOpenCodeOptions } from "./claude-to-opencode"
-
-export type ClaudeToGeminiOptions = ClaudeToOpenCodeOptions
-
-const GEMINI_DESCRIPTION_MAX_LENGTH = 1024
+import type { ConvertOptions } from "./claude-to-opencode"
 
 export function convertClaudeToGemini(
   plugin: ClaudePlugin,
-  _options: ClaudeToGeminiOptions,
+  _options: ConvertOptions,
 ): GeminiBundle {
   const usedSkillNames = new Set<string>()
   const usedCommandNames = new Set<string>()
@@ -156,38 +153,4 @@ export function toToml(description: string, prompt: string): string {
 
 function formatTomlString(value: string): string {
   return JSON.stringify(value)
-}
-
-function normalizeName(value: string): string {
-  const trimmed = value.trim()
-  if (!trimmed) return "item"
-  const normalized = trimmed
-    .toLowerCase()
-    .replace(/[\\/]+/g, "-")
-    .replace(/[:\s]+/g, "-")
-    .replace(/[^a-z0-9_-]+/g, "-")
-    .replace(/-+/g, "-")
-    .replace(/^-+|-+$/g, "")
-  return normalized || "item"
-}
-
-function sanitizeDescription(value: string, maxLength = GEMINI_DESCRIPTION_MAX_LENGTH): string {
-  const normalized = value.replace(/\s+/g, " ").trim()
-  if (normalized.length <= maxLength) return normalized
-  const ellipsis = "..."
-  return normalized.slice(0, Math.max(0, maxLength - ellipsis.length)).trimEnd() + ellipsis
-}
-
-function uniqueName(base: string, used: Set<string>): string {
-  if (!used.has(base)) {
-    used.add(base)
-    return base
-  }
-  let index = 2
-  while (used.has(`${base}-${index}`)) {
-    index += 1
-  }
-  const name = `${base}-${index}`
-  used.add(name)
-  return name
 }

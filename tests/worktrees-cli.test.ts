@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { promises as fs } from "fs";
 import path from "path";
 import os from "os";
+import { runGit } from "./helpers";
 
 const repoRoot = path.join(import.meta.dir, "..");
 const cliEntry = path.join(repoRoot, "src", "index.ts");
@@ -27,28 +28,6 @@ async function runWorktreesCli(
   const stdout = await new Response(proc.stdout).text();
   const stderr = await new Response(proc.stderr).text();
   return { exitCode, stdout, stderr };
-}
-
-async function runGit(args: string[], cwd: string): Promise<void> {
-  const proc = Bun.spawn(["git", ...args], {
-    cwd,
-    stdout: "pipe",
-    stderr: "pipe",
-    env: {
-      ...process.env,
-      GIT_AUTHOR_NAME: "Test",
-      GIT_AUTHOR_EMAIL: "test@example.com",
-      GIT_COMMITTER_NAME: "Test",
-      GIT_COMMITTER_EMAIL: "test@example.com",
-    },
-  });
-  const exitCode = await proc.exited;
-  const stderr = await new Response(proc.stderr).text();
-  if (exitCode !== 0) {
-    throw new Error(
-      `git ${args.join(" ")} failed (exit ${exitCode}).\nstderr: ${stderr}`
-    );
-  }
 }
 
 describe("worktrees CLI passthrough", () => {

@@ -11,13 +11,13 @@
   "plugins": [
     {
       "name": "agentic-engineering",
-      "description": "AI-powered development tools that get smarter with every use. Make each unit of engineering work easier than the last. Includes 33 specialized agents and 7 workflow skills.",
+      "description": "AI-powered development tools that get smarter with every use. Make each unit of engineering work easier than the last. Includes 25 specialized agents and 8 workflow skills.",
       "version": "7.1.1",
       "author": {
         "name": "Anthony Agnone",
         "url": "https://github.com/aagnone3"
       },
-      "homepage": "https://life-with-data.github.io/agentic-engineering/",
+      "homepage": "https://github.com/Life-With-Data/agentic-engineering",
       "tags": [
         "ai-powered",
         "agentic-engineering",
@@ -37,7 +37,7 @@
         "name": "Anthony Agnone",
         "url": "https://github.com/aagnone3"
       },
-      "homepage": "https://life-with-data.github.io/agentic-engineering/",
+      "homepage": "https://github.com/Life-With-Data/agentic-engineering",
       "tags": [
         "marketing",
         "seo",

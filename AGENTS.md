@@ -41,8 +41,7 @@ their own exceptions.
 - Active brainstorms and implementation plans live in their GitHub issues and
   sub-issues. `docs/brainstorms/` and `docs/plans/` are historical archives; do
   not create new files there. Compounded engineering learnings live in
-  `docs/solutions/`. Do not hand-edit
-  generated regions in `docs/index.html` or `docs/pages/*.html`.
+  `docs/solutions/`.
 
 ## Agentic Engineering Repository Contract
 

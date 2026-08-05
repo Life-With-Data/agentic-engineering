@@ -2,10 +2,10 @@ import { describe, expect, test } from "bun:test"
 import { promises as fs } from "fs"
 import path from "path"
 import os from "os"
-import { syncToDroid } from "../src/sync/droid"
+import { syncSkills } from "../src/utils/symlink"
 import type { ClaudeHomeConfig } from "../src/parsers/claude-home"
 
-describe("syncToDroid", () => {
+describe("droid skill sync", () => {
   test("symlinks skills to factory skills dir", async () => {
     const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "sync-droid-"))
     const fixtureSkillDir = path.join(import.meta.dir, "fixtures", "sample-plugin", "skills", "skill-one")
@@ -23,7 +23,7 @@ describe("syncToDroid", () => {
       },
     }
 
-    await syncToDroid(config, tempRoot)
+    await syncSkills(config.skills, path.join(tempRoot, "skills"))
 
     const linkedSkillPath = path.join(tempRoot, "skills", "skill-one")
     const linkedStat = await fs.lstat(linkedSkillPath)
@@ -49,7 +49,7 @@ describe("syncToDroid", () => {
       mcpServers: {},
     }
 
-    await syncToDroid(config, tempRoot)
+    await syncSkills(config.skills, path.join(tempRoot, "skills"))
 
     const entries = await fs.readdir(path.join(tempRoot, "skills"))
     expect(entries).toHaveLength(0)

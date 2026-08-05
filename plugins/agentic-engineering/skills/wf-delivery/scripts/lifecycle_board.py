@@ -3340,12 +3340,6 @@ def _auto_add_candidates(ctx: RepoContext) -> "list[tuple[str, str]]":
     return found
 
 
-def find_auto_add_workflow(ctx: RepoContext) -> Optional[str]:
-    """Compatibility helper returning the first actual auto-add workflow."""
-    candidates = _auto_add_candidates(ctx)
-    return candidates[0][0] if candidates else None
-
-
 def inspect_auto_add_workflow(ctx: RepoContext,
                               expected_project_url: Optional[str]) -> AutoAddWorkflowInspection:
     """Validate the committed auto-add workflow without parsing arbitrary YAML.
@@ -3464,8 +3458,8 @@ def evaluate_forward_binding_check(binding: BindingConfig,
     workflow-only asserts NO orphaned auto-add file; auto-add asserts the file
     is structurally exact (its secret value is write-only, hence live-probed);
     unset/invalid choices fail readiness. Kept pure (no gh, no fs) so every branch
-    is unit-tested; verb_doctor supplies auto_add_workflow via
-    find_auto_add_workflow."""
+    is unit-tested; verb_doctor supplies the inspection via
+    inspect_auto_add_workflow."""
     fb = binding.forward_binding
     if binding.forward_raw and fb is None:
         return ("FAIL",

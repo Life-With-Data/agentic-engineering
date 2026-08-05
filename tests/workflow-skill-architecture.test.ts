@@ -14,6 +14,9 @@ const PLUGIN = path.join(ROOT, "plugins", "agentic-engineering");
 const SKILLS = path.join(PLUGIN, "skills");
 
 const WORKFLOW_REFERENCES: Record<string, string[]> = {
+  "wf-orchestrate": [
+    "escalation-contract", "orchestrate", "subagent-delegation",
+  ],
   "wf-grooming": [
     "brainstorming", "deepen-plan", "design-context", "interview-me",
     "report-bug", "reproduce-bug", "triage", "workflows-brainstorm",
@@ -21,9 +24,9 @@ const WORKFLOW_REFERENCES: Record<string, string[]> = {
   ],
   "wf-development": [
     "api-and-interface-design",
-    "debugging-and-error-recovery", "escalation-contract",
+    "debugging-and-error-recovery",
     "git-worktree", "observability-and-instrumentation",
-    "workflows-orchestrate", "workflows-work",
+    "workflows-work",
   ],
   "wf-testing": [
     "test-browser", "test-driven-development", "test-strategy-reviewer",
@@ -34,10 +37,10 @@ const WORKFLOW_REFERENCES: Record<string, string[]> = {
     "security-and-hardening", "workflows-review",
   ],
   "wf-delivery": [
-    "changelog", "ci-resolve-workflow-issues", "land-pr", "workflows-merge",
+    "changelog", "ci-resolve-workflow-issues", "land-pr",
   ],
   "wf-documentation": [
-    "compound-docs", "deploy-docs", "document-review", "land-docs",
+    "compound-docs", "document-review", "land-docs",
     "reflect-for-skill-updates", "workflows-compound",
   ],
   "wf-setup": [
@@ -74,7 +77,7 @@ function recursiveFiles(dir: string): string[] {
 }
 
 describe("workflow skill architecture", () => {
-  test("the public skill set is fixed at seven wf-* routers", () => {
+  test("the public skill set is fixed at eight wf-* routers", () => {
     const actual = readdirSync(SKILLS, { withFileTypes: true })
       .filter((entry) => entry.isDirectory())
       .map((entry) => entry.name)
@@ -402,7 +405,7 @@ describe("workflow skill architecture", () => {
     // NOT restate the label-resolution rule — that duplication is the defect.
     // Category-level: assert the rule is present, not its wording.
     const orchestrate = readFileSync(
-      path.join(SKILLS, "wf-development", "references", "workflows-orchestrate.md"),
+      path.join(SKILLS, "wf-orchestrate", "references", "orchestrate.md"),
       "utf8",
     );
     // Whitespace-normalized: the earlier form embedded the file's hard wrap, so
@@ -445,8 +448,8 @@ describe("workflow skill architecture", () => {
     // its load-bearing shape ("only/no other `posture:*` label"), not by any one
     // spelling, across every skill doc that discusses posture.
     const postureDocs = [
-      path.join(SKILLS, "wf-development", "references", "workflows-orchestrate.md"),
-      path.join(SKILLS, "wf-development", "references", "escalation-contract.md"),
+      path.join(SKILLS, "wf-orchestrate", "references", "orchestrate.md"),
+      path.join(SKILLS, "wf-orchestrate", "references", "escalation-contract.md"),
       path.join(SKILLS, "wf-delivery", "references", "land-pr.md"),
       path.join(SKILLS, "wf-grooming", "references", "workflows-plan.md"),
     ];
@@ -466,7 +469,7 @@ describe("workflow skill architecture", () => {
     // The escalation contract must not whitelist the tracker as a trusted
     // source of instructions, and must be honest about where (a) is enforced.
     const contract = readFileSync(
-      path.join(SKILLS, "wf-development", "references", "escalation-contract.md"),
+      path.join(SKILLS, "wf-orchestrate", "references", "escalation-contract.md"),
       "utf8",
     );
     expect(contract).not.toContain("not the user or the tracker");
@@ -486,7 +489,7 @@ describe("workflow skill architecture", () => {
     const TOKEN = "escalation-contract.md";
 
     const orchestrate = readFileSync(
-      path.join(SKILLS, "wf-development", "references", "workflows-orchestrate.md"),
+      path.join(SKILLS, "wf-orchestrate", "references", "orchestrate.md"),
       "utf8",
     );
     expect(orchestrate).toContain(TOKEN);
@@ -547,9 +550,11 @@ describe("workflow skill architecture", () => {
 
     // Review of PR #304: this route is directly selectable from wf-development's
     // SKILL.md, so it must carry the posture read itself rather than assuming
-    // the agent arrived via the orchestrate router.
-    expect(work).toContain("workflows-orchestrate.md#delivery-posture");
-    expect(work).toContain("gh issue view <N> --repo <origin> --json labels");
+    // the agent arrived via the orchestrate router. The read is the engine's
+    // fused --groom-verify surface (same as orchestrate and land-pr), never a
+    // hand-assembled label read.
+    expect(work).toContain("orchestrate.md#delivery-posture");
+    expect(work).toContain("--groom-verify <N>");
 
     // Issue text is untrusted input, stated where the agent is told to treat
     // the groomed artifact as intent.
@@ -592,7 +597,7 @@ describe("workflow skill architecture", () => {
       "utf8",
     ));
     const orchestrate = flow(readFileSync(
-      path.join(SKILLS, "wf-development", "references", "workflows-orchestrate.md"),
+      path.join(SKILLS, "wf-orchestrate", "references", "orchestrate.md"),
       "utf8",
     ));
 
@@ -653,7 +658,7 @@ describe("workflow skill architecture", () => {
     // policy: freeze the category, not the spelling; see docs/solutions/
     // testing-patterns/grep-acceptance-checks-and-subset-fixtures-give-false-confidence.md).
     const orchestratePath = path.join(
-      SKILLS, "wf-development", "references", "workflows-orchestrate.md",
+      SKILLS, "wf-orchestrate", "references", "orchestrate.md",
     );
     const orchestrate = readFileSync(orchestratePath, "utf8");
 
@@ -755,7 +760,7 @@ describe("workflow skill architecture", () => {
       path.join(SKILLS, "wf-delivery", "references", "land-pr.md"),
       "utf8",
     );
-    expect(landPr).toContain("workflows-orchestrate.md#delivery-posture");
+    expect(landPr).toContain("orchestrate.md#delivery-posture");
     const postureTriggerMentions = landPr.split("resolved delivery posture").length - 1;
     expect(postureTriggerMentions).toBe(2);
     expect(landPr).not.toContain(CHAIN);
@@ -828,30 +833,6 @@ describe("workflow skill architecture", () => {
     ]) {
       expect(source).not.toContain(primitive);
     }
-  });
-
-  test("the migration map never names a reference that no longer exists", () => {
-    // WORKFLOW_SKILLS.md's migration map is a SUBSET of WORKFLOW_REFERENCES by
-    // design -- it records only references that were formerly standalone
-    // skills, so natively-authored ones (design-context, escalation-contract,
-    // subagent-delegation, lifecycle-bootstrap) are legitimately absent.
-    // Asserting equality would erase that distinction; the real invariant is
-    // that the map cannot advertise a deleted file.
-    const doc = readFileSync(path.join(PLUGIN, "WORKFLOW_SKILLS.md"), "utf8");
-    const map = doc.slice(doc.indexOf("## Migration map"));
-    const dangling: string[] = [];
-
-    for (const entry of map.matchAll(
-      /^- `(wf-[a-z]+)`:\s*((?:.|\n(?!\s*-\s|\n))*)/gm,
-    )) {
-      const owner = entry[1];
-      for (const cited of entry[2].matchAll(/`([a-z0-9-]+)`/g)) {
-        const target = path.join(SKILLS, owner, "references", `${cited[1]}.md`);
-        if (!existsSync(target)) dangling.push(`${owner} -> ${cited[1]}`);
-      }
-    }
-
-    expect(dangling).toEqual([]);
   });
 
   test("grooming challenges scope before it is settled or persisted", () => {

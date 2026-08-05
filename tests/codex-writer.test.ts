@@ -1,18 +1,9 @@
 import { describe, expect, test } from "bun:test"
-import { promises as fs } from "fs"
+import { existsSync, promises as fs } from "fs"
 import path from "path"
 import os from "os"
 import { writeCodexBundle } from "../src/targets/codex"
 import type { CodexBundle } from "../src/types/codex"
-
-async function exists(filePath: string): Promise<boolean> {
-  try {
-    await fs.access(filePath)
-    return true
-  } catch {
-    return false
-  }
-}
 
 describe("writeCodexBundle", () => {
   test("writes prompts, skills, and config", async () => {
@@ -37,11 +28,11 @@ describe("writeCodexBundle", () => {
 
     await writeCodexBundle(tempRoot, bundle)
 
-    expect(await exists(path.join(tempRoot, ".codex", "prompts", "command-one.md"))).toBe(true)
-    expect(await exists(path.join(tempRoot, ".codex", "skills", "skill-one", "SKILL.md"))).toBe(true)
-    expect(await exists(path.join(tempRoot, ".codex", "skills", "agent-skill", "SKILL.md"))).toBe(true)
+    expect(existsSync(path.join(tempRoot, ".codex", "prompts", "command-one.md"))).toBe(true)
+    expect(existsSync(path.join(tempRoot, ".codex", "skills", "skill-one", "SKILL.md"))).toBe(true)
+    expect(existsSync(path.join(tempRoot, ".codex", "skills", "agent-skill", "SKILL.md"))).toBe(true)
     const configPath = path.join(tempRoot, ".codex", "config.toml")
-    expect(await exists(configPath)).toBe(true)
+    expect(existsSync(configPath)).toBe(true)
 
     const config = await fs.readFile(configPath, "utf8")
     expect(config).toContain("[mcp_servers.local]")
@@ -70,8 +61,8 @@ describe("writeCodexBundle", () => {
 
     await writeCodexBundle(codexRoot, bundle)
 
-    expect(await exists(path.join(codexRoot, "prompts", "command-one.md"))).toBe(true)
-    expect(await exists(path.join(codexRoot, "skills", "skill-one", "SKILL.md"))).toBe(true)
+    expect(existsSync(path.join(codexRoot, "prompts", "command-one.md"))).toBe(true)
+    expect(existsSync(path.join(codexRoot, "skills", "skill-one", "SKILL.md"))).toBe(true)
   })
 
   test("backs up existing config.toml before overwriting", async () => {

@@ -1,0 +1,13 @@
+{
+  "skill_name": "wf-orchestrate",
+  "trigger": {
+    "positive": [
+      { "prompt": "Run this ticket through the complete engineering lifecycle end to end", "top_k": 2 },
+      { "prompt": "Drive the ready work item through every stage and stop only for blockers", "top_k": 2 }
+    ],
+    "negative": [
+      { "prompt": "Reproduce this bug report and groom it into a plan", "owner": "wf-grooming" },
+      { "prompt": "Adopt and configure the plugin in this repository for the first time", "owner": "wf-setup" }
+    ]
+  }
+}

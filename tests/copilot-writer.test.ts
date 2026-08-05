@@ -1,18 +1,9 @@
 import { describe, expect, test } from "bun:test"
-import { promises as fs } from "fs"
+import { existsSync, promises as fs } from "fs"
 import path from "path"
 import os from "os"
 import { writeCopilotBundle } from "../src/targets/copilot"
 import type { CopilotBundle } from "../src/types/copilot"
-
-async function exists(filePath: string): Promise<boolean> {
-  try {
-    await fs.access(filePath)
-    return true
-  } catch {
-    return false
-  }
-}
 
 describe("writeCopilotBundle", () => {
   test("writes agents, generated skills, copied skills, and MCP config", async () => {
@@ -48,10 +39,10 @@ describe("writeCopilotBundle", () => {
 
     await writeCopilotBundle(tempRoot, bundle)
 
-    expect(await exists(path.join(tempRoot, ".github", "agents", "security-reviewer.agent.md"))).toBe(true)
-    expect(await exists(path.join(tempRoot, ".github", "skills", "plan", "SKILL.md"))).toBe(true)
-    expect(await exists(path.join(tempRoot, ".github", "skills", "skill-one", "SKILL.md"))).toBe(true)
-    expect(await exists(path.join(tempRoot, ".github", "copilot-mcp-config.json"))).toBe(true)
+    expect(existsSync(path.join(tempRoot, ".github", "agents", "security-reviewer.agent.md"))).toBe(true)
+    expect(existsSync(path.join(tempRoot, ".github", "skills", "plan", "SKILL.md"))).toBe(true)
+    expect(existsSync(path.join(tempRoot, ".github", "skills", "skill-one", "SKILL.md"))).toBe(true)
+    expect(existsSync(path.join(tempRoot, ".github", "copilot-mcp-config.json"))).toBe(true)
 
     const agentContent = await fs.readFile(
       path.join(tempRoot, ".github", "agents", "security-reviewer.agent.md"),
@@ -81,9 +72,9 @@ describe("writeCopilotBundle", () => {
 
     await writeCopilotBundle(tempRoot, bundle)
 
-    expect(await exists(path.join(tempRoot, ".github", "agents", "test-agent.agent.md"))).toBe(true)
+    expect(existsSync(path.join(tempRoot, ".github", "agents", "test-agent.agent.md"))).toBe(true)
     // Should NOT create a plain .md file
-    expect(await exists(path.join(tempRoot, ".github", "agents", "test-agent.md"))).toBe(false)
+    expect(existsSync(path.join(tempRoot, ".github", "agents", "test-agent.md"))).toBe(false)
   })
 
   test("writes directly into .github output root without double-nesting", async () => {
@@ -97,10 +88,10 @@ describe("writeCopilotBundle", () => {
 
     await writeCopilotBundle(githubRoot, bundle)
 
-    expect(await exists(path.join(githubRoot, "agents", "reviewer.agent.md"))).toBe(true)
-    expect(await exists(path.join(githubRoot, "skills", "plan", "SKILL.md"))).toBe(true)
+    expect(existsSync(path.join(githubRoot, "agents", "reviewer.agent.md"))).toBe(true)
+    expect(existsSync(path.join(githubRoot, "skills", "plan", "SKILL.md"))).toBe(true)
     // Should NOT double-nest under .github/.github
-    expect(await exists(path.join(githubRoot, ".github"))).toBe(false)
+    expect(existsSync(path.join(githubRoot, ".github"))).toBe(false)
   })
 
   test("handles empty bundles gracefully", async () => {
@@ -112,7 +103,7 @@ describe("writeCopilotBundle", () => {
     }
 
     await writeCopilotBundle(tempRoot, bundle)
-    expect(await exists(tempRoot)).toBe(true)
+    expect(existsSync(tempRoot)).toBe(true)
   })
 
   test("writes multiple agents as separate .agent.md files", async () => {
@@ -130,9 +121,9 @@ describe("writeCopilotBundle", () => {
 
     await writeCopilotBundle(githubRoot, bundle)
 
-    expect(await exists(path.join(githubRoot, "agents", "security-sentinel.agent.md"))).toBe(true)
-    expect(await exists(path.join(githubRoot, "agents", "performance-oracle.agent.md"))).toBe(true)
-    expect(await exists(path.join(githubRoot, "agents", "code-simplicity-reviewer.agent.md"))).toBe(true)
+    expect(existsSync(path.join(githubRoot, "agents", "security-sentinel.agent.md"))).toBe(true)
+    expect(existsSync(path.join(githubRoot, "agents", "performance-oracle.agent.md"))).toBe(true)
+    expect(existsSync(path.join(githubRoot, "agents", "code-simplicity-reviewer.agent.md"))).toBe(true)
   })
 
   test("backs up existing copilot-mcp-config.json before overwriting", async () => {
@@ -181,7 +172,7 @@ describe("writeCopilotBundle", () => {
     await writeCopilotBundle(tempRoot, bundle)
 
     const skillPath = path.join(tempRoot, ".github", "skills", "deploy", "SKILL.md")
-    expect(await exists(skillPath)).toBe(true)
+    expect(existsSync(skillPath)).toBe(true)
 
     const content = await fs.readFile(skillPath, "utf8")
     expect(content).toContain("Deploy steps.")

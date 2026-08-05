@@ -12,40 +12,14 @@ or hand-write CHANGELOG.md entries. See root `AGENTS.md` and
 Before committing ANY changes:
 
 - [ ] PR title uses a Conventional Commit type (`feat:`/`fix:`/`docs:`/`refactor:`/`chore:`/`perf:`)
-- [ ] README.md component counts verified
-- [ ] README.md tables accurate (agents, skills)
-- [ ] plugin.json description matches current counts
+- [ ] plugin.json / marketplace.json descriptions match current component counts (`bun test` enforces this)
 - [ ] Did NOT hand-edit plugin.json's version or CHANGELOG.md
-
-### Directory Structure
-
-```
-agents/
-├── review/     # Code review agents
-├── research/   # Research and analysis agents
-├── design/     # Design and UI agents
-├── workflow/   # Workflow automation agents
-└── docs/       # Documentation agents
-
-skills/
-└── wf-<domain>/
-    ├── SKILL.md      # Public workflow-policy router
-    └── references/   # On-demand procedures; never independently discoverable skills
-```
 
 ## Skill Naming Convention
 
-The plugin has exactly seven public workflow-policy skills, all using the `wf-` prefix:
+The plugin has exactly eight public workflow-policy skills, all using the `wf-` prefix.
 
-- `wf-grooming`
-- `wf-development`
-- `wf-testing`
-- `wf-review`
-- `wf-delivery`
-- `wf-documentation`
-- `wf-setup`
-
-Do not add another public skill for a narrower procedure. Add it as a progressive-disclosure reference under the owning router. Repository-specific operational knowledge is not part of this plugin: consumer repositories provide it through the fixed root `AGENTS.md` capability contract and existing repository-owned skills or documentation. See [WORKFLOW_SKILLS.md](WORKFLOW_SKILLS.md).
+Do not add another public skill for a narrower procedure. Add it as a progressive-disclosure reference under the owning router. Cross-stage policy (routing, delivery posture, escalation, sub-agent delegation) belongs to `wf-orchestrate` references; stage-internal procedure belongs to the stage router. Repository-specific operational knowledge is not part of this plugin: consumer repositories provide it through the fixed root `AGENTS.md` capability contract and existing repository-owned skills or documentation. See [WORKFLOW_SKILLS.md](WORKFLOW_SKILLS.md).
 
 ## Skill Compliance Checklist
 

@@ -1,18 +1,9 @@
 import { describe, expect, test } from "bun:test"
-import { promises as fs } from "fs"
+import { existsSync, promises as fs } from "fs"
 import os from "os"
 import path from "path"
 import { writeClaudeBundle } from "../src/targets/claude"
 import type { ClaudePlugin } from "../src/types/claude"
-
-async function exists(filePath: string): Promise<boolean> {
-  try {
-    await fs.access(filePath)
-    return true
-  } catch {
-    return false
-  }
-}
 
 describe("writeClaudeBundle", () => {
   test("copies the source plugin tree to a named subdirectory", async () => {
@@ -29,10 +20,10 @@ describe("writeClaudeBundle", () => {
     await writeClaudeBundle(tempRoot, bundle)
 
     expect(
-      await exists(path.join(tempRoot, "agentic-engineering", ".claude-plugin", "plugin.json")),
+      existsSync(path.join(tempRoot, "agentic-engineering", ".claude-plugin", "plugin.json")),
     ).toBe(true)
-    expect(await exists(path.join(tempRoot, "agentic-engineering", "agents", "agent-one.md"))).toBe(true)
-    expect(await exists(path.join(tempRoot, "agentic-engineering", "skills", "skill-one", "SKILL.md"))).toBe(
+    expect(existsSync(path.join(tempRoot, "agentic-engineering", "agents", "agent-one.md"))).toBe(true)
+    expect(existsSync(path.join(tempRoot, "agentic-engineering", "skills", "skill-one", "SKILL.md"))).toBe(
       true,
     )
   })
@@ -51,8 +42,8 @@ describe("writeClaudeBundle", () => {
 
     await writeClaudeBundle(directRoot, bundle)
 
-    expect(await exists(path.join(directRoot, ".claude-plugin", "plugin.json"))).toBe(true)
-    expect(await exists(path.join(directRoot, "commands", "command-one.md"))).toBe(true)
-    expect(await exists(path.join(directRoot, "agentic-engineering"))).toBe(false)
+    expect(existsSync(path.join(directRoot, ".claude-plugin", "plugin.json"))).toBe(true)
+    expect(existsSync(path.join(directRoot, "commands", "command-one.md"))).toBe(true)
+    expect(existsSync(path.join(directRoot, "agentic-engineering"))).toBe(false)
   })
 })

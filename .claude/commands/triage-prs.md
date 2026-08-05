@@ -178,10 +178,8 @@ After all PRs are reviewed:
 
 Use **AskUserQuestion**:
 
-1. **Run `/release-docs`** - Update documentation site if components changed
-2. **Run `/changelog`** - Generate changelog for merged PRs
-3. **Commit any local changes** - If version bumps needed
-4. **Done** - Wrap up
+1. **Commit any local changes** - If version bumps needed
+2. **Done** - Wrap up
 
 ## Important Notes
 

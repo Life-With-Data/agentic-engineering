@@ -19,7 +19,18 @@ So a single shared emitter works everywhere — no per-platform branching.
 from __future__ import annotations
 
 import json
+import re
 import sys
+
+
+def strip_quotes(command: str) -> str:
+    """Strip single- and double-quoted spans so prose that merely *mentions* a
+    guarded token (a quoted commit message, an `echo`, a `grep`) cannot
+    false-trigger a guard. Shared by the safety hooks; each guard layers its
+    own extra stripping (comments, heredoc bodies) on top."""
+    command = re.sub(r"'[^']*'", "", command)
+    command = re.sub(r'"[^"]*"', "", command)
+    return command
 
 
 def normalize(data: dict) -> dict:

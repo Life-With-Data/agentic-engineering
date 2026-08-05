@@ -5,9 +5,9 @@ import { loadClaudeHome } from "../parsers/claude-home"
 import { syncToOpenCode } from "../sync/opencode"
 import { syncToCodex } from "../sync/codex"
 import { syncToPi } from "../sync/pi"
-import { syncToDroid } from "../sync/droid"
 import { syncToCopilot } from "../sync/copilot"
 import { expandHome } from "../utils/resolve-home"
+import { syncSkills } from "../utils/symlink"
 
 const validTargets = ["opencode", "codex", "pi", "droid", "copilot"] as const
 type SyncTarget = (typeof validTargets)[number]
@@ -95,7 +95,8 @@ export default defineCommand({
         await syncToPi(config, outputRoot)
         break
       case "droid":
-        await syncToDroid(config, outputRoot)
+        // Droid only takes skills; no MCP config is written.
+        await syncSkills(config.skills, path.join(outputRoot, "skills"))
         break
       case "copilot":
         await syncToCopilot(config, outputRoot)

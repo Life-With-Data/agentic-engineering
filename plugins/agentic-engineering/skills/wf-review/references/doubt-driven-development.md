@@ -72,10 +72,12 @@ separator) is a last resort and must be flagged as degraded.
 ## Cross-model second opinion (optional)
 
 A different-architecture model catches blind spots a single model shares
-with itself. In an interactive session, offer it **once per artifact** after
+with itself. In an interactive standard-posture session, offer it **once per
+artifact** after
 the first single-model review — *"Want a cross-model second opinion (Gemini
 CLI, Codex CLI, manual, or skip)?"* — and acknowledge the answer; skipping is
-fine, silent skipping is not. In non-interactive contexts, cross-model is
+fine, silent skipping is not. In non-interactive contexts and
+autonomous-posture runs, cross-model is
 skipped and the skip is announced. Never invoke an external CLI without
 explicit user authorization, and re-confirm the exact command each run.
 

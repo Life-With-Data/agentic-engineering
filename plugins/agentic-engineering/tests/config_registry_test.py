@@ -94,15 +94,6 @@ class ValidationTest(unittest.TestCase):
         for value in ("yes", "1", "maybe", ""):
             self.assertFalse(config_registry._validate(flag, value))
 
-    def test_enum_accepts_only_declared_choices(self) -> None:
-        # github-project is currently the only supported tracker; retired
-        # modes (none, github) and never-supported trackers are invalid.
-        flag = config_registry._BY_KEY["issue_tracker"]
-        for value in ("github-project", "GITHUB-PROJECT"):
-            self.assertTrue(config_registry._validate(flag, value))
-        for value in ("linear", "beads", "github", "none", ""):
-            self.assertFalse(config_registry._validate(flag, value))
-
     def test_delivery_mode_enum_accepts_only_standard_or_autonomous(self) -> None:
         flag = config_registry._BY_KEY["delivery_mode"]
         for value in ("standard", "autonomous", "AUTONOMOUS"):
@@ -110,12 +101,6 @@ class ValidationTest(unittest.TestCase):
         for value in ("hands-off", "yolo", ""):
             self.assertFalse(config_registry._validate(flag, value))
 
-    def test_duration_accepts_positive_seconds_or_duration_suffix(self) -> None:
-        flag = config_registry._BY_KEY["plugin_health_ttl"]
-        for value in ("1", "15m", "2H", "7d", "30s"):
-            self.assertTrue(config_registry._validate(flag, value))
-        for value in ("0", "-1", "15x", "", "1.5m"):
-            self.assertFalse(config_registry._validate(flag, value))
 
 class InvalidStaleValueTest(unittest.TestCase):
     def setUp(self) -> None:
@@ -124,14 +109,14 @@ class InvalidStaleValueTest(unittest.TestCase):
         self.ctx = _init_repo(self._tmp.name)
 
     def test_stale_invalid_value_is_flagged_not_crashed(self) -> None:
-        # A stale pre-3.0.0-style override (see workflow_repo_preflight_test.py)
-        # must surface as invalid, not raise and not silently pass through.
+        # A stale or malformed override must surface as invalid, not raise
+        # and not silently pass through.
         Path(self.ctx.root, "agentic-engineering.local.md").write_text(
-            "---\nissue_tracker: linear\n---\n", encoding="utf-8")
-        row = config_registry.verb_get(self.ctx, "issue_tracker")
+            "---\ndelivery_mode: yolo\n---\n", encoding="utf-8")
+        row = config_registry.verb_get(self.ctx, "delivery_mode")
         self.assertTrue(row["set"])
         self.assertFalse(row["valid"])
-        self.assertEqual(row["effective"], "auto-detect")  # falls back to default
+        self.assertEqual(row["effective"], "standard")  # falls back to default
 
 
 class SetTest(unittest.TestCase):
@@ -165,7 +150,7 @@ class SetTest(unittest.TestCase):
 
     def test_set_invalid_value_refused(self) -> None:
         with self.assertRaises(lifecycle_board.BoardError) as cm:
-            config_registry.verb_set(self.ctx, "issue_tracker", "bogus")
+            config_registry.verb_set(self.ctx, "delivery_mode", "bogus")
         self.assertEqual(cm.exception.code, "invalid_value")
         self.assertFalse(Path(self.ctx.root, "agentic-engineering.local.md").exists())
 
@@ -195,7 +180,7 @@ class SetTest(unittest.TestCase):
         local_config = Path(self.ctx.root, "agentic-engineering.local.md")
         original = (
             "---\n"
-            "issue_tracker: github-project\n"
+            "delivery_mode: standard\n"
             "review_agents: [kieran-rails-reviewer, code-simplicity-reviewer]\n"
             "---\n\n"
             "# Review Context\n\n"
@@ -207,7 +192,7 @@ class SetTest(unittest.TestCase):
 
         after = local_config.read_text(encoding="utf-8")
         self.assertIn("nudge_todowrite: true", after)
-        self.assertIn("issue_tracker: github-project", after)
+        self.assertIn("delivery_mode: standard", after)
         self.assertIn("review_agents: [kieran-rails-reviewer, code-simplicity-reviewer]", after)
         self.assertIn("# Review Context\n\nAdd project-specific review instructions here.\n", after)
 

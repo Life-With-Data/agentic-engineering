@@ -1,3 +1,5 @@
+import type { SkillDir } from "./claude"
+
 export type KiroAgent = {
   name: string
   config: KiroAgentConfig
@@ -19,11 +21,6 @@ export type KiroSkill = {
   content: string // Full SKILL.md with YAML frontmatter
 }
 
-export type KiroSkillDir = {
-  name: string
-  sourceDir: string
-}
-
 export type KiroSteeringFile = {
   name: string
   content: string
@@ -38,7 +35,7 @@ export type KiroMcpServer = {
 export type KiroBundle = {
   agents: KiroAgent[]
   generatedSkills: KiroSkill[]
-  skillDirs: KiroSkillDir[]
+  skillDirs: SkillDir[]
   steeringFiles: KiroSteeringFile[]
   mcpServers: Record<string, KiroMcpServer>
 }

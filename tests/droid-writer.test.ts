@@ -1,18 +1,9 @@
 import { describe, expect, test } from "bun:test"
-import { promises as fs } from "fs"
+import { existsSync, promises as fs } from "fs"
 import path from "path"
 import os from "os"
 import { writeDroidBundle } from "../src/targets/droid"
 import type { DroidBundle } from "../src/types/droid"
-
-async function exists(filePath: string): Promise<boolean> {
-  try {
-    await fs.access(filePath)
-    return true
-  } catch {
-    return false
-  }
-}
 
 describe("writeDroidBundle", () => {
   test("writes commands, droids, and skills", async () => {
@@ -30,9 +21,9 @@ describe("writeDroidBundle", () => {
 
     await writeDroidBundle(tempRoot, bundle)
 
-    expect(await exists(path.join(tempRoot, ".factory", "commands", "plan.md"))).toBe(true)
-    expect(await exists(path.join(tempRoot, ".factory", "droids", "security-reviewer.md"))).toBe(true)
-    expect(await exists(path.join(tempRoot, ".factory", "skills", "skill-one", "SKILL.md"))).toBe(true)
+    expect(existsSync(path.join(tempRoot, ".factory", "commands", "plan.md"))).toBe(true)
+    expect(existsSync(path.join(tempRoot, ".factory", "droids", "security-reviewer.md"))).toBe(true)
+    expect(existsSync(path.join(tempRoot, ".factory", "skills", "skill-one", "SKILL.md"))).toBe(true)
 
     const commandContent = await fs.readFile(
       path.join(tempRoot, ".factory", "commands", "plan.md"),
@@ -58,10 +49,10 @@ describe("writeDroidBundle", () => {
 
     await writeDroidBundle(factoryRoot, bundle)
 
-    expect(await exists(path.join(factoryRoot, "commands", "plan.md"))).toBe(true)
-    expect(await exists(path.join(factoryRoot, "droids", "reviewer.md"))).toBe(true)
+    expect(existsSync(path.join(factoryRoot, "commands", "plan.md"))).toBe(true)
+    expect(existsSync(path.join(factoryRoot, "droids", "reviewer.md"))).toBe(true)
     // Should not double-nest under .factory/.factory
-    expect(await exists(path.join(factoryRoot, ".factory"))).toBe(false)
+    expect(existsSync(path.join(factoryRoot, ".factory"))).toBe(false)
   })
 
   test("handles empty bundles gracefully", async () => {
@@ -75,7 +66,7 @@ describe("writeDroidBundle", () => {
     await writeDroidBundle(tempRoot, bundle)
 
     // Root should exist but no subdirectories created
-    expect(await exists(tempRoot)).toBe(true)
+    expect(existsSync(tempRoot)).toBe(true)
   })
 
   test("writes multiple commands as separate files", async () => {
@@ -93,8 +84,8 @@ describe("writeDroidBundle", () => {
 
     await writeDroidBundle(factoryRoot, bundle)
 
-    expect(await exists(path.join(factoryRoot, "commands", "plan.md"))).toBe(true)
-    expect(await exists(path.join(factoryRoot, "commands", "work.md"))).toBe(true)
-    expect(await exists(path.join(factoryRoot, "commands", "brainstorm.md"))).toBe(true)
+    expect(existsSync(path.join(factoryRoot, "commands", "plan.md"))).toBe(true)
+    expect(existsSync(path.join(factoryRoot, "commands", "work.md"))).toBe(true)
+    expect(existsSync(path.join(factoryRoot, "commands", "brainstorm.md"))).toBe(true)
   })
 })

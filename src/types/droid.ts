@@ -1,3 +1,5 @@
+import type { SkillDir } from "./claude"
+
 export type DroidCommandFile = {
   name: string
   content: string
@@ -8,13 +10,8 @@ export type DroidAgentFile = {
   content: string
 }
 
-export type DroidSkillDir = {
-  name: string
-  sourceDir: string
-}
-
 export type DroidBundle = {
   commands: DroidCommandFile[]
   droids: DroidAgentFile[]
-  skillDirs: DroidSkillDir[]
+  skillDirs: SkillDir[]
 }

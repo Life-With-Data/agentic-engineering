@@ -1,18 +1,9 @@
 import { describe, expect, test } from "bun:test"
-import { promises as fs } from "fs"
+import { existsSync, promises as fs } from "fs"
 import path from "path"
 import os from "os"
 import { writeGeminiBundle } from "../src/targets/gemini"
 import type { GeminiBundle } from "../src/types/gemini"
-
-async function exists(filePath: string): Promise<boolean> {
-  try {
-    await fs.access(filePath)
-    return true
-  } catch {
-    return false
-  }
-}
 
 describe("writeGeminiBundle", () => {
   test("writes skills, commands, and settings.json", async () => {
@@ -43,10 +34,10 @@ describe("writeGeminiBundle", () => {
 
     await writeGeminiBundle(tempRoot, bundle)
 
-    expect(await exists(path.join(tempRoot, ".gemini", "skills", "security-reviewer", "SKILL.md"))).toBe(true)
-    expect(await exists(path.join(tempRoot, ".gemini", "skills", "skill-one", "SKILL.md"))).toBe(true)
-    expect(await exists(path.join(tempRoot, ".gemini", "commands", "plan.toml"))).toBe(true)
-    expect(await exists(path.join(tempRoot, ".gemini", "settings.json"))).toBe(true)
+    expect(existsSync(path.join(tempRoot, ".gemini", "skills", "security-reviewer", "SKILL.md"))).toBe(true)
+    expect(existsSync(path.join(tempRoot, ".gemini", "skills", "skill-one", "SKILL.md"))).toBe(true)
+    expect(existsSync(path.join(tempRoot, ".gemini", "commands", "plan.toml"))).toBe(true)
+    expect(existsSync(path.join(tempRoot, ".gemini", "settings.json"))).toBe(true)
 
     const skillContent = await fs.readFile(
       path.join(tempRoot, ".gemini", "skills", "security-reviewer", "SKILL.md"),
@@ -81,7 +72,7 @@ describe("writeGeminiBundle", () => {
 
     await writeGeminiBundle(tempRoot, bundle)
 
-    expect(await exists(path.join(tempRoot, ".gemini", "commands", "workflows", "plan.toml"))).toBe(true)
+    expect(existsSync(path.join(tempRoot, ".gemini", "commands", "workflows", "plan.toml"))).toBe(true)
   })
 
   test("does not double-nest when output root is .gemini", async () => {
@@ -99,10 +90,10 @@ describe("writeGeminiBundle", () => {
 
     await writeGeminiBundle(geminiRoot, bundle)
 
-    expect(await exists(path.join(geminiRoot, "skills", "reviewer", "SKILL.md"))).toBe(true)
-    expect(await exists(path.join(geminiRoot, "commands", "plan.toml"))).toBe(true)
+    expect(existsSync(path.join(geminiRoot, "skills", "reviewer", "SKILL.md"))).toBe(true)
+    expect(existsSync(path.join(geminiRoot, "commands", "plan.toml"))).toBe(true)
     // Should NOT double-nest under .gemini/.gemini
-    expect(await exists(path.join(geminiRoot, ".gemini"))).toBe(false)
+    expect(existsSync(path.join(geminiRoot, ".gemini"))).toBe(false)
   })
 
   test("handles empty bundles gracefully", async () => {
@@ -114,7 +105,7 @@ describe("writeGeminiBundle", () => {
     }
 
     await writeGeminiBundle(tempRoot, bundle)
-    expect(await exists(tempRoot)).toBe(true)
+    expect(existsSync(tempRoot)).toBe(true)
   })
 
   test("backs up existing settings.json before overwrite", async () => {

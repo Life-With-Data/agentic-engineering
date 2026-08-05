@@ -39,7 +39,7 @@ _LB_SPEC.loader.exec_module(lifecycle_board)
 @dataclass(frozen=True)
 class ConfigFlag:
     key: str
-    kind: str            # "boolean" | "enum" | "list" | "identity" | "duration"
+    kind: str            # "boolean" | "enum" | "identity"
     default: str          # effective value when unset ("auto-detect" is a valid sentinel)
     description: str
     owner: str            # plugin-relative path of the script that READS this key
@@ -50,22 +50,6 @@ class ConfigFlag:
 
 CONFIG_FLAGS = [
     ConfigFlag(
-        key="issue_tracker",
-        kind="enum",
-        default="auto-detect",
-        description=(
-            "Override which issue tracker /workflows-* skills resolve to. "
-            "github-project (a GitHub Project board) is currently the only "
-            "supported tracker; more may be supported later. Unset "
-            "auto-detects: committed board config -> github-project, "
-            "otherwise the repo is unconfigured (run the wf-setup lifecycle "
-            "bootstrap)."
-        ),
-        owner="scripts/workflow-repo-preflight.py",
-        file="local",
-        choices=("github-project",),
-    ),
-    ConfigFlag(
         key="nudge_todowrite",
         kind="boolean",
         default="false",
@@ -75,30 +59,6 @@ CONFIG_FLAGS = [
             "leaving it in TodoWrite's ephemeral in-session list."
         ),
         owner="scripts/nudge-todowrite-to-tracker.py",
-        file="local",
-    ),
-    ConfigFlag(
-        key="plugin_health_enabled",
-        kind="boolean",
-        default="true",
-        description="Enable the advisory SessionStart plugin asset health check.",
-        owner="scripts/plugin-health-check.py",
-        file="local",
-    ),
-    ConfigFlag(
-        key="plugin_health_ttl",
-        kind="duration",
-        default="15m",
-        description="Machine-global cache lifetime for plugin health probes (positive seconds, or s/m/h/d duration).",
-        owner="scripts/plugin-health-check.py",
-        file="local",
-    ),
-    ConfigFlag(
-        key="plugin_health_assets",
-        kind="list",
-        default="claude-mem",
-        description="Comma-separated plugin assets enabled for health probes (currently claude-mem only).",
-        owner="scripts/plugin-health-check.py",
         file="local",
     ),
     ConfigFlag(
@@ -187,11 +147,8 @@ def _validate(flag: ConfigFlag, value: str) -> bool:
         return value.strip().lower() in {"true", "false"}
     if flag.kind == "enum":
         return value.strip().lower() in flag.choices
-    if flag.kind == "duration":
-        import re
-        return re.fullmatch(r"[1-9][0-9]*(?:[smhd])?", value.strip().lower()) is not None
-    if flag.kind in ("list", "identity"):
-        return True  # list values are free-form; identity values are never validated here (never written via --set)
+    if flag.kind == "identity":
+        return True  # identity values are never validated here (never written via --set)
     return False
 
 

@@ -43,10 +43,6 @@ async function resolveClaudeRoot(inputPath: string): Promise<string> {
     return absolute
   }
 
-  if (absolute.endsWith(PLUGIN_MANIFEST)) {
-    return path.dirname(path.dirname(absolute))
-  }
-
   if (absolute.endsWith("plugin.json")) {
     return path.dirname(path.dirname(absolute))
   }

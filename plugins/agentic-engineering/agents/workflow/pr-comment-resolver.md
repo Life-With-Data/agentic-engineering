@@ -55,7 +55,6 @@ When you receive a comment or review feedback, you will:
       constructor, verify the function signature actually accepts the arguments
       you're passing. Run the language-appropriate check:
       - Python: `python -c "import X; help(X.ClassName.__init__)"`
-      - Ruby: `bundle exec ruby -e "require 'X'; puts X::ClassName.instance_method(:initialize).parameters"`
       - TypeScript/JS: Check the library's type definitions or documentation
       - Or use Context7 MCP: resolve the library ID, then query its constructor docs
 

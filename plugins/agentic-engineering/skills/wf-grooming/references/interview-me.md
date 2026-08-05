@@ -145,19 +145,6 @@ create a repository plan or brainstorm file.
 
 ## Example
 
-A short before-and-after.
-
-**Without `interview-me`:**
-
-```
-User:  build me a dashboard for our metrics
-Agent: <starts proposing chart libraries and layouts>
-```
-
-The agent has assumed: who it's for, what metrics, what "for our team" means, what success looks like. None of these are stated. Every assumption is a place the user can later say "that's not what I meant."
-
-**With `interview-me`:**
-
 ```
 User: build me a dashboard for our metrics
 
@@ -165,23 +152,13 @@ Agent:
 HYPOTHESIS: You want a way to answer "how are we doing?" in standup, and "dashboard" came to mind because that's the conventional answer.
 CONFIDENCE: ~30% — missing: who it's for, what "metrics" are, and what success looks like
 
-Q:     When you say "how are we doing?", who's asking — you alone, the engineering team in standup, or up the chain (e.g., your manager, an exec, a board)?
-GUESS: engineering team in standup, because "we" usually scopes that way and standups are where this question gets asked. If it's for execs the metrics and the framing change a lot.
+Q:     Who's asking "how are we doing?" — you alone, the team in standup, or up the chain?
+GUESS: engineering team in standup, because "we" usually scopes that way.
 
-User: It's actually for me. I keep losing track of which experiments are running and what their early signal looks like.
-
-Agent:
-Updated read: not a team dashboard at all. It's a personal experiment tracker. Confidence: ~60% — still missing: what "early signal" means and what done looks like.
-
-Q:     Is the gap that you don't know which experiments exist, or that you can't see their results in one place?
-GUESS: the second one. You have a list of experiments somewhere, but their results live in five different tools, and reconciling them by hand is what you're tired of.
-
-User: First one actually. I literally don't have a list. They're spread across different docs.
-
-Agent: <continues>
+User: It's actually for me. I keep losing track of which experiments are running.
 ```
 
-Two questions in, the agent has discovered the actual ask isn't "a dashboard." It's "a list." Different artifact, different scope, different work. The dashboard would have been wrong.
+Two questions in, the actual ask turns out to be "a list of my experiments," not a dashboard — different artifact, different scope. Building the dashboard would have been wrong.
 
 ## Interaction with Other Routes
 
@@ -191,32 +168,6 @@ Two questions in, the agent has discovered the actual ask isn't "a dashboard." I
 - **`wf-review` doubt-driven route**: opposite end of the timeline. Interviewing
   extracts intent before a decision; doubt-driven review challenges the artifact
   after a decision.
-
-## Common Rationalizations
-
-| Rationalization | Reality |
-|---|---|
-| "The ask is clear enough" | If the user's desired outcome can't be written in one sentence right now, the ask isn't clear. Run Step 1 before deciding. |
-| "Asking too many questions wastes their time" | Time wasted by 4–6 targeted questions is small. Time wasted by building the wrong thing is enormous, and the user is the one bearing that cost. |
-| "I'll figure it out as I build" | Switching costs after code exists are 10x what they are now. Discovery during implementation is rework. |
-| "They said 'whatever you think,' so I should just decide" | "Whatever you think" is delegation, not decision. Re-ask with two concrete options as a choice. |
-| "I should give them several options to pick from" | Options work when the user knows what they want and is choosing between trade-offs. They don't know what they want yet. Listing options widens the search; asking narrows it. |
-| "If I attach my guess, I'm leading them" | Leading is the point. Reacting is faster than generating from scratch. The risk is sycophancy, not leading; mitigate by being visibly willing to be wrong. |
-| "We've talked enough, I get it" | Test it: can the user's reaction to the next three questions be predicted? If not, the intent isn't clear yet. |
-| "The user said yes, we're done" | If the yes followed a vague restate or an open-ended "sounds good," the yes is hollow. Restate concretely and re-confirm. |
-
-## Red Flags
-
-- Three or more questions in a single message: that's batching, not interviewing
-- A question without an attached hypothesis: that's surveying, not committing
-- Accepting "whatever you think is best" as a terminal answer
-- Producing a spec, plan, or task list before the user has explicitly confirmed the restate
-- Questions framed as "what would be best practice?" instead of "what do you actually want?"
-- The user gives a sophistication-signaling answer ("scalable", "clean", "modern") and it's accepted without probing whether it's what they actually want
-- Three or more rounds without confidence visibly rising: the questions are wrong, step back and reframe
-- A confidence number below ~70% with no reason attached: the user can't help close the gap without knowing what's missing
-- Saving the intent doc before the user has confirmed (the doc itself implies a yes the user didn't give)
-- Skipping the "Out of scope" line in the restate (silent disagreement about non-goals is half of misalignment)
 
 ## Verification
 

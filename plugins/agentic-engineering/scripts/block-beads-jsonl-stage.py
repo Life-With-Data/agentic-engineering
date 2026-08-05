@@ -30,6 +30,10 @@ Design notes:
 import json
 import re
 import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from hook_payload import strip_quotes
 
 # Matches an explicit beads export path on a `git add` command.
 BEADS_EXPORT = re.compile(r"\.beads/(?:issues|interactions|events)\.jsonl\b")
@@ -70,10 +74,7 @@ def main():
 def sanitize(command: str) -> str:
     """Strip quoted strings and comments so prose mentioning these paths
     (docs, echoes, commit messages) can't false-trigger."""
-    command = re.sub(r"'[^']*'", "", command)
-    command = re.sub(r'"[^"]*"', "", command)
-    command = re.sub(r"#.*", "", command)
-    return command
+    return re.sub(r"#.*", "", strip_quotes(command))
 
 
 if __name__ == "__main__":

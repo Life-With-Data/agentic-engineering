@@ -5,17 +5,9 @@ you need.
 
 ## Documentation first
 
-Most questions are answered in the docs and the plugin README:
-
-- **Documentation site**: https://life-with-data.github.io/agentic-engineering/
-  — getting started, and the full reference for agents, commands, skills, and
-  MCP servers.
-- **Plugin README**:
-  [`plugins/agentic-engineering/README.md`](../plugins/agentic-engineering/README.md)
-  — every component with a one-line description.
-- **Changelog**:
-  [`plugins/agentic-engineering/CHANGELOG.md`](../plugins/agentic-engineering/CHANGELOG.md)
-  — what changed and when.
+Start with the [plugin README](../plugins/agentic-engineering/README.md); the
+`agents/` tree and each component's frontmatter are the catalog, and the
+[changelog](../plugins/agentic-engineering/CHANGELOG.md) covers what changed and when.
 
 ## Reporting a bug
 

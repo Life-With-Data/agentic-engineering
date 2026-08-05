@@ -35,13 +35,8 @@ A gate verdict's route is followed and reported, never presented to the user as 
 
 ### Phase 0: Assess Requirements Clarity
 
-Evaluate whether brainstorming is needed based on the feature description.
-
-**Clear requirements indicators:**
-- Specific acceptance criteria provided
-- Referenced existing patterns to follow
-- Described exact expected behavior
-- Constrained, well-defined scope
+Evaluate whether brainstorming is needed based on the feature description —
+the clarity signals live in the [brainstorming reference](brainstorming.md).
 
 **If requirements are already clear:**
 Ask: "Your requirements seem detailed enough to proceed directly to planning.
@@ -60,29 +55,17 @@ Focus on: similar features, established patterns, CLAUDE.md guidance.
 
 #### 1.2 Collaborative Dialogue
 
-Use the **AskUserQuestion tool** to ask questions **one at a time**. The
-interview asks what repository evidence cannot answer — product intent,
-priorities, and preferences — not everything askable; resolve the rest from
-the repository and state the resolution.
-
-**Guidelines (see the [brainstorming reference](brainstorming.md) for detailed techniques):**
-- Prefer multiple choice when natural options exist
-- Start broad (purpose, users) then narrow (constraints, edge cases)
-- Validate assumptions explicitly
-- Ask about success criteria
+Use the **AskUserQuestion tool** to ask questions **one at a time**. Question
+techniques, interview scope, and topics live in the
+[brainstorming reference](brainstorming.md).
 
 **Exit condition:** Continue until the idea is clear OR user says "proceed"
 
 ### Phase 2: Explore Approaches
 
-Propose **2-3 concrete approaches** based on research and conversation.
-
-For each approach, provide:
-- Brief description (2-3 sentences)
-- Pros and cons
-- When it's best suited
-
-Lead with your recommendation and explain why. Apply YAGNI—prefer simpler solutions.
+Propose **2-3 concrete approaches** based on research and conversation — the
+per-approach structure and guidelines live in the
+[brainstorming reference](brainstorming.md).
 
 Use **AskUserQuestion tool** to ask which approach the user prefers.
 
@@ -99,8 +82,7 @@ and remove its directory only when empty. Never use recursive or glob-based
 cleanup, and do not remove the issue's separate generated work packet.
 
 **Issue structure:** See the [brainstorming reference](brainstorming.md) for
-the template format. Key sections: What We're Building, Why This Approach, Key
-Decisions, Open Questions.
+the template format.
 
 **IMPORTANT:** Before proceeding to Phase 4, check if there are any Open
 Questions in the issue body. If there are, YOU MUST ask the user about each one

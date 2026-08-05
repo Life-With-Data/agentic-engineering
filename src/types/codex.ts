@@ -1,13 +1,8 @@
-import type { ClaudeMcpServer } from "./claude"
+import type { ClaudeMcpServer, SkillDir } from "./claude"
 
 export type CodexPrompt = {
   name: string
   content: string
-}
-
-export type CodexSkillDir = {
-  name: string
-  sourceDir: string
 }
 
 export type CodexGeneratedSkill = {
@@ -17,7 +12,7 @@ export type CodexGeneratedSkill = {
 
 export type CodexBundle = {
   prompts: CodexPrompt[]
-  skillDirs: CodexSkillDir[]
+  skillDirs: SkillDir[]
   generatedSkills: CodexGeneratedSkill[]
   mcpServers?: Record<string, ClaudeMcpServer>
 }

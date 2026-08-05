@@ -54,13 +54,6 @@ differs between runners, so a suite that passes under one can fail under the
 other. See
 [leaked monkeypatches and runner ordering](../../../docs/solutions/testing-patterns/leaked-monkeypatches-and-runner-ordering-mask-real-dependencies.md).
 
-Changes to plugin components or documentation also require:
-
-```bash
-bun run docs:build
-bun run docs:check
-```
-
 Some wf-* skills vendor byte-identical copies of canonical plugin scripts so
 skills-only installs stay self-contained; the bundle map lives in
 `scripts/script-bundles.ts`. Edit the canonical script, never a vendored
@@ -100,7 +93,6 @@ the smallest matching surface:
 - Converter or installer: the smallest fixture in `tests/fixtures/` and its Bun test.
 - Plugin script or hook: its focused `plugins/agentic-engineering/tests/*_test.py` module with a temporary repository fixture.
 - Lifecycle behavior: `lifecycle_board_test.py` or `bootstrap_lifecycle_board_test.py`; never experiment against a live project board first.
-- Generated docs: `bun run docs:check`; regenerate only after understanding the drift.
 - Manifest consistency: the named case in `tests/plugin-consistency.test.ts`.
 
 Add the smallest regression test that fails for the same reason.
@@ -109,8 +101,7 @@ Add the smallest regression test that fails for the same reason.
 
 Infrastructure is repository-managed through committed files:
 
-- `.github/workflows/` owns CI, documentation checks, and release automation.
-- `docs/` is the GitHub Pages site; generated regions come from `scripts/generate-docs.ts`.
+- `.github/workflows/` owns CI and release automation.
 - `.claude-plugin/marketplace.json` is the marketplace catalog.
 - Each plugin's platform metadata directories own its manifests.
 - `plugins/agentic-engineering/scripts/` implements lifecycle-board automation.
@@ -149,11 +140,7 @@ construction, and permission weakening.
 - `docs/brainstorms/` and `docs/plans/` are historical archives; do not create
   new files there.
 - `docs/solutions/` stores compounded engineering learnings.
-- `docs/` contains the generated and hand-written GitHub Pages site.
 - `CLAUDE.md` and `AGENTS.md` define repository-wide operating guidance.
-
-Do not hand-edit generated regions in `docs/index.html` or
-`docs/pages/*.html`; rebuild them from their source.
 
 ## Repository maintenance
 

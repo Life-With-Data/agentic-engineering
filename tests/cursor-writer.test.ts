@@ -1,18 +1,9 @@
 import { describe, expect, test } from "bun:test"
-import { promises as fs } from "fs"
+import { existsSync, promises as fs } from "fs"
 import os from "os"
 import path from "path"
 import { writeCursorBundle } from "../src/targets/cursor"
 import type { CursorBundle } from "../src/types/cursor"
-
-async function exists(filePath: string): Promise<boolean> {
-  try {
-    await fs.access(filePath)
-    return true
-  } catch {
-    return false
-  }
-}
 
 describe("writeCursorBundle", () => {
   test("writes rules, commands, skills, and mcp.json", async () => {
@@ -33,10 +24,10 @@ describe("writeCursorBundle", () => {
 
     await writeCursorBundle(tempRoot, bundle)
 
-    expect(await exists(path.join(tempRoot, ".cursor", "rules", "security-reviewer.mdc"))).toBe(true)
-    expect(await exists(path.join(tempRoot, ".cursor", "commands", "plan.md"))).toBe(true)
-    expect(await exists(path.join(tempRoot, ".cursor", "skills", "skill-one", "SKILL.md"))).toBe(true)
-    expect(await exists(path.join(tempRoot, ".cursor", "mcp.json"))).toBe(true)
+    expect(existsSync(path.join(tempRoot, ".cursor", "rules", "security-reviewer.mdc"))).toBe(true)
+    expect(existsSync(path.join(tempRoot, ".cursor", "commands", "plan.md"))).toBe(true)
+    expect(existsSync(path.join(tempRoot, ".cursor", "skills", "skill-one", "SKILL.md"))).toBe(true)
+    expect(existsSync(path.join(tempRoot, ".cursor", "mcp.json"))).toBe(true)
 
     const mcp = JSON.parse(await fs.readFile(path.join(tempRoot, ".cursor", "mcp.json"), "utf8"))
     expect(mcp.mcpServers.local.command).toBe("npx")
@@ -53,9 +44,9 @@ describe("writeCursorBundle", () => {
 
     await writeCursorBundle(cursorRoot, bundle)
 
-    expect(await exists(path.join(cursorRoot, "rules", "r.mdc"))).toBe(true)
-    expect(await exists(path.join(cursorRoot, "commands", "c.md"))).toBe(true)
-    expect(await exists(path.join(cursorRoot, ".cursor"))).toBe(false)
+    expect(existsSync(path.join(cursorRoot, "rules", "r.mdc"))).toBe(true)
+    expect(existsSync(path.join(cursorRoot, "commands", "c.md"))).toBe(true)
+    expect(existsSync(path.join(cursorRoot, ".cursor"))).toBe(false)
   })
 
   test("backs up existing mcp.json before overwriting", async () => {

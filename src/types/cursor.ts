@@ -1,4 +1,4 @@
-import type { ClaudeMcpServer } from "./claude"
+import type { ClaudeMcpServer, SkillDir } from "./claude"
 
 export type CursorRule = {
   name: string
@@ -10,14 +10,9 @@ export type CursorCommand = {
   content: string
 }
 
-export type CursorSkillDir = {
-  name: string
-  sourceDir: string
-}
-
 export type CursorBundle = {
   rules: CursorRule[]
   commands: CursorCommand[]
-  skillDirs: CursorSkillDir[]
+  skillDirs: SkillDir[]
   mcpServers?: Record<string, ClaudeMcpServer>
 }

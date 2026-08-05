@@ -7,9 +7,7 @@ description: Workflow policy for CI repair, release preparation, pull requests, 
 
 Layer: Workflow policy
 
-Owns: preflight, CI gates, release evidence, PR creation, merge readiness,
-the final pre-merge compounding gate, deployment handoff, and delivery
-reporting.
+Owns: preflight and the final pre-merge compounding gate.
 
 Requires repository capabilities: `test-execution`, `delivery`.
 
@@ -17,40 +15,33 @@ Does not contain: CI provider configuration, release commands, production creden
 
 ## Start here
 
-Scripts are bundled beside this `SKILL.md`; resolve `<skill-directory>` to that
-directory, never through a plugin root.
-
 ```bash
 python3 <skill-directory>/scripts/repository-context.py \
   --require test-execution \
   --require delivery
 ```
 
-Require `infrastructure-operations` and `security-and-access` before any deployment or production verification. Stop on contract failure. Read each required capability's primary target, then supporting targets only when needed.
+Require `infrastructure-operations` and `security-and-access` before any deployment or production verification. Stop on contract failure; read primary targets first, supporting targets only as needed.
 
 ## Route the request
 
 - Repair CI failures: read [CI workflow issues](references/ci-resolve-workflow-issues.md).
 - Prepare or update release notes: read [changelog](references/changelog.md).
-- Drive an open PR to merge: read [land PR](references/land-pr.md).
-- Use the workflow merge entry point: read [workflow merge](references/workflows-merge.md).
+- Drive an open PR to merge: read [land PR](references/land-pr.md), passing the PR number and optional `--auto` context.
 
 Documentation-only delivery is routed through `wf-documentation`.
 Artifact transports and release-media tooling come from repository capability targets.
 
 ## Sub-agent delegation
 
-Delegate per-job CI-failure diagnosis and release-note or PR-body drafting to
-focused sub-agents; the orchestrator retains merge decisions, every PR and
-tracker state write, release evidence, and verification of each delegated
-result against actual CI and repository state. Roles, dispatch, per-unit model
-selection, verification, and the inline fallback for hosts without a sub-agent
-mechanism are owned by [sub-agent
-delegation](../wf-development/references/subagent-delegation.md).
+Delegate per-unit stage work to focused sub-agents; the orchestrator retains
+verification and every tracker, board, and PR write. Roles, dispatch, model
+selection, and the inline fallback:
+[sub-agent delegation](../wf-orchestrate/references/subagent-delegation.md).
 
 ## Delivery gates
 
-1. Confirm `wf-testing` and `wf-review` are complete.
+1. Confirm testing and review evidence exists for the current head; absent evidence is a blocker returned to the caller, never a gate this stage runs itself.
 2. Reconcile the branch with its target using repository guidance.
 3. Run the repository's delivery checks.
 4. Resolve CI and review threads.
@@ -61,8 +52,8 @@ delegation](../wf-development/references/subagent-delegation.md).
 7. Merge only when policy and repository gates pass.
 8. Deploy or verify production only through declared capabilities.
 
-Delivery is complete only when the issue is closed and the board reads `Status = done`, verified by read-back — `--reconcile --issue <N>` repairs a missed stamp and `--delete-packet <N>` independently verifies the terminal state — not when the merge command returns. The [land route](references/land-pr.md) owns that mechanics.
+Delivery is complete only when the issue is closed and the board reads `Status = done`, verified by read-back — not when the merge command returns. The [land route](references/land-pr.md) owns that mechanics.
 
 ## Wrong-layer recovery
 
-If a delivery reference guesses a CI provider, deploy command, versioning convention, or credential flow, stop and use the mapped repository assets. The workflow decides when delivery is allowed; the repository decides how it is performed.
+If a delivery reference guesses a CI provider, deploy command, versioning convention, or credential flow, stop. Workflow policy wins on process; repository guidance wins on mechanics — consult the mapped repository capability targets for the latter.

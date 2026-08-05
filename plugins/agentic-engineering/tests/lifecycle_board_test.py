@@ -1985,18 +1985,18 @@ class AutoAddWorkflowTest(unittest.TestCase):
         (wf / "add-to-project.yml").write_text(
             "on: issues\njobs:\n  a:\n    steps:\n      - uses: actions/add-to-project@v2\n",
             encoding="utf-8")
-        self.assertEqual(lb.find_auto_add_workflow(ctx), ".github/workflows/add-to-project.yml")
+        self.assertEqual(lb._auto_add_candidates(ctx)[0][0], ".github/workflows/add-to-project.yml")
 
     def test_none_when_no_workflows_dir(self) -> None:
         ctx, _ = self._ctx()
-        self.assertIsNone(lb.find_auto_add_workflow(ctx))
+        self.assertEqual(lb._auto_add_candidates(ctx), [])
 
     def test_none_when_workflow_unrelated(self) -> None:
         ctx, root = self._ctx()
         wf = root / ".github" / "workflows"
         wf.mkdir(parents=True)
         (wf / "ci.yml").write_text("on: push\njobs: {}\n", encoding="utf-8")
-        self.assertIsNone(lb.find_auto_add_workflow(ctx))
+        self.assertEqual(lb._auto_add_candidates(ctx), [])
 
     def _write(self, text):
         ctx, root = self._ctx()
@@ -2029,7 +2029,7 @@ class AutoAddWorkflowTest(unittest.TestCase):
 
     def test_comments_do_not_count_as_workflow(self) -> None:
         ctx = self._write("# uses: actions/add-to-project@" + "a" * 40 + "\n")
-        self.assertIsNone(lb.find_auto_add_workflow(ctx))
+        self.assertEqual(lb._auto_add_candidates(ctx), [])
 
     def test_rejects_split_duplicate_or_scripted_credential_use(self) -> None:
         url = "https://github.com/orgs/acme/projects/5"
