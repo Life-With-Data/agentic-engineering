@@ -5,6 +5,22 @@ All notable changes to the agentic-engineering plugin will be documented in this
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [8.0.0](https://github.com/Life-With-Data/agentic-engineering/compare/agentic-engineering-v7.1.1...agentic-engineering-v8.0.0) (2026-08-05)
+
+
+### ⚠ BREAKING CHANGES
+
+* **workflows:** the delegation model is now vertical. wf-orchestrate is the new default entry point that dispatches the stage skills; stage skills no longer route laterally. Removed 8 Figma/Ruby-specific agents (figma-design-sync, design-implementation-reviewer, dhh-rails-reviewer, kieran-rails-reviewer, julik-frontend-races-reviewer, schema-drift-detector, lint, ankane-readme-writer), the GitHub Pages docs site and its generator, the workflows-merge and deploy-docs references, plugin-health-check, and the one-value issue_tracker override.
+
+### Features
+
+* **workflows:** vertical delegation via wf-orchestrate; drop Figma/Ruby support and the docs site ([#399](https://github.com/Life-With-Data/agentic-engineering/issues/399)) ([da06d87](https://github.com/Life-With-Data/agentic-engineering/commit/da06d87a6fad09fa71b12253267b3829dd64cabe))
+
+
+### Bug Fixes
+
+* **lifecycle:** make the claim protocol work for a GitHub App principal ([#394](https://github.com/Life-With-Data/agentic-engineering/issues/394)) ([be55c76](https://github.com/Life-With-Data/agentic-engineering/commit/be55c761ecd9f0fe56c0af1e776939bffe619477))
+
 ## [7.1.1](https://github.com/Life-With-Data/agentic-engineering/compare/agentic-engineering-v7.1.0...agentic-engineering-v7.1.1) (2026-08-05)
 
 
