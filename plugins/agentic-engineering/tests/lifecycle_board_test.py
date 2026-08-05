@@ -38,9 +38,10 @@ def _issue(number=1, state="OPEN", state_reason=None, assignees=(), stage=None,
     )
 
 
-def _pr(number=10, state="MERGED", merged=True, base="main", author="me"):
+def _pr(number=10, state="MERGED", merged=True, base="main", author="me",
+        provenance="trusted"):
     return {"number": number, "state": state, "merged": merged,
-            "baseRefName": base, "author": author}
+            "baseRefName": base, "author": author, "provenance": provenance}
 
 
 class StageOrderTest(unittest.TestCase):
@@ -304,6 +305,27 @@ class ProvenanceTest(unittest.TestCase):
         self.assertEqual(lb.resolve_provenance(human.author_association, human.author_is_bot),
                          "untrusted")
 
+    def test_parse_issue_state_resolves_provenance_per_closing_pr(self) -> None:
+        # The reconciler's rule-3/5 scoping reads this field. Every plan_repairs
+        # test hand-builds the dict, so without this case the parser could mark
+        # every closing PR trusted and the suite would not notice.
+        board = lb.BoardConfig(owner="acme", number=1, source="test")
+        payload = _issue_query_response()
+        payload["data"]["repository"]["issue"]["closedByPullRequestsReferences"] = {"nodes": [
+            {"number": 1, "state": "CLOSED", "merged": False, "baseRefName": "main",
+             "authorAssociation": "COLLABORATOR", "author": {"login": "t", "__typename": "User"}},
+            {"number": 2, "state": "OPEN", "merged": False, "baseRefName": "main",
+             "authorAssociation": "NONE", "author": {"login": "s", "__typename": "User"}},
+            {"number": 3, "state": "OPEN", "merged": False, "baseRefName": "main",
+             "authorAssociation": "NONE", "author": {"login": "b", "__typename": "Bot"}},
+            {"number": 4, "state": "OPEN", "merged": False, "baseRefName": "main",
+             "authorAssociation": "NONE", "author": None},
+        ]}
+        got = {p["number"]: p["provenance"]
+               for p in lb.parse_issue_state(payload, board).closing_prs}
+        self.assertEqual(got, {1: "trusted", 2: "untrusted",
+                               3: "trusted", 4: "untrusted"})
+
     def test_deleted_author_is_not_a_bot(self) -> None:
         # `author` is null for a deleted account — must not crash or trust it.
         board = lb.BoardConfig(owner="acme", number=1, source="test")
@@ -408,16 +430,60 @@ class ReconcilerTest(unittest.TestCase):
         self.assertEqual([(r.rule, r.to_stage) for r in repairs],
                          [("pr_closed_unmerged", "in_progress")])
 
-    def test_rule3_repairs_regardless_of_pr_author(self) -> None:
-        # Rules 3 and 5 are no longer assignee-anchored: the old filter disabled
-        # them for every bot-authored PR and every unassigned issue. The accepted
-        # cost is that a stranger's `Closes #N` reference now drives the same
-        # nuisance-grade Status repair — see the note in plan_repairs.
+    def test_rule3_repairs_for_any_trusted_author_not_just_an_assignee(self) -> None:
+        # Rules 3 and 5 are provenance-anchored, not assignee-anchored: the old
+        # filter disabled them for every bot-authored PR and every unassigned
+        # issue. A trusted non-assignee now repairs.
         s = _issue(assignees=["me"], stage="in_review",
-                   closing_prs=[_pr(state="CLOSED", merged=False, author="stranger")])
+                   closing_prs=[_pr(state="CLOSED", merged=False, author="teammate")])
         repairs, _ = lb.plan_repairs([s], "main")
         self.assertEqual([(r.rule, r.to_stage) for r in repairs],
                          [("pr_closed_unmerged", "in_progress")])
+
+    def test_untrusted_closing_pr_drives_no_repair(self) -> None:
+        # A closing reference is anyone's to create: any fork PR whose body says
+        # `Closes #N` lands in this list. Asserted across BOTH regression shapes.
+        for stage, pr in (("in_review", _pr(state="CLOSED", merged=False)),
+                          ("in_progress", _pr(state="OPEN", merged=False))):
+            with self.subTest(stage=stage):
+                s = _issue(assignees=(), stage=stage,
+                           closing_prs=[dict(pr, author="stranger", provenance="untrusted")])
+                repairs, _ = lb.plan_repairs([s], "main")
+                self.assertEqual(repairs, [])
+
+    def test_untrusted_open_pr_cannot_suppress_a_trusted_repair(self) -> None:
+        # Rule 3 is `all(closed and unmerged)`, so an untrusted OPEN reference
+        # mixed into the list would SILENTLY SUPPRESS a repair that must fire —
+        # the opposite direction from the nuisance case, and worse: the issue
+        # sticks at in_review forever with no repair and no flag. Filtering has to
+        # happen before the all().
+        s = _issue(assignees=["me"], stage="in_review", closing_prs=[
+            _pr(number=1, state="CLOSED", merged=False, author="me"),
+            _pr(number=2, state="OPEN", merged=False, author="stranger",
+                provenance="untrusted"),
+        ])
+        repairs, _ = lb.plan_repairs([s], "main")
+        self.assertEqual([(r.rule, r.to_stage) for r in repairs],
+                         [("pr_closed_unmerged", "in_progress")])
+
+    def test_a_trusted_open_pr_still_suppresses_rule3(self) -> None:
+        # The all() itself is load-bearing and must survive: real work in flight
+        # (a trusted OPEN PR) means the item is not regressing.
+        s = _issue(assignees=["me"], stage="in_review", closing_prs=[
+            _pr(number=1, state="CLOSED", merged=False, author="me"),
+            _pr(number=2, state="OPEN", merged=False, author="teammate"),
+        ])
+        repairs, _ = lb.plan_repairs([s], "main")
+        self.assertEqual(repairs, [])
+
+    def test_a_merged_pr_drives_rule1_regardless_of_provenance(self) -> None:
+        # merged_pr is deliberately NOT provenance-filtered: merging is a
+        # maintainer action, so an outside contributor's merged PR is legitimate.
+        s = _issue(state="CLOSED", state_reason="COMPLETED", stage="in_review",
+                   closing_prs=[_pr(author="outsider", provenance="untrusted")])
+        repairs, _ = lb.plan_repairs([s], "main")
+        self.assertEqual([(r.rule, r.to_stage) for r in repairs],
+                         [("merged_close_missed", "done")])
 
     def test_rule3_fires_on_an_unassigned_issue(self) -> None:
         # `if s.assignees else []` meant an unassigned issue never repaired at all.
@@ -925,8 +991,10 @@ class GhMeTest(unittest.TestCase):
         self.assertEqual(lb._gh_me(runner), "aagnone3")
 
     def test_genuinely_unauthenticated_still_reports_gh_unauthenticated(self) -> None:
-        # gh exits 4 on auth errors; older versions only say so in stderr.
-        for proc in (_fail(4, "gh: To use GitHub CLI, run: gh auth login"),
+        # Two independent signals, each asserted ALONE so neither can coast on
+        # the other: gh's exit code 4 with stderr the text probe cannot match,
+        # and the stderr text with a non-4 exit code.
+        for proc in (_fail(4, "some future gh phrasing"),
                      _fail(1, "gh: Bad credentials (HTTP 401)")):
             with self.subTest(returncode=proc.returncode):
                 runner = FakeRunner([(["api", "graphql"], proc)])
@@ -935,24 +1003,38 @@ class GhMeTest(unittest.TestCase):
                 self.assertEqual(caught.exception.code, "gh_unauthenticated")
                 self.assertIn("gh auth login", caught.exception.fix)
 
+    def test_a_generic_gh_auth_login_hint_is_not_treated_as_an_auth_failure(self) -> None:
+        # gh appends that hint to failures that are NOT auth failures. Matching
+        # on it would send an App-token operator to re-login for a network error.
+        runner = FakeRunner([(["api", "graphql"],
+                              _fail(1, "gh: connection refused\nTry: gh auth login"))])
+        with self.assertRaises(lb.BoardError) as caught:
+            lb._gh_me(runner)
+        self.assertEqual(caught.exception.code, "gh_principal_unresolved")
+
     def test_authenticated_but_forbidden_is_not_reported_as_unauthenticated(self) -> None:
         stderr = "gh: Resource not accessible by integration (HTTP 403)"
         runner = FakeRunner([(["api", "graphql"], _fail(1, stderr)),
                              (["api", "graphql"], _fail(1, stderr))])  # one 403 retry
         with self.assertRaises(lb.BoardError) as caught:
             lb._gh_me(runner)
-        self.assertNotEqual(caught.exception.code, "gh_unauthenticated")
+        self.assertEqual(caught.exception.code, "gh_principal_unresolved")
         self.assertIn("integration", str(caught.exception))
 
-    def test_empty_viewer_response_is_not_a_login(self) -> None:
-        runner = FakeRunner([(["api", "graphql"], _ok("\n"))])
-        with self.assertRaises(lb.BoardError):
-            lb._gh_me(runner)
+    def test_a_missing_viewer_is_never_accepted_as_a_principal(self) -> None:
+        # `gh api --jq` prints a bare `null` (exit 0) for a null field, which
+        # would otherwise be carried into `--add-assignee` as a login.
+        for stdout in ("\n", "null\n"):
+            with self.subTest(stdout=stdout.strip() or "empty"):
+                runner = FakeRunner([(["api", "graphql"], _ok(stdout))])
+                with self.assertRaises(lb.BoardError) as caught:
+                    lb._gh_me(runner)
+                self.assertEqual(caught.exception.code, "gh_principal_unresolved")
 
 
-class ClaimVerbTest(unittest.TestCase):
-    """End-to-end verb_claim over a FakeRunner: win, two-winner conflict, and
-    blocked-refusal. blockedBy rides the bounded node-state shape."""
+class _ClaimVerbFixture(unittest.TestCase):
+    """Shared temp-repo + cache-seam setup for the verb_claim suites. Holds no
+    test cases of its own so subclasses do not re-run each other's."""
 
     def setUp(self) -> None:
         import tempfile
@@ -976,6 +1058,12 @@ class ClaimVerbTest(unittest.TestCase):
         self.addCleanup(lambda: (setattr(lb, "load_cache", _orig_load),
                                  setattr(lb, "save_cache", _orig_save)))
         self._field_list = _ok(json.dumps(_schema_fields_payload()))
+
+
+class ClaimVerbTest(_ClaimVerbFixture):
+    """End-to-end verb_claim over a FakeRunner for a HUMAN principal: win,
+    two-winner conflict, and blocked-refusal. blockedBy rides the bounded
+    node-state shape."""
 
     def test_win_path_assigns_confirms_and_sets_status(self) -> None:
         runner = FakeRunner([
@@ -1101,11 +1189,14 @@ class ClaimVerbTest(unittest.TestCase):
                 self.assertEqual((result["claimed"], result["verdict"]), (True, "proceed"))
 
 
-class ClaimVerbAppPrincipalTest(ClaimVerbTest):
+class ClaimVerbAppPrincipalTest(_ClaimVerbFixture):
     """A GitHub App principal cannot be assigned, so --claim skips the assignee
     write and confirms on Status. Every other refusal in the verb must survive:
-    those, not the assignment, are why the verb exists. Inherits the human-path
-    cases so this class re-runs them alongside — the human path is the bar."""
+    those, not the assignment, are why the verb exists.
+
+    Deliberately NOT a subclass of ClaimVerbTest — inheriting those cases would
+    re-run them with a hardcoded human `_gh_me` stub, adding runtime and a
+    misleading class name in failure output while covering nothing new."""
 
     BOT = "lifewithdata-dev[bot]\n"
 
@@ -1157,6 +1248,36 @@ class ClaimVerbAppPrincipalTest(ClaimVerbTest):
         ])
         result = lb.verb_claim(5, self.ctx, runner)
         self.assertEqual((result["claimed"], result["verdict"]), (False, "blocked"))
+
+    def test_app_yields_when_a_human_assigns_between_the_two_reads(self) -> None:
+        # Once the assignee write is skipped, this confirming read is the ONLY
+        # mutual exclusion left on the App path — the race the ceiling comment
+        # concedes is weak. It must still catch a human who landed in between,
+        # and must not "yield" by unassigning an assignment it never made.
+        runner = FakeRunner([
+            (["api", "graphql"], _ok(self.BOT)),
+            (["api", "graphql"], _ok(json.dumps(_issue_query_response(assignees=(), stage="ready_for_work")))),
+            (["api", "graphql"], _ok(json.dumps(_issue_query_response(assignees=["human"], stage="ready_for_work")))),
+        ])
+        result = lb.verb_claim(5, self.ctx, runner)
+        self.assertEqual((result["claimed"], result["verdict"]), (False, "claim_conflict"))
+        self.assertFalse(any("--remove-assignee" in c for c in runner.calls))
+        self.assertFalse(any(c[:2] == ["project", "item-edit"] for c in runner.calls))
+
+    def test_app_resumes_an_already_in_progress_unassigned_item(self) -> None:
+        # The App's own prior claim leaves no assignee, so resume must not read
+        # as "nobody ever claimed this" and must not conflict with itself.
+        runner = FakeRunner([
+            (["api", "graphql"], _ok(self.BOT)),
+            (["api", "graphql"], _ok(json.dumps(_issue_query_response(assignees=(), stage="in_progress")))),
+            (["api", "graphql"], _ok(json.dumps(_issue_query_response(assignees=(), stage="in_progress")))),
+            (["project", "field-list", "1", "--owner", "acme"], self._field_list),
+            (["api", "graphql"], _ok(json.dumps(_issue_query_response(assignees=(), stage="in_progress")))),
+            (["project", "item-edit", "--id", "item5", "--project-id", "P",
+              "--field-id", "F", "--single-select-option-id", "o_in_progress"], _ok("{}")),
+        ])
+        result = lb.verb_claim(5, self.ctx, runner)
+        self.assertEqual((result["claimed"], result["verdict"]), (True, "proceed"))
 
     def test_app_failed_confirming_read_does_not_fabricate_a_conflict(self) -> None:
         # An empty confirming read is indistinguishable from "nobody assigned"
@@ -2906,6 +3027,89 @@ class ParentAwareVerbThreadingTest(unittest.TestCase):
         self.assertEqual(out["route"], "sub_issue")
         self.assertEqual(out["parent"], 265)
         self.assertIsNotNone(out["next"])
+
+
+def _bot_authored_payload(number=500, stage="stub"):
+    """A top-level issue filed by a GitHub App: `author.__typename == "Bot"` and
+    `authorAssociation: NONE` — the shape observed live for App-filed issues."""
+    return json.dumps({"data": {"repository": {"issue": {
+        "number": number, "state": "OPEN", "stateReason": None, "url": "u",
+        "authorAssociation": "NONE",
+        "author": {"login": "lifewithdata-dev", "__typename": "Bot"},
+        "assignees": {"nodes": []},
+        "closedByPullRequestsReferences": {"nodes": []},
+        "blockedBy": {"totalCount": 0, "nodes": []},
+        "subIssues": {"nodes": []},
+        "projectItems": {"nodes": [{
+            "id": "IT_5", "isArchived": False,
+            "project": {"number": 1, "owner": {"login": "o"}},
+            "fieldValueByName": {"name": stage}}]}}}}})
+
+
+class BotProvenanceVerbThreadingTest(unittest.TestCase):
+    """P1 guard, same class of defect as ParentAwareVerbThreadingTest: the
+    effectful verbs must THREAD state.author_is_bot into the provenance core.
+    Deleting `author_is_bot = state.author_is_bot` from either verb passes the
+    entire pure-function suite while restoring the original refusal — an App can
+    file work it can never groom. Driven end-to-end over a FakeRunner."""
+
+    BOARD = lb.BoardConfig(owner="o", number=1, source="committed")
+
+    def test_verb_gate_threads_the_bot_author_into_provenance(self) -> None:
+        runner = FakeRunner([(["api", "graphql"], _ok(_bot_authored_payload()))])
+        with mock.patch.object(lb, "read_board_config", return_value=self.BOARD), \
+                tempfile.TemporaryDirectory() as d:
+            out = lb.verb_gate("brainstorm", 500, _ctx(d), runner)
+        # The association alone would read untrusted; only the threaded Bot flag
+        # can produce this.
+        self.assertEqual(out["author_association"], "NONE")
+        self.assertEqual(out["provenance"], "trusted")
+
+    def test_verb_groom_entry_threads_the_bot_author_into_provenance(self) -> None:
+        runner = FakeRunner([(["api", "graphql"], _ok(_bot_authored_payload()))])
+        with mock.patch.object(lb, "read_board_config", return_value=self.BOARD), \
+                mock.patch.object(lb, "verb_reconcile",
+                                  return_value={"skipped_ttl": True, "flags": []}), \
+                tempfile.TemporaryDirectory() as d:
+            out = lb.verb_groom_entry(500, _ctx(d), runner)
+        self.assertEqual(out["author_association"], "NONE")
+        self.assertEqual(out["provenance"], "trusted")
+        self.assertIsNone(out["blocker"])  # not refused with untrusted_provenance
+
+
+class IssueQueryShapeTest(unittest.TestCase):
+    """The hand-built `_issue_query_response` fixture supplies fields the real
+    query must actually request. Without pinning the query text, deleting a
+    selection leaves every provenance test green while production reads None —
+    the recorded-fixture failure mode this repo has already been bitten by.
+    Asserted by category (the field names the parser reads), not by whitespace."""
+
+    @staticmethod
+    def _query() -> str:
+        return lb.ISSUE_QUERY
+
+    def _issue_level(self) -> str:
+        """The issue's OWN selections, excluding every nested connection — the
+        nested blocks also select `author`, so an unscoped assertion passes while
+        the issue-level selection is missing."""
+        return self._query().split("closedByPullRequestsReferences", 1)[0]
+
+    def test_issue_author_typename_is_requested(self) -> None:
+        # parse_issue_state reads the ISSUE author's __typename for provenance.
+        self.assertRegex(self._issue_level(), r"author\s*\{[^}]*__typename")
+
+    def test_closing_pr_provenance_fields_are_requested(self) -> None:
+        # plan_repairs scopes rules 3 and 5 by the closing PR's provenance.
+        refs = self._query().split("closedByPullRequestsReferences", 1)[1]
+        refs = refs.split("subIssues", 1)[0]
+        self.assertIn("authorAssociation", refs)
+        self.assertIn("__typename", refs)
+
+    def test_closed_unmerged_prs_are_included(self) -> None:
+        # `closedByPullRequestsReferences` defaults to includeClosedPrs:false,
+        # which excludes exactly the CLOSED+unmerged node rule 3 keys on — the
+        # rule is unreachable in production without this argument.
+        self.assertIn("includeClosedPrs: true", self._query())
 
 
 class SubIssueDeboardReconcileTest(unittest.TestCase):

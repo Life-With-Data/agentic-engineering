@@ -98,10 +98,27 @@ TERMINAL_STAGES = {"done"}
 # item lands OUTSIDE every association (observed: `authorAssociation: NONE` for
 # App-filed issues, `CONTRIBUTOR` for App-filed PRs) and would otherwise be
 # refused with `untrusted_provenance` — an App could file work it can never
-# groom. TRADE, decided at grooming: this trusts ANY App installed on the repo,
-# including one added later for an unrelated reason. The narrower option —
-# allowlisting the single configured App login, leaving other bots untrusted —
-# was offered and declined.
+# groom.
+#
+# TRADE, decided at grooming, with two vectors that are WIDER than the framing
+# that decision was made under ("any App installed on the repo, including one
+# added later for an unrelated reason"):
+#
+#   1. Laundering. Quarantine is one hop. An agent that reads an untrusted issue
+#      and then files a follow-up quoting it — which this plugin's own guidance
+#      instructs it to do — produces a Bot-authored issue carrying that text at
+#      full trust. Note an author allowlist does NOT close this: the laundering
+#      issue is authored by the configured App itself.
+#   2. `github-actions[bot]` is not opted into. It exists on every repository by
+#      default, so the common "CI job failed -> open an issue" pattern files
+#      Bot-authored bodies embedding third-party text (job output, branch names,
+#      dependency advisories) at full trust.
+#
+# The narrower option offered at grooming — allowlisting the single configured
+# App login — was declined, and would in any case only address (2). Closing (1)
+# means decoupling the two things provenance currently conflates: whether the
+# author may drive lifecycle control flow, and whether the body may be read as
+# instructions. Tracked separately; do not widen this further without it.
 TRUSTED_ASSOCIATIONS = {"OWNER", "MEMBER", "COLLABORATOR"}
 PRIORITY_ORDER = {"p1": 0, "p2": 1, "p3": 2}
 PRIORITY_VALUES = tuple(PRIORITY_ORDER)  # p1 / p2 / p3 — Project Priority options
@@ -757,8 +774,11 @@ query($owner: String!, $repo: String!, $number: Int!) {
 parent { number }
       blockedBy(first: 100) { nodes { number title url state } }
       assignees(first: 10) { nodes { login } }
-      closedByPullRequestsReferences(first: 5) {
-        nodes { number state merged baseRefName author { login } }
+      closedByPullRequestsReferences(first: 5, includeClosedPrs: true) {
+        nodes {
+          number state merged baseRefName authorAssociation
+          author { login __typename }
+        }
       }
       subIssues(first: 100) {
         nodes {
@@ -865,7 +885,13 @@ def parse_issue_state(data: dict, board: BoardConfig) -> Optional[IssueState]:
         priority=priority,
         closing_prs=[
             {"number": n["number"], "state": n["state"], "merged": n["merged"],
-             "baseRefName": n.get("baseRefName", ""), "author": (n.get("author") or {}).get("login", "")}
+             "baseRefName": n.get("baseRefName", ""),
+             "author": (n.get("author") or {}).get("login", ""),
+             # Same provenance rule as the issue author — a closing reference is
+             # anyone's to create, so rules 3 and 5 consult it before repairing.
+             "provenance": resolve_provenance(
+                 n.get("authorAssociation", "NONE"),
+                 (n.get("author") or {}).get("__typename") == "Bot")}
             for n in issue.get("closedByPullRequestsReferences", {}).get("nodes", [])
         ],
         open_sub_issues=[n["number"] for n in issue.get("subIssues", {}).get("nodes", [])
@@ -1335,23 +1361,31 @@ def plan_repairs(states: "list[IssueState]", default_branch: str) -> "tuple[list
     for s in states:
         merged_pr = next((p for p in s.closing_prs if p["merged"]), None)
         # Rules 3 and 5 drive off the issue's OWN closing references
-        # (`closedByPullRequestsReferences`), unfiltered by author.
+        # (`closedByPullRequestsReferences`), scoped by PROVENANCE rather than by
+        # assignment.
         #
         # The previous `author in s.assignees` filter silently disabled both
         # repairs whenever the author was not an assignee — every bot-authored PR,
         # and every unassigned issue (the `if s.assignees else []` guard). Nothing
-        # errored; repairs just stopped happening. Unassigned issues now repair
-        # too, which is correct: a closing PR closed without merging should
-        # regress the issue whether or not anyone is assigned.
+        # errored; repairs just stopped happening.
         #
-        # TRADE: the filter also narrowed away a stranger's `Closes #N` PR, so a
-        # junk closing reference can now drive a stage repair (in_review →
-        # in_progress, or in_progress → in_review). Both are nuisance-grade — a
-        # Status repair on the reconciler's closed six-rule set, never a close, a
-        # merge, or a data write — and the human `ready_for_work` approval seam is
-        # untouched. Re-narrowing needs a trust signal the closing-PR node does
-        # not carry today (author association, not just login).
-        closing_prs = s.closing_prs
+        # Assignment was the wrong axis. What the old filter was really reaching
+        # for is trust: a closing reference is anyone's to create (any fork PR
+        # whose body says `Closes #N` lands in this list), so a stranger could
+        # otherwise drive a Status repair. `authorAssociation` on the PR node is
+        # the direct signal, so rules 3 and 5 reuse the issue-author rule. This
+        # keeps every case unit 3 was filed for — a bot-authored PR and an
+        # unassigned issue both repair — while a stranger's `Closes #N` is ignored
+        # as it was before.
+        #
+        # Filtering also has to happen BEFORE the `all()` in rule 3: an untrusted
+        # OPEN reference mixed into the list would otherwise make `all(closed and
+        # unmerged)` false and silently SUPPRESS a repair that should fire.
+        #
+        # `merged_pr` above is deliberately NOT filtered: a merge is a maintainer
+        # action, so an outside contributor's merged PR is legitimate and must
+        # still drive rule 1 and the non-default-branch flag.
+        closing_prs = [p for p in s.closing_prs if p.get("provenance", "trusted") == "trusted"]
 
         # Rule 1: merged close missed by automation -> done
         if s.state == "CLOSED" and s.state_reason == "COMPLETED" and merged_pr \
@@ -1503,10 +1537,16 @@ def _require_board(ctx: RepoContext) -> BoardConfig:
 
 # A genuinely unauthenticated `gh` — as opposed to an authenticated token that
 # is merely forbidden on one endpoint. `gh` exits 4 on auth errors; the text
-# probes cover older versions and the raw API messages.
-_UNAUTHENTICATED_STDERR = re.compile(
-    r"HTTP 401|Bad credentials|requires authentication|not logged in|gh auth login",
-    re.IGNORECASE)
+# probe is the fallback for versions that do not. Deliberately narrow: `gh`
+# appends a generic "gh auth login" hint to failures that are NOT auth failures,
+# so matching on that hint would send an App-token operator to re-login for a
+# network or GraphQL error — inverting the distinction this exists to draw.
+_UNAUTHENTICATED_STDERR = re.compile(r"HTTP 401|Bad credentials", re.IGNORECASE)
+
+# `gh api --jq` prints a bare `null` (exit 0) when the filtered field resolves to
+# null, so a null `viewer` would otherwise be accepted as a principal literally
+# named "null" and carried into an assignment write.
+_NON_LOGINS = frozenset({"", "null"})
 
 
 def _gh_me(runner: GhRunner) -> str:
@@ -1525,7 +1565,7 @@ def _gh_me(runner: GhRunner) -> str:
     result = _run_gh_retry(runner, ["api", "graphql", "-f", "query={viewer{login}}",
                                     "--jq", ".data.viewer.login"])
     login = result.stdout.strip()
-    if result.returncode == 0 and login:
+    if result.returncode == 0 and login not in _NON_LOGINS:
         return login
     stderr = result.stderr.strip()
     if result.returncode == 4 or _UNAUTHENTICATED_STDERR.search(stderr):
@@ -2454,15 +2494,24 @@ def verb_claim(issue: int, ctx: RepoContext, runner: GhRunner) -> dict:
     # A GitHub App principal cannot be assigned, so the claim is confirmed on the
     # Status transition instead of the sole-assignee re-read below.
     #
-    # ACCEPTED CEILING: Status carries no actor identity, so two App runs that
-    # both read `ready_for_work` inside the same few-second window can both reach
-    # `in_progress`. Upgrade path, if that collision is ever observed: a
-    # `claim:<login>` label as the identity-carrying token (`item-list --query`
-    # does filter labels). Rejected at grooming — `no:assignee` currently filters
-    # 0 of 47 ready items, so mutual exclusion buys back a guarantee that
-    # measurably excludes nothing, at the cost of a label namespace, per-principal
-    # upsert-then-attach, `--ready-work` changes, and four vendored syncs. Human
-    # claims keep the sole-assignee guarantee unchanged.
+    # ACCEPTED CEILING: an App's claim leaves NO durable identity anywhere — only
+    # `Status = in_progress`, which carries no actor. Two consequences, and the
+    # second is the larger one:
+    #
+    #   1. Two App runs that both read `ready_for_work` inside the same few-second
+    #      window can both reach `in_progress`.
+    #   2. An App's claim is invisible to a later human `--claim`. The human sees
+    #      no assignee, passes every check, assigns self, and is told "sole
+    #      assignee confirmed" while the App is mid-flight. Unlike (1) this window
+    #      is not seconds — it lasts as long as the App holds the work. A human's
+    #      claim is still exclusive against other HUMANS; it is not exclusive
+    #      against an App.
+    #
+    # Upgrade path for both: a `claim:<login>` label as the identity-carrying
+    # token (`item-list --query` does filter labels). Rejected at grooming —
+    # `no:assignee` filtered 0 of 47 ready items, so exclusion appeared to buy
+    # nothing. Note that measurement was human-vs-human contention and does not
+    # speak to (2), which this change created.
     assignable = is_assignable_principal(me)
     if state.assignees and me not in state.assignees:
         decision = decide_claim(state.assignees, me, state.blocked_by_count, assignable)
@@ -2495,7 +2544,7 @@ def verb_claim(issue: int, ctx: RepoContext, runner: GhRunner) -> dict:
                 _self_unassign()
             except BoardError:
                 pass
-        raise BoardError("claim_unverified", "assignment succeeded but the confirming read failed",
+        raise BoardError("claim_unverified", "the confirming read failed; the claim is unverified",
                          "retry --claim")
     if confirm is None:
         if assigned_by_us:
@@ -2503,7 +2552,7 @@ def verb_claim(issue: int, ctx: RepoContext, runner: GhRunner) -> dict:
                 _self_unassign()
             except BoardError:
                 pass
-        raise BoardError("claim_unverified", "assignment succeeded but the confirming read failed",
+        raise BoardError("claim_unverified", "the confirming read failed; the claim is unverified",
                          "retry --claim")
 
     decision = decide_claim(confirm.assignees, me, confirm.blocked_by_count, assignable)
