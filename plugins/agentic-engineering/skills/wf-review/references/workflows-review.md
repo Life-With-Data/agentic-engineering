@@ -84,3 +84,7 @@ each proposed fix:
 Return `ready` only when acceptance criteria are satisfied, required validation
 is credible, and no unresolved P1 or P2 findings remain. Otherwise return
 `not-ready` with the blocking findings and the next owning workflow.
+
+A `ready` verdict names the reviewed head SHA — the commit the read diff came
+from — and holds only for that head; any later commit, including rework
+requested by the user, invalidates it and returns the item to not-yet-reviewed.

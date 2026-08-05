@@ -120,7 +120,10 @@ surfaces again.
   `wf-development`.
 - Implemented change: route to `wf-testing`.
 - Verified change: route to `wf-review`.
-- Review-ready PR: route to `wf-delivery`.
+- Review-ready PR: route to `wf-delivery`. Review-ready means a comprehensive
+  `wf-review` verdict is recorded for the current head; a commit landed after
+  the reviewed head invalidates that verdict and routes the item back through
+  `wf-review` — a single-lens sub-agent pass is not the review stage.
 - A current PR needing its required knowledge-disposition check: route to
   `wf-documentation` before delivery merges it.
 

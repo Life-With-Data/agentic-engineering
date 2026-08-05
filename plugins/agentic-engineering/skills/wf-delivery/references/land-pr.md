@@ -33,9 +33,9 @@ branch protection physically requires it, which surfaces as
 
 1. **CI green** — every required check concluded successfully.
 2. **Independently reviewed** — a `wf-review` comprehensive-review pass ran
-   this cycle with P1s resolved; no open `CHANGES_REQUESTED`. Hard,
-   non-skippable in every mode — landing standalone, run the review route
-   yourself before merging.
+   against the current head with P1s resolved; no open `CHANGES_REQUESTED`.
+   Hard, non-skippable in every mode — landing standalone, run the review
+   route yourself before merging.
 3. **Mergeable** — `mergeStateStatus` is not `DIRTY`, `BLOCKED`, or `BEHIND`
    for a reason you haven't cleared.
 4. **Final compounding disposition recorded for the current head** — after
@@ -89,7 +89,9 @@ resolution, the compounding docs push — is real progress, not a dry attempt.
   pending checks.
 - **Independent review not yet run** → run the `wf-review`
   comprehensive-review route now and resolve P1s. Inside the orchestrate
-  pipeline it already happened upstream — don't re-run it.
+  pipeline it already happened upstream — don't re-run it, unless the head has
+  moved since the reviewed SHA, in which case the verdict is stale and the
+  review route re-runs.
 - **Changes requested** → address the feedback; the decision clears once
   addressed. Do not wait for a human `APPROVED` in autonomous mode.
 - **`BLOCKED` by branch protection** → the repo requires something the agent
