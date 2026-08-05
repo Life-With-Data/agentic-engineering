@@ -71,8 +71,8 @@ step, and open the PR normally in Phase 4 without a board write.
      ```bash
      python3 "<skill-directory>/scripts/lifecycle_board.py" --groom-verify <N>
      ```
-     Branch on its `cleared` and `posture_source` fields — never reassemble
-     posture from raw labels.
+     Branch on its fused `hands_off` field — never reassemble posture from
+     raw labels or component fields.
      [Delivery posture](../../wf-orchestrate/references/orchestrate.md#delivery-posture) owns the
      resolution rule and precedence chain — do not re-derive it here.
    - **Standard posture, or un-groomed input:** if anything material is

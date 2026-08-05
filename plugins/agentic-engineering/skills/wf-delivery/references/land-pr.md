@@ -116,19 +116,19 @@ waive the compounding gate in step 5.
   # Guard the empty-`N` case: no ticket means no clearance to read.
   [ -n "$N" ] && python3 "<skill-directory>/scripts/lifecycle_board.py" --groom-verify "$N"
   ```
-  Check `approved` first
+  Branch on the fused `hands_off` verdict
   ([delivery posture](../../wf-orchestrate/references/orchestrate.md#delivery-posture)
-  owns why). `approved: false` or a non-zero exit is never cleared —
-  route to the human. With `approved: true`, apply the precedence chain
-  ([delivery posture](../../wf-orchestrate/references/orchestrate.md#delivery-posture)
-  owns it): `cleared: true` proceeds hands-off; on `cleared: false`, an
-  explicit per-invocation `--auto` clears the run anyway, a
-  `posture_source: "ticket"` standard decision keeps the interactive gate,
-  and `posture_source: "unset"` (including an empty `N` on an approved run)
-  falls back to the preflight's `delivery_mode_resolved`. Then merge without
-  asking once all conditions hold — do not bounce "say the word and I'll
-  merge" back to the user. A genuinely unmet condition is escalated as a
-  specific blocker, never merged through.
+  owns the semantics). `approved: false` or a non-zero exit is never
+  mergeable — route to the human; no `--auto` token overrides a missing
+  approval stamp, because tokens sit in the posture chain, not above
+  approval. With `approved: true`: `hands_off: true` proceeds hands-off,
+  and on `hands_off: false` (the ticket opted into supervision) an explicit
+  per-invocation `--auto` clears the run anyway, otherwise the interactive
+  merge gate applies. An empty `N` (no tracked ticket) has no approval to
+  read: only an explicit `--auto` clears it. Then merge without asking once
+  all conditions hold — do not bounce "say the word and I'll merge" back to
+  the user. A genuinely unmet condition is escalated as a specific blocker,
+  never merged through.
 
 ### 5. Final compounding gate
 

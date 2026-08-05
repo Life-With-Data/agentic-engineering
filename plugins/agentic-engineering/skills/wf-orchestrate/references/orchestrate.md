@@ -22,52 +22,47 @@ do not restate stop reasons here or elsewhere — link to it instead.
 
 ## Delivery posture
 
-Hands-off execution requires **all three**: a human's approval stamp
-(`Status >= ready_for_work`, verifiable as `approved` on `--groom-verify N`),
-grooming attestation (`Status >= planned`, verifiable as `groomed` on the same
-call), **and** the ticket's autonomous clearance (a `posture:autonomous`
-label, or an overriding per-invocation token). Any one missing is not enough.
-Who may grant the approval is defined in the `wf-setup`
+Autonomous is the default. Hands-off execution is authorized by the engine's
+single fused verdict: `hands_off` on `--groom-verify N`, true exactly when a
+human's approval stamp (`Status >= ready_for_work`), grooming attestation
+(`Status >= planned`), and the ticket's posture (autonomous unless a
+`posture:*` label opts it out) all hold. Who may grant the approval is defined
+in the `wf-setup`
 [approval seam](../../wf-setup/references/lifecycle.md#agent-write-scope-and-the-approval-seam).
 
-Clearance resolves from three sources in a fixed order, stated in full
-exactly once — every other mention links here rather than restating it:
+Posture resolves from two sources in a fixed order, stated in full exactly
+once — every other mention links here rather than restating it:
 
-**Per-invocation argument tokens > per-ticket posture label > repository
-`delivery_mode` default (which itself defaults to `standard`).**
+**Per-invocation argument tokens > per-ticket posture label > `autonomous`.**
 
 ### Reading the posture
 
-All three parts of the gate come from **one** call, already machine-read — do
-not reassemble the conjunction from labels plus Status by hand:
+The whole gate is **one** call and **one** branch field — never reassemble
+the conjunction from `approved` plus `cleared` plus labels by hand; the
+engine computes it:
 
 ```bash
 python3 "<skill-directory>/scripts/lifecycle_board.py" --groom-verify <parent>
 ```
 
-Branch on its output, checking `approved` **first**: `cleared` folds in
-`groomed` (attestation) and `posture`, but not `approved` — a `planned`,
-autonomous-labeled, not-yet-approved ticket reads `cleared: true` even though
-work must not start. Reading `cleared` without `approved` would silently
-reintroduce the self-approval gap this stage closed:
+| Read | Behavior |
+|------|----------|
+| `hands_off: true` | Proceed hands-off through implementation -> review -> delivery. |
+| `hands_off: false`, `approved: false` | Route to the human — to `wf-grooming` if ungroomed, or for the `ready_for_work` stamp if already `planned`. Posture never bypasses approval. |
+| `hands_off: false`, `approved: true` | Proceed **immediately** in standard mode (plan approval, findings triage, merge `[y/N]`). A dispatch mode, never a halt awaiting further input. |
 
-| Read | Meaning |
-|------|---------|
-| `approved: false` | Not yet approved (`Status < ready_for_work`) — route to the human for the approval stamp, regardless of `cleared`. |
-| `approved: true`, `cleared: true` | Approved, attested, **and** ticket-cleared. Sufficient authority to proceed hands-off. |
-| `approved: true`, `cleared: false`, `posture_source: "ticket"` | Approved, but the ticket decided standard posture; the repository default does **not** apply. |
-| `approved: true`, `cleared: false`, `posture_source: "unset"` | Approved; the ticket said nothing. Fall back to the preflight JSON's `delivery_mode_resolved` — and only when `groomed` is true. |
-
-**`cleared: false` is not by itself a denial.** It is label-derived: the engine
-sees neither the repository default nor per-invocation tokens, so a consumer
-that reads only `cleared` fails *safe* — more restrictive, never more
-permissive. That is intended.
+Component fields (`approved`, `groomed`, `posture`, `cleared`) exist to
+report *why* a run is not hands-off, never to re-derive the verdict. The one
+thing outside the engine's sight is a per-invocation argument token, which
+overrides the **posture** leg for that invocation only — approval and
+attestation still gate, and a token never substitutes for the
+`ready_for_work` stamp.
 
 **The engine owns the label-resolution rule; this document does not restate
-it.** Clearance is a positive grant that fails toward `standard` in every
-ambiguous case, and `resolve_clearance` in `scripts/lifecycle_board.py` is the
-one place that rule is written down. A reader who needs the exact semantics
-reads it there.
+it.** A `posture:*` label only reduces autonomy — every labeled state fails
+toward `standard` — and `resolve_clearance` in `scripts/lifecycle_board.py`
+is the one place that rule is written down. A reader who needs the exact
+semantics reads it there.
 
 - Complexity is read on the **sub-issue** at dispatch time; posture is read on
   the **parent** at the claim / routing boundary, **once per work item**.
@@ -78,38 +73,23 @@ reads it there.
   drain resolves each item with the same one-issue `--groom-verify` call at
   the claim boundary.
 
-### Who may grant clearance
+### Who may set posture
 
-**Adding `posture:autonomous` to an issue is the act of authorizing unattended
-execution.** Anyone who can write labels on the repository can perform it. That
-is the trust boundary, and it is worth stating plainly because nothing about a
-label *looks* like a privilege grant.
+**A `posture:*` label only reduces autonomy.** Attaching `posture:standard` —
+or any stray, hand-typed, or legacy `posture:*` label — opts the ticket into
+supervised execution; no label can grant more autonomy than the default. The
+trust boundary for unattended execution is the human's approval stamp
+(`Status >= ready_for_work`), a Project Status write scope no label-add
+privilege reaches, fused with attestation into the engine's `hands_off`
+verdict. An issue template's `labels:` key or an Action with `issues: write`
+can therefore at worst force a ticket into supervision — an annoyance, never
+an escalation vector.
 
-**The conjunction is the defense.** A label alone grants nothing: hands-off
-execution also requires grooming attestation (`Status >= planned`) **and** a
-human's separate approval (`Status >= ready_for_work`), and Project Status is
-a write scope no label-add privilege reaches. Label-add privilege plus
-grooming attestation is the pair the engine reports fused as `cleared` — but
-`cleared` alone is still not enough to proceed; see [reading the
-posture](#reading-the-posture) above for why `approved` gates ahead of it.
-
-Two standard escalation paths must therefore **never** attach
-`posture:autonomous`:
-
-- **An issue template's `labels:` key.** It applies its labels for *any*
-  creator, including a drive-by external contributor who never held
-  label-write privilege. A template that pre-attaches a posture label converts
-  "can open an issue" into "can request unattended execution".
-- **Any Action running with `issues: write`.** That token can attach the label;
-  combined with a workflow triggered by untrusted input, it is a path from an
-  external event to a clearance grant. Scope Actions to `permissions: {}` or
-  read-only unless a label write is the workflow's actual purpose.
-
-**De-escalating** takes an explicit write: `--decompose` with
-`posture: standard` strips every `posture:*` label (a pure removal — the label
-vocabulary has no `standard` entry). A hand-added `posture:standard` beside
-`posture:autonomous` also revokes clearance on read, by the safe-wins rule the
-engine owns.
+**Returning a supervised ticket to the default** takes an explicit write:
+`--decompose` with `posture: autonomous` strips every `posture:*` label (a
+pure removal — the label vocabulary has no `autonomous` entry). A human may
+equally remove the label directly in the GitHub UI — a deliberate edit the
+lifecycle never fights.
 
 ### Queue drains need no separate opt-in
 
@@ -144,22 +124,12 @@ surfaces again.
 - A current PR needing its required knowledge-disposition check: route to
   `wf-documentation` before delivery merges it.
 
-The **Clearance** column below is the *ticket's* clearance (`posture`), not
-the fused `cleared` field — a `planned`, autonomous-labeled ticket reads
-`cleared: true` even though no human has approved it, which is exactly why the
-table branches on approval before it ever consults posture:
-
-| Input | Clearance | Behavior |
-|-------|-----------|----------|
-| Approved (`Status >= ready_for_work`) | cleared | Proceed hands-off through implementation -> review -> delivery. |
-| Approved | not cleared | Standard: plan approval, findings triage, merge `[y/N]`. |
-| Not approved (ungroomed, or `planned` awaiting the approval stamp) | cleared | Route to the human regardless of posture — to `wf-grooming` if ungroomed, or for the `ready_for_work` stamp if already `planned`. Clearance does not survive a missing approval. |
-| Not approved | not cleared | Route to the human the same way (today's behavior). |
-
-**Not-yet-approved input routes to the human regardless of posture.**
+Posture at this boundary is the engine's `hands_off` verdict — branch on it
+per [reading the posture](#reading-the-posture); do not rebuild the table
+here. **Not-yet-approved input routes to the human regardless of posture.**
 Autonomous posture never silently auto-grooms and never silently
-self-approves — a posture label on an ungroomed or unapproved issue grants
-nothing.
+self-approves — the default grants nothing to an ungroomed or unapproved
+issue, because `hands_off` folds the approval in.
 
 ## Execute
 
