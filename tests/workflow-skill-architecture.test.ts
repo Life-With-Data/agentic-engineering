@@ -577,6 +577,37 @@ describe("workflow skill architecture", () => {
     expect(work).toContain("in_review");
   });
 
+  test("escalation asking sites consult tracker-persisted answers first (issue #390)", () => {
+    // Category-level assertions (repo guardrail policy: freeze the category,
+    // not the spelling — a frozen sentence silently false-passes once prose is
+    // reworded). escalation-contract.md makes the `human`-labeled tracker
+    // comment the escalation's system of record; both asking sites must
+    // consult it before re-asking, and workflows-work must persist an
+    // interactively received answer back as one. Whitespace-normalized so a
+    // pure reflow cannot fail this.
+    const flow = (s: string) => s.replace(/\s+/g, " ");
+
+    const work = flow(readFileSync(
+      path.join(SKILLS, "wf-development", "references", "workflows-work.md"),
+      "utf8",
+    ));
+    const orchestrate = flow(readFileSync(
+      path.join(SKILLS, "wf-development", "references", "workflows-orchestrate.md"),
+      "utf8",
+    ));
+
+    // Consult-before-ask at BOTH asking sites: read persisted `human`-labeled
+    // comments (sub-issue and parent) and consume rather than re-ask.
+    for (const doc of [work, orchestrate]) {
+      expect(doc).toContain("`human`-labeled comments");
+      expect(doc).toContain("consumed and cited, never re-asked");
+    }
+
+    // Write-back: an interactive answer is persisted to the tracker so the
+    // next run can consume it.
+    expect(work).toContain("written back as a `human`-labeled comment");
+  });
+
   test("orchestrate honors per-ticket delivery posture at the routing boundary", () => {
     // Guardrail (issue #302): the validation section of the source issue asked
     // for a skill-routing case matrix under tests/skill-routing-cases/, but
