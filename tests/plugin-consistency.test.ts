@@ -69,7 +69,6 @@ const mcpCount = Object.keys(pluginJson.mcpServers ?? {}).length;
 
 const pluginReadme = readFileSync(path.join(PLUGIN, "README.md"), "utf8");
 const rootReadme = readFileSync(path.join(ROOT, "README.md"), "utf8");
-const indexHtml = readFileSync(path.join(ROOT, "docs/index.html"), "utf8");
 
 // ---- declared counts match the filesystem ----------------------------------
 
@@ -85,44 +84,10 @@ describe("declared counts match filesystem", () => {
     expect(desc).toContain(`${counts.skills} workflow skills`);
   });
 
-  test("plugin README components table", () => {
-    expect(pluginReadme).toContain(`| Agents | ${counts.agents} |`);
-    expect(pluginReadme).toContain(`| Skills | ${counts.skills} |`);
-    expect(pluginReadme).toContain(`| MCP Servers | ${mcpCount} |`);
-  });
-
   test("root README components table", () => {
     expect(rootReadme).toContain(`| Specialized agents | ${counts.agents} |`);
     expect(rootReadme).toContain(`| Workflow skills | ${counts.skills} |`);
     expect(rootReadme).toContain(`| MCP servers | ${mcpCount} |`);
-  });
-
-  test("docs/index.html landing-page stats (agents, skills, mcp)", () => {
-    // Every stat on the landing page is marked data-stat="<key>" and filled by
-    // scripts/generate-docs.ts. Assert EVERY occurrence (cards + hero + CTA
-    // prose) matches the filesystem, so a stale hardcoded number can't slip in.
-    // Skills (like all landing stats) are marketplace-wide: core plugin + every other plugin under plugins/.
-    const totalSkills =
-      counts.skills +
-      nonCorePlugins.reduce(
-        (n, p) => n + skillDirsIn(path.join(PLUGINS_DIR, p)).length,
-        0,
-      );
-    const statOccurrences = (key: string) =>
-      [
-        ...indexHtml.matchAll(
-          new RegExp(`data-stat="${key}"[^>]*>([^<]+)<`, "g"),
-        ),
-      ].map((m) => m[1]);
-    const expectAll = (key: string, expected: string | number) => {
-      const found = statOccurrences(key);
-      expect(found.length).toBeGreaterThan(0); // the marker must exist
-      for (const v of found) expect(v).toBe(String(expected));
-    };
-    expectAll("agents", counts.agents);
-    expectAll("skills", totalSkills);
-    expectAll("mcp", mcpCount);
-    expectAll("version", pluginJson.version);
   });
 });
 
@@ -131,44 +96,6 @@ describe("declared counts match filesystem", () => {
 describe("version parity", () => {
   test("plugin.json and marketplace.json agree", () => {
     expect(pluginJson.version).toBe(marketplace.plugins[0].version);
-  });
-});
-
-// ---- release-please can bump the docs version -------------------------------
-//
-// docs/index.html embeds the plugin version (data-stat="version"), filled by
-// `bun run docs:build` from plugin.json. On a release PR, release-please bumps
-// plugin.json but NOT generated files — so unless index.html is registered in
-// release-please's extra-files (as a `generic` updater keyed on an
-// `x-release-please-version` comment), its version lags and the "landing-page
-// stats" + "docs in sync" tests fail *only in the release PR*, where the drift
-// exists transiently. The generic updater no-ops silently if the annotation is
-// missing or drifts off the version line, so this asserts the whole mechanism
-// stays wired up — catching a regression on the offending PR, not at release.
-
-describe("release-please bumps the docs version", () => {
-  const rpConfig = JSON.parse(
-    readFileSync(path.join(ROOT, ".github/release-please-config.json"), "utf8"),
-  );
-  const coreExtraFiles: Array<{ type?: string; path?: string }> =
-    rpConfig.packages?.[`plugins/${CORE_PLUGIN_NAME}`]?.["extra-files"] ?? [];
-
-  test("docs/index.html is a generic extra-file of the core package", () => {
-    const entry = coreExtraFiles.find(
-      // leading "/" makes the path repo-root-relative, not package-relative
-      (f) => f.path === "/docs/index.html",
-    );
-    expect(entry).toBeDefined();
-    expect(entry?.type).toBe("generic");
-  });
-
-  test("the x-release-please-version annotation is on the version line", () => {
-    const versionLine = indexHtml
-      .split("\n")
-      .find((l) => /data-stat="version"/.test(l));
-    expect(versionLine).toBeDefined();
-    // Same line, or release-please's generic updater silently skips the bump.
-    expect(versionLine).toContain("x-release-please-version");
   });
 });
 
@@ -361,16 +288,10 @@ describe("multi-platform packaging parity", () => {
   });
 });
 
-// ---- every component is documented in the plugin README ---------------------
-
-describe("plugin README documents every agent", () => {
-  test.each(agentFiles.map((f) => path.basename(f, ".md")))(
-    "%s is in README",
-    (slug) => {
-      expect(pluginReadme).toContain(slug);
-    },
-  );
-});
+// ---- every skill is documented in the plugin README -------------------------
+// Agents are deliberately NOT listed per-slug in the plugin README (doctrine:
+// the README stays minimal; the agents/ tree is its own catalog, and
+// frontmatter hygiene is asserted below).
 
 describe("plugin README documents every skill", () => {
   test.each(skillDirs)("%s is in README", (slug) => {

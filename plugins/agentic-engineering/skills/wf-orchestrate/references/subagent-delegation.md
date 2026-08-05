@@ -26,8 +26,9 @@ Delegate any unit that has a definable exit check and meaningful working
 context: research fan-out, implementation of a planned unit, test authoring,
 a review lens, CI-failure diagnosis, document drafting.
 
-Keep with the orchestrator: direct conversation with the user, decisions that
-need user input, scope and severity judgments, shared-state writes, and final
+Keep with the orchestrator: direct conversation with the user, decisions the
+[escalation contract](escalation-contract.md) reserves for a human, scope and
+severity judgments, shared-state writes, and final
 validation. Purely conversational turns and single-line mechanical edits may
 stay inline; everything with an exit check defaults to a sub-agent.
 
@@ -96,15 +97,19 @@ Every brief is self-contained and includes:
 
 1. **Scope** — exactly one unit; name what is explicitly out of scope.
 2. **Context** — relevant files, patterns to mirror, conventions to match.
-3. **Exit checks** — the acceptance criteria and quality gates that must pass.
-4. **Exclusions** — no tracker/board/PR writes, no scope growth, no
+3. **Posture** — the run's resolved delivery posture (autonomous or
+   standard), stated, not re-derived: it decides whether ask-gates inside the
+   unit fire or defer to the end-of-run batch.
+4. **Exit checks** — the acceptance criteria and quality gates that must pass.
+5. **Exclusions** — no tracker/board/PR writes, no scope growth, no
    speculative extras, no adopting the orchestrator role: the recipient must
    not load workflow routers to re-route its unit or delegate further.
-5. **Report format** — files touched, criterion-by-criterion evidence, exact
+6. **Report format** — files touched, criterion-by-criterion evidence, exact
    gate results, assumptions made, and blockers stated explicitly.
 
 Parallelize only file-disjoint units; otherwise serialize or isolate with the
-[git worktree](git-worktree.md) reference and its bundled manager.
+[git worktree](../../wf-development/references/git-worktree.md) reference and
+its bundled manager.
 
 ## Verification
 
@@ -113,8 +118,9 @@ diff against the unit's criteria and rerun the relevant repository gates at
 the top level, through a channel independent of the sub-agent's own report.
 
 - Bound retries at ~2 per unit, re-dispatching with the concrete failure
-  appended. A retry with no measurable progress is a dry attempt; two dry
-  attempts is a stall — block and escalate instead of looping.
+  appended. Two dry attempts is a stall — block and escalate instead of
+  looping ([escalation contract](escalation-contract.md) item (d) defines a
+  dry attempt).
 - Work a sub-agent discovers becomes a tracked follow-on item, never silent
   extra scope inside the same dispatch.
 - Stage sequencing, gates, and completion criteria stay with the owning

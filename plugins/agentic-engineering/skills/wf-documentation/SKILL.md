@@ -7,7 +7,7 @@ description: Workflow policy for creating, reviewing, repairing, compounding, an
 
 Layer: Workflow policy
 
-Owns: document purpose, audience, review gates, informational-health checks, compounding decisions, and documentation completion.
+Owns: document purpose and audience.
 
 Requires repository capabilities: `repository-overview`, `documentation`.
 
@@ -15,16 +15,13 @@ Does not contain: repository documentation layout, site commands, publication cr
 
 ## Start here
 
-Scripts are bundled beside this `SKILL.md`; resolve `<skill-directory>` to that
-directory, never through a plugin root.
-
 ```bash
 python3 <skill-directory>/scripts/repository-context.py \
   --require repository-overview \
   --require documentation
 ```
 
-Stop on contract failure. Read the primary target for both required capabilities, then supporting targets only when needed, before editing documentation.
+Stop on contract failure; read primary targets first, supporting targets only as needed.
 
 ## Route the request
 
@@ -32,25 +29,22 @@ Stop on contract failure. Read the primary target for both required capabilities
 - Run the pre-merge workflow compounding stage: read [workflow compound](references/workflows-compound.md).
 - Review and refine a document: read [document review](references/document-review.md).
 - Turn a debugging lesson into maintained guidance: read [reflect for skill updates](references/reflect-for-skill-updates.md).
-- Ship documentation changes: read [land docs](references/land-docs.md).
-- Prepare documentation deployment: read [deploy docs](references/deploy-docs.md); require `delivery` when publication is requested.
+- Ship documentation changes: read [land docs](references/land-docs.md); require `delivery` when publication is requested. Publication mechanics come from the repository's mapped `delivery` capability.
 
 ## Sub-agent delegation
 
-Delegate first drafts and per-document review passes to focused sub-agents;
-the orchestrator retains accuracy validation against the current source,
-placement decisions, and publication, and never publishes an unverified
-delegated draft. Roles, dispatch, per-unit model selection, verification, and
-the inline fallback for hosts without a sub-agent mechanism are owned by
-[sub-agent delegation](../wf-development/references/subagent-delegation.md).
+Delegate per-unit stage work to focused sub-agents; the orchestrator retains
+verification and every tracker, board, and PR write. Roles, dispatch, model
+selection, and the inline fallback:
+[sub-agent delegation](../wf-orchestrate/references/subagent-delegation.md).
 
 ## Completion boundary
 
-Documentation is complete when it is accurate against the current source, placed where the repository says readers will find it, linked from the appropriate index, reviewed for its intended audience, and validated through repository documentation tooling.
+Documentation is complete when it is accurate against the current source, placed where the repository says readers will find it, linked from the appropriate index, reviewed for its intended audience, and validated through repository documentation tooling. Report the disposition and evidence to the caller (`wf-orchestrate` or the delivery gate that invoked it).
 
 ## Wrong-layer recovery
 
-Style, paths, publication commands, and the decision whether durable knowledge
-belongs in a document or a repository skill come from the mapped repository
-assets. If a reference conflicts with them, the repository capability wins.
-Return here to apply review and completion policy.
+The decision whether durable knowledge belongs in a document or a repository
+skill comes from the mapped repository assets. Workflow policy wins on
+process; repository guidance wins on mechanics — consult the mapped
+repository capability targets for the latter.

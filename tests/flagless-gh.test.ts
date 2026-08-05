@@ -5,13 +5,10 @@
 // markdown file for `gh issue|gh project|gh api` invocations inside bash code
 // fences and requires each to be self-targeting: an explicit --repo/--owner
 // (literal or documented variable form like `--repo "$REPORT_REPO"`), OR a
-// read-only subcommand (reads can't mutate the wrong repo), OR an entry in the
-// ALLOWLIST below.
+// read-only subcommand (reads can't mutate the wrong repo).
 //
-// If this fails: a new flagless gh WRITE was added to a command/skill. Either add
-// the explicit --repo/--owner flag (preferred) or, if it is a legitimate
-// exception (a legacy snippet, a placeholder, a self-enforcing script), add it to
-// ALLOWLIST with a one-line justification. Do NOT relax the matcher.
+// If this fails: a new flagless gh WRITE was added to a skill. Add the
+// explicit --repo/--owner flag. Do NOT relax the matcher.
 //
 // Scope note: this scans .md files only. Shell scripts under skills/**/scripts/
 // are not markdown and are covered by their own in-script --repo/--owner
@@ -23,18 +20,6 @@ import path from "path"
 
 const ROOT = path.resolve(import.meta.dir, "..")
 const PLUGIN = path.join(ROOT, "plugins/agentic-engineering")
-
-// ---- allowlist: known-legitimate flagless gh invocations --------------------
-// Keyed by "<relpath-from-plugin>:<line>". Each entry is a legacy or placeholder
-// snippet that is NOT a live wrong-repo-write risk. Keep this list small and
-// current — every entry is a debt the lifecycle rewrite (Phase 3) is expected to
-// pay down (these two are the pre-rewrite `github` plain-mode issue writers).
-const ALLOWLIST: Record<string, string> = {
-  // Empty since the Phase 3 lifecycle rewrite: every gh write in commands/skills
-  // now carries an explicit --repo/--owner or routes through lifecycle_board.py
-  // (which self-enforces targeting). Add entries only for genuinely legitimate
-  // exceptions, with a one-line justification.
-}
 
 // ---- fence-aware scanner ----------------------------------------------------
 
@@ -109,45 +94,29 @@ function isRead(text: string): boolean {
 // ---- the assertion ----------------------------------------------------------
 
 describe("flagless gh writes are guarded", () => {
-  const commandFiles = mdFilesRecursive(path.join(PLUGIN, "commands"))
-  const skillFiles = mdFilesRecursive(path.join(PLUGIN, "skills"))
-  const files = [...commandFiles, ...skillFiles]
+  const files = mdFilesRecursive(path.join(PLUGIN, "skills"))
 
-  test("scans at least the known command + skill surface", () => {
+  test("scans at least the known skill surface", () => {
     // Guards against a broken scanner silently finding nothing.
     expect(files.length).toBeGreaterThan(10)
   })
 
-  test("every gh issue|project|api write carries --repo/--owner or is allowlisted", () => {
+  test("every gh issue|project|api write carries --repo/--owner", () => {
     const violations: string[] = []
-    const unusedAllow = new Set(Object.keys(ALLOWLIST))
 
     for (const file of files) {
       for (const hit of collectGhCalls(file)) {
-        const key = `${hit.rel}:${hit.line}`
-        if (key in ALLOWLIST) {
-          unusedAllow.delete(key)
-          continue
-        }
         if (isRead(hit.text)) continue
         if (HAS_TARGET_FLAG.test(hit.text)) continue
-        violations.push(`${key}: ${hit.text}`)
+        violations.push(`${hit.rel}:${hit.line}: ${hit.text}`)
       }
     }
 
     expect(
       violations,
-      `Flagless gh WRITE(s) with no --repo/--owner and not allowlisted:\n` +
+      `Flagless gh WRITE(s) with no --repo/--owner:\n` +
         violations.join("\n") +
-        `\n\nAdd the explicit flag, or add the key to ALLOWLIST in ` +
-        `tests/flagless-gh.test.ts with a justification.`,
-    ).toEqual([])
-
-    // Keep the allowlist honest: a stale entry means the snippet moved or was
-    // fixed — remove it so a future flagless write at that key is caught.
-    expect(
-      [...unusedAllow],
-      `Stale ALLOWLIST entries (no matching gh call) — remove them:`,
+        `\n\nAdd the explicit --repo/--owner flag.`,
     ).toEqual([])
   })
 })

@@ -1,13 +1,12 @@
 import { formatFrontmatter } from "../utils/frontmatter"
+import { flattenCommandName, normalizeName, replaceSlashCommands, uniqueName } from "../utils/names"
 import type { ClaudeAgent, ClaudeCommand, ClaudeMcpServer, ClaudePlugin } from "../types/claude"
 import type { CursorBundle, CursorCommand, CursorRule } from "../types/cursor"
-import type { ClaudeToOpenCodeOptions } from "./claude-to-opencode"
-
-export type ClaudeToCursorOptions = ClaudeToOpenCodeOptions
+import type { ConvertOptions } from "./claude-to-opencode"
 
 export function convertClaudeToCursor(
   plugin: ClaudePlugin,
-  _options: ClaudeToCursorOptions,
+  _options: ConvertOptions,
 ): CursorBundle {
   const ruleNames = new Set<string>()
   const commandNames = new Set<string>()
@@ -100,12 +99,7 @@ function transformContentForCursor(body: string): string {
     return `${prefix}Use the ${ruleName} skill to: ${args.trim()}`
   })
 
-  const slashCommandPattern = /(?<![:\w])\/([a-z][a-z0-9_:-]*?)(?=[\s,."')\]}`]|$)/gi
-  result = result.replace(slashCommandPattern, (match, commandName: string) => {
-    if (commandName.includes("/")) return match
-    if (["dev", "tmp", "etc", "usr", "var", "bin", "home"].includes(commandName)) return match
-    return `/${flattenCommandName(commandName)}`
-  })
+  result = replaceSlashCommands(result, (commandName) => `/${flattenCommandName(commandName)}`)
 
   const agentRefPattern =
     /@([a-z][a-z0-9-]*-(?:agent|reviewer|researcher|analyst|specialist|oracle|sentinel|guardian|strategist))/gi
@@ -114,38 +108,4 @@ function transformContentForCursor(body: string): string {
   })
 
   return result
-}
-
-function flattenCommandName(name: string): string {
-  const colonIndex = name.lastIndexOf(":")
-  const base = colonIndex >= 0 ? name.slice(colonIndex + 1) : name
-  return normalizeName(base)
-}
-
-function normalizeName(value: string): string {
-  const trimmed = value.trim()
-  if (!trimmed) return "item"
-  const normalized = trimmed
-    .toLowerCase()
-    .replace(/[\\/]+/g, "-")
-    .replace(/[:\s]+/g, "-")
-    .replace(/[^a-z0-9_-]+/g, "-")
-    .replace(/-+/g, "-")
-    .replace(/^-+|-+$/g, "")
-  return normalized || "item"
-}
-
-function uniqueName(base: string, used: Set<string>): string {
-  if (!used.has(base)) {
-    used.add(base)
-    return base
-  }
-
-  let index = 2
-  while (used.has(`${base}-${index}`)) {
-    index += 1
-  }
-  const name = `${base}-${index}`
-  used.add(name)
-  return name
 }

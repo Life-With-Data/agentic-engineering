@@ -1,3 +1,5 @@
+import type { SkillDir } from "./claude"
+
 export type CopilotAgent = {
   name: string
   content: string
@@ -6,11 +8,6 @@ export type CopilotAgent = {
 export type CopilotGeneratedSkill = {
   name: string
   content: string
-}
-
-export type CopilotSkillDir = {
-  name: string
-  sourceDir: string
 }
 
 export type CopilotMcpServer = {
@@ -26,6 +23,6 @@ export type CopilotMcpServer = {
 export type CopilotBundle = {
   agents: CopilotAgent[]
   generatedSkills: CopilotGeneratedSkill[]
-  skillDirs: CopilotSkillDir[]
+  skillDirs: SkillDir[]
   mcpConfig?: Record<string, CopilotMcpServer>
 }

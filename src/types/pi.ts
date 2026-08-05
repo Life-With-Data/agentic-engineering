@@ -1,11 +1,8 @@
+import type { SkillDir } from "./claude"
+
 export type PiPrompt = {
   name: string
   content: string
-}
-
-export type PiSkillDir = {
-  name: string
-  sourceDir: string
 }
 
 export type PiGeneratedSkill = {
@@ -33,7 +30,7 @@ export type PiMcporterConfig = {
 
 export type PiBundle = {
   prompts: PiPrompt[]
-  skillDirs: PiSkillDir[]
+  skillDirs: SkillDir[]
   generatedSkills: PiGeneratedSkill[]
   extensions: PiExtensionFile[]
   mcporterConfig?: PiMcporterConfig

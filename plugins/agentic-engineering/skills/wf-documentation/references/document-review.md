@@ -6,9 +6,12 @@ Improve brainstorm or plan documents through structured review.
 
 **If a document path is provided:** Read it, then proceed to Step 2.
 
-**If no document is specified:** Ask which document to review or use the
-artifact explicitly linked from the current GitHub work item. Do not search a
-guessed repository documentation directory.
+**If no document is specified:** Use the artifact explicitly linked from the
+current GitHub work item. In an interactive standard-posture session with no
+linked artifact, ask which document to review; in a non-interactive or
+autonomous run, report the missing document and return control to the caller
+instead of asking. Do not search a guessed repository documentation
+directory.
 
 ## Step 2: Assess
 
@@ -43,19 +46,23 @@ Among everything found in Steps 2-3, does one issue stand out? If something woul
 ## Invocation Mode for Steps 5-6
 
 Determine the invocation mode before making changes; it governs both Step 5
-and Step 6. The discriminator is a responsive user, not the call path: a user
-who asked for the review and can answer makes the session interactive even
-when a workflow routed the call here.
+and Step 6 (and Step 1's no-document fallback). Resolve it in order: a run
+whose stated delivery posture is autonomous is non-interactive regardless of
+terminal — the clearance means the human chose not to be interrupted.
+Otherwise the discriminator is a responsive user: a user who asked for the
+review and can answer makes the session interactive even when a workflow
+routed the call here.
 
-- **Standalone interactive session** (a responsive user asked for the review,
-  directly or through a workflow redirect): follow Steps 5 and 6 as written.
-  Asking before changing a document's meaning is correct here.
-- **Non-interactive invocation** (no responsive user — CI, `/loop`, scheduled
-  runs, or any autonomous loop): do not pause for approval and do not offer the
-  Step 6 menu. Auto-fix everything found in Steps 2-4, including substantive
-  changes, then report what changed — flagging substantive changes
-  (restructuring, removed sections, changed meaning) as such in the report.
-  After one pass, return control to the calling workflow.
+- **Standalone interactive session** (standard posture with a responsive user
+  who asked for the review, directly or through a workflow redirect): follow
+  Steps 5 and 6 as written. Asking before changing a document's meaning is
+  correct here.
+- **Non-interactive invocation** (autonomous posture, or no responsive
+  user — CI, `/loop`, scheduled runs): do not pause for approval and do not
+  offer the Step 6 menu. Auto-fix everything found in Steps 2-4, including
+  substantive changes, then report what changed — flagging substantive
+  changes (restructuring, removed sections, changed meaning) as such in the
+  report. After one pass, return control to the calling workflow.
 
 ## Step 5: Make Changes
 

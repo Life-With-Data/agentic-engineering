@@ -1,6 +1,6 @@
 # Workflow flows
 
-Visual reference for the seven public `wf-*` skills and their repository-context handoffs. The detailed procedures shown in parentheses are internal references selected by a router; they are not independently invocable skills.
+Visual reference for the eight public `wf-*` skills and their repository-context handoffs. The detailed procedures shown in parentheses are internal references selected by a router; they are not independently invocable skills.
 
 ## The two orthogonal layers
 
@@ -13,27 +13,28 @@ flowchart LR
     WF --> result([Gated workflow result])
 ```
 
-- `wf-*` decides **what must happen, in what order, and what counts as complete**.
-- Root `AGENTS.md` maps each fixed capability name to one or more repository-owned assets in primary-first reading order.
-- Repository-owned guidance decides **how this repository performs the operation**. Its skill names are unconstrained.
-
-Missing or malformed repository context stops every ordinary workflow. `wf-setup` may continue only to repair that context. See [WORKFLOW_SKILLS.md](WORKFLOW_SKILLS.md) for the complete contract.
+See [WORKFLOW_SKILLS.md](WORKFLOW_SKILLS.md) for the layer model and the complete contract.
 
 ## Public workflow map
 
+Delegation is vertical — [WORKFLOW_SKILLS.md](WORKFLOW_SKILLS.md) owns the model.
+
 ```mermaid
-flowchart LR
-    G["wf-grooming"] --> D["wf-development"]
-    D --> T["wf-testing"]
-    T --> R["wf-review"]
-    R -->|"fix required"| D
-    R -->|"ready"| L["wf-delivery"]
-    L --> K["wf-documentation"]
-    K --> done([Complete])
-    S["wf-setup"] -. "adopts and configures" .-> G
+flowchart TD
+    req([Engineering request]) --> O["wf-orchestrate"]
+    O <-->|"dispatch / return"| G["wf-grooming"]
+    O -->|"human approval stamp"| approve{"ready_for_work?"}
+    approve --> O
+    O <-->|"dispatch / return"| D["wf-development"]
+    O <-->|"dispatch / return"| T["wf-testing"]
+    O <-->|"dispatch / return"| R["wf-review"]
+    O <-->|"dispatch / return"| L["wf-delivery"]
+    O <-->|"dispatch / return"| K["wf-documentation"]
+    O --> done([Complete])
+    S["wf-setup"] -. "adopts and configures" .-> O
 ```
 
-`wf-development` can coordinate the complete chain for a prepared work item. Ownership does not collapse during orchestration: each downstream router still owns its own gates and repository-capability requirements.
+The stage order is grooming → approval → development → testing → review → delivery, with the knowledge-disposition check before merge. A not-ready review verdict returns through the orchestrator to development. Ownership never collapses: each stage router owns its own gates and repository-capability requirements, and a stage skill invoked directly for a single-stage request reports its own completion instead of continuing the pipeline.
 
 ## Grooming and implementation split
 
@@ -43,14 +44,14 @@ flowchart TD
     G --> intent["confirm intent and scope<br/>(interview / brainstorm route)"]
     intent --> plan["produce acceptance criteria,<br/>validation, plan, and decomposition"]
     plan --> ready([Ready for development])
-    ready --> D["wf-development --implement"]
+    ready --> D["wf-development"]
     D --> T["wf-testing"]
     T --> R["wf-review"]
     R --> L["wf-delivery"]
     L --> K["wf-documentation"]
 ```
 
-The hard boundary is deliberate: `wf-grooming` never claims work or edits product code. `wf-development --implement` refuses to invent missing grooming context and routes back to `wf-grooming`.
+The hard boundary is deliberate: `wf-grooming` never claims work or edits product code, and `wf-development` refuses to invent missing grooming context — the orchestrator routes an ungroomed item back to `wf-grooming`.
 
 ## Bug flow
 
@@ -115,12 +116,7 @@ stateDiagram-v2
     done --> abandoned
 ```
 
-`done` is the terminal successful ticket state and `abandoned` is the explicit off-ramp.
-`ready_for_work` is a human approval stamp, not a `wf-grooming` write — `planned` is grooming's
-ceiling, and no agent path advances an issue past it. Deployment/publication remains native
-delivery evidence, while compounding is a mandatory pre-merge disposition against the current PR
-head. The lifecycle reference under `wf-setup` defines entry gates, writer contracts, claims, agent
-write scope, and the closed repair set.
+Entry gates, writer contracts, claims, agent write scope, and the closed repair set are defined in the [lifecycle reference](skills/wf-setup/references/lifecycle.md).
 
 ## Setup flow
 
@@ -138,15 +134,3 @@ flowchart TD
 ```
 
 `wf-setup` is the only router allowed to continue temporarily after contract validation fails, and only to construct, migrate, or repair the contract. It maps suitable existing assets directly, never creates wrappers merely for naming or metadata, never guesses operational guidance, and cannot finish until strict validation succeeds.
-
-## Progressive disclosure
-
-Each router follows the same sequence:
-
-1. Validate the complete repository contract.
-2. Require the capabilities needed by the selected route.
-3. Read each capability's primary target, then supporting targets only as needed.
-4. Load only the internal procedure needed for the current stage.
-5. Return to the router for its handoff and completion gate.
-
-This keeps workflow policy stable across repositories while allowing every repository to supply its own commands, infrastructure, access procedures, and evidence sources.

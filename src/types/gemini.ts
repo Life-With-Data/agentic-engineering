@@ -1,11 +1,8 @@
+import type { SkillDir } from "./claude"
+
 export type GeminiSkill = {
   name: string
   content: string // Full SKILL.md with YAML frontmatter
-}
-
-export type GeminiSkillDir = {
-  name: string
-  sourceDir: string
 }
 
 export type GeminiCommand = {
@@ -23,7 +20,7 @@ export type GeminiMcpServer = {
 
 export type GeminiBundle = {
   generatedSkills: GeminiSkill[] // From agents
-  skillDirs: GeminiSkillDir[] // From skills (pass-through)
+  skillDirs: SkillDir[] // From skills (pass-through)
   commands: GeminiCommand[]
   mcpServers?: Record<string, GeminiMcpServer>
 }

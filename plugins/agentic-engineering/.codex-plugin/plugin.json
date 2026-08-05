@@ -1,12 +1,12 @@
 {
   "name": "agentic-engineering",
   "version": "7.1.1",
-  "description": "AI-powered development tools. 33 agents, 7 workflow skills, 1 MCP server for code review, research, design, and workflow automation. Native Codex install ships skills, MCP, and safety hooks; agents via Bun --to codex.",
+  "description": "AI-powered development tools. 25 agents, 8 workflow skills, 1 MCP server for code review, research, design, and workflow automation. Native Codex install ships skills, MCP, and safety hooks; agents via Bun --to codex.",
   "author": {
     "name": "Anthony Agnone",
     "url": "https://github.com/aagnone3"
   },
-  "homepage": "https://life-with-data.github.io/agentic-engineering/",
+  "homepage": "https://github.com/Life-With-Data/agentic-engineering",
   "repository": "https://github.com/Life-With-Data/agentic-engineering",
   "license": "MIT",
   "keywords": [
@@ -31,7 +31,7 @@
       "Read",
       "Write"
     ],
-    "websiteURL": "https://life-with-data.github.io/agentic-engineering/",
+    "websiteURL": "https://github.com/Life-With-Data/agentic-engineering",
     "defaultPrompt": [
       "Run the plan → work → review → compound loop on this task.",
       "Review this change for acceptance criteria and safety.",

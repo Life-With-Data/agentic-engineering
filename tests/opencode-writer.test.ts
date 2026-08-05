@@ -1,18 +1,9 @@
 import { describe, expect, test } from "bun:test"
-import { promises as fs } from "fs"
+import { existsSync, promises as fs } from "fs"
 import path from "path"
 import os from "os"
 import { writeOpenCodeBundle } from "../src/targets/opencode"
 import type { OpenCodeBundle } from "../src/types/opencode"
-
-async function exists(filePath: string): Promise<boolean> {
-  try {
-    await fs.access(filePath)
-    return true
-  } catch {
-    return false
-  }
-}
 
 describe("writeOpenCodeBundle", () => {
   test("writes config, agents, plugins, and skills", async () => {
@@ -32,10 +23,10 @@ describe("writeOpenCodeBundle", () => {
 
     await writeOpenCodeBundle(tempRoot, bundle)
 
-    expect(await exists(path.join(tempRoot, "opencode.json"))).toBe(true)
-    expect(await exists(path.join(tempRoot, ".opencode", "agents", "agent-one.md"))).toBe(true)
-    expect(await exists(path.join(tempRoot, ".opencode", "plugins", "hook.ts"))).toBe(true)
-    expect(await exists(path.join(tempRoot, ".opencode", "skills", "skill-one", "SKILL.md"))).toBe(true)
+    expect(existsSync(path.join(tempRoot, "opencode.json"))).toBe(true)
+    expect(existsSync(path.join(tempRoot, ".opencode", "agents", "agent-one.md"))).toBe(true)
+    expect(existsSync(path.join(tempRoot, ".opencode", "plugins", "hook.ts"))).toBe(true)
+    expect(existsSync(path.join(tempRoot, ".opencode", "skills", "skill-one", "SKILL.md"))).toBe(true)
   })
 
   test("writes directly into a .opencode output root", async () => {
@@ -56,10 +47,10 @@ describe("writeOpenCodeBundle", () => {
 
     await writeOpenCodeBundle(outputRoot, bundle)
 
-    expect(await exists(path.join(outputRoot, "opencode.json"))).toBe(true)
-    expect(await exists(path.join(outputRoot, "agents", "agent-one.md"))).toBe(true)
-    expect(await exists(path.join(outputRoot, "skills", "skill-one", "SKILL.md"))).toBe(true)
-    expect(await exists(path.join(outputRoot, ".opencode"))).toBe(false)
+    expect(existsSync(path.join(outputRoot, "opencode.json"))).toBe(true)
+    expect(existsSync(path.join(outputRoot, "agents", "agent-one.md"))).toBe(true)
+    expect(existsSync(path.join(outputRoot, "skills", "skill-one", "SKILL.md"))).toBe(true)
+    expect(existsSync(path.join(outputRoot, ".opencode"))).toBe(false)
   })
 
   test("writes directly into ~/.config/opencode style output root", async () => {
@@ -82,10 +73,10 @@ describe("writeOpenCodeBundle", () => {
     await writeOpenCodeBundle(outputRoot, bundle)
 
     // Should write directly, not nested under .opencode
-    expect(await exists(path.join(outputRoot, "opencode.json"))).toBe(true)
-    expect(await exists(path.join(outputRoot, "agents", "agent-one.md"))).toBe(true)
-    expect(await exists(path.join(outputRoot, "skills", "skill-one", "SKILL.md"))).toBe(true)
-    expect(await exists(path.join(outputRoot, ".opencode"))).toBe(false)
+    expect(existsSync(path.join(outputRoot, "opencode.json"))).toBe(true)
+    expect(existsSync(path.join(outputRoot, "agents", "agent-one.md"))).toBe(true)
+    expect(existsSync(path.join(outputRoot, "skills", "skill-one", "SKILL.md"))).toBe(true)
+    expect(existsSync(path.join(outputRoot, ".opencode"))).toBe(false)
   })
 
   test("merges plugin config into existing opencode.json without destroying user keys", async () => {
@@ -216,7 +207,7 @@ describe("writeOpenCodeBundle", () => {
     await writeOpenCodeBundle(outputRoot, bundle)
 
     const cmdPath = path.join(outputRoot, "commands", "my-cmd.md")
-    expect(await exists(cmdPath)).toBe(true)
+    expect(existsSync(cmdPath)).toBe(true)
 
     const content = await fs.readFile(cmdPath, "utf8")
     expect(content).toBe("---\ndescription: Test\n---\n\nDo something.\n")

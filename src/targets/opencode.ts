@@ -95,29 +95,18 @@ export async function writeOpenCodeBundle(outputRoot: string, bundle: OpenCodeBu
 }
 
 function resolveOpenCodePaths(outputRoot: string) {
+  // Global install (~/.config/opencode) and project installs (.opencode) hold
+  // content directly; any other output root nests content under .opencode.
   const base = path.basename(outputRoot)
-  // Global install: ~/.config/opencode (basename is "opencode")
-  // Project install: .opencode (basename is ".opencode")
-  if (base === "opencode" || base === ".opencode") {
-    return {
-      root: outputRoot,
-      configPath: path.join(outputRoot, "opencode.json"),
-      agentsDir: path.join(outputRoot, "agents"),
-      pluginsDir: path.join(outputRoot, "plugins"),
-      skillsDir: path.join(outputRoot, "skills"),
-      // .md command files; alternative to the command key in opencode.json
-      commandDir: path.join(outputRoot, "commands"),
-    }
-  }
-
-  // Custom output directory - nest under .opencode subdirectory
+  const dir =
+    base === "opencode" || base === ".opencode" ? outputRoot : path.join(outputRoot, ".opencode")
   return {
     root: outputRoot,
     configPath: path.join(outputRoot, "opencode.json"),
-    agentsDir: path.join(outputRoot, ".opencode", "agents"),
-    pluginsDir: path.join(outputRoot, ".opencode", "plugins"),
-    skillsDir: path.join(outputRoot, ".opencode", "skills"),
+    agentsDir: path.join(dir, "agents"),
+    pluginsDir: path.join(dir, "plugins"),
+    skillsDir: path.join(dir, "skills"),
     // .md command files; alternative to the command key in opencode.json
-    commandDir: path.join(outputRoot, ".opencode", "commands"),
+    commandDir: path.join(dir, "commands"),
   }
 }

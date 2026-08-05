@@ -52,11 +52,16 @@ Deduplicate findings by root cause. Do not elevate style preferences into
 blocking findings without repository evidence.
 
 For a UI-affecting change, absent visual evidence is itself a reviewable
-finding: request the evidence rather than passing silently. Raise it at P3 as a
+finding: request the evidence from the development stage (via the
+orchestrator or the PR thread), never by pausing to ask the user. Raise it at
+P3 as a
 "request before/after or expected-state screenshots" finding, and escalate when
 the acceptance criteria demand visual proof — to P2 when a criterion is not
 verifiable without it, or P1 when it materially under-delivers required
-behavior. This applies only to changes that touch a user-visible surface; do not
+behavior. In an autonomous run where the repository maps no capture or
+attachment mechanism, local capture paths recorded in the PR body satisfy the
+evidence request, with the missing mechanism noted as a capability gap. This
+applies only to changes that touch a user-visible surface; do not
 raise it against non-UI changes.
 
 ## Record and resolve
@@ -65,7 +70,7 @@ Record findings through the repository's configured tracker or review system.
 Non-blocking findings triage is a routine gate standard mode keeps and
 autonomous mode suppresses in its favor (autonomous fixes P2 and defers P3
 per policy instead of asking); see the
-[escalation contract](../../wf-development/references/escalation-contract.md)
+[escalation contract](../../wf-orchestrate/references/escalation-contract.md)
 for the complete, named set of reasons a run stops regardless of mode. For
 each proposed fix:
 

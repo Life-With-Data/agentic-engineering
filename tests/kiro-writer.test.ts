@@ -1,18 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { promises as fs } from "fs";
+import { existsSync, promises as fs } from "fs";
 import path from "path";
 import os from "os";
 import { writeKiroBundle } from "../src/targets/kiro";
 import type { KiroBundle } from "../src/types/kiro";
-
-async function exists(filePath: string): Promise<boolean> {
-  try {
-    await fs.access(filePath);
-    return true;
-  } catch {
-    return false;
-  }
-}
 
 const emptyBundle: KiroBundle = {
   agents: [],
@@ -86,7 +77,7 @@ describe("writeKiroBundle", () => {
       "agents",
       "security-reviewer.json"
     );
-    expect(await exists(agentConfigPath)).toBe(true);
+    expect(existsSync(agentConfigPath)).toBe(true);
     const agentConfig = JSON.parse(await fs.readFile(agentConfigPath, "utf8"));
     expect(agentConfig.name).toBe("security-reviewer");
     expect(agentConfig.includeMcpJson).toBe(true);
@@ -100,7 +91,7 @@ describe("writeKiroBundle", () => {
       "prompts",
       "security-reviewer.md"
     );
-    expect(await exists(promptPath)).toBe(true);
+    expect(existsSync(promptPath)).toBe(true);
     const promptContent = await fs.readFile(promptPath, "utf8");
     expect(promptContent).toContain("Review code for vulnerabilities.");
 
@@ -112,13 +103,13 @@ describe("writeKiroBundle", () => {
       "workflows-plan",
       "SKILL.md"
     );
-    expect(await exists(skillPath)).toBe(true);
+    expect(existsSync(skillPath)).toBe(true);
     const skillContent = await fs.readFile(skillPath, "utf8");
     expect(skillContent).toContain("Plan the work.");
 
     // Copied skill
     expect(
-      await exists(
+      existsSync(
         path.join(tempRoot, ".kiro", "skills", "skill-one", "SKILL.md")
       )
     ).toBe(true);
@@ -130,13 +121,13 @@ describe("writeKiroBundle", () => {
       "steering",
       "agentic-engineering.md"
     );
-    expect(await exists(steeringPath)).toBe(true);
+    expect(existsSync(steeringPath)).toBe(true);
     const steeringContent = await fs.readFile(steeringPath, "utf8");
     expect(steeringContent).toContain("Follow these guidelines.");
 
     // MCP config
     const mcpPath = path.join(tempRoot, ".kiro", "settings", "mcp.json");
-    expect(await exists(mcpPath)).toBe(true);
+    expect(existsSync(mcpPath)).toBe(true);
     const mcpContent = JSON.parse(await fs.readFile(mcpPath, "utf8"));
     expect(mcpContent.mcpServers.playwright.command).toBe("npx");
   });
@@ -164,18 +155,18 @@ describe("writeKiroBundle", () => {
 
     await writeKiroBundle(kiroRoot, bundle);
 
-    expect(await exists(path.join(kiroRoot, "agents", "reviewer.json"))).toBe(
+    expect(existsSync(path.join(kiroRoot, "agents", "reviewer.json"))).toBe(
       true
     );
     // Should NOT double-nest under .kiro/.kiro
-    expect(await exists(path.join(kiroRoot, ".kiro"))).toBe(false);
+    expect(existsSync(path.join(kiroRoot, ".kiro"))).toBe(false);
   });
 
   test("handles empty bundles gracefully", async () => {
     const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "kiro-empty-"));
 
     await writeKiroBundle(tempRoot, emptyBundle);
-    expect(await exists(tempRoot)).toBe(true);
+    expect(existsSync(tempRoot)).toBe(true);
   });
 
   test("backs up existing mcp.json before overwrite", async () => {
@@ -247,7 +238,7 @@ describe("writeKiroBundle", () => {
     await writeKiroBundle(tempRoot, bundle);
 
     const mcpPath = path.join(tempRoot, ".kiro", "settings", "mcp.json");
-    expect(await exists(mcpPath)).toBe(true);
+    expect(existsSync(mcpPath)).toBe(true);
     const content = JSON.parse(await fs.readFile(mcpPath, "utf8"));
     expect(content.mcpServers.myServer.command).toBe("my-cmd");
     expect(content.mcpServers.myServer.args).toEqual(["--flag"]);

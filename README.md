@@ -3,9 +3,9 @@
 [![Build Status](https://github.com/Life-With-Data/agentic-engineering/actions/workflows/ci.yml/badge.svg)](https://github.com/Life-With-Data/agentic-engineering/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/Life-With-Data/agentic-engineering)](https://github.com/Life-With-Data/agentic-engineering/releases)
 
-A Claude Code plugin built on one idea: **each unit of engineering work should make the next one easier — not harder.**
+**Each unit of work should make the next one easier — not harder.**
 
-Most codebases drift the other way. Every feature adds complexity, every shortcut adds debt, and the work gets slower over time. This plugin inverts that by turning a deliberate loop — explore, plan, build, review, and *capture what you learned* — into first-class tooling: **33 agents and 7 workflow skills** that compound on each other.
+Most codebases drift the other way. Every feature adds complexity, every shortcut adds debt, and the work gets slower over time. This plugin inverts that by turning a deliberate loop — explore, plan, build, review, and *capture what you learned* — into first-class tooling: **25 agents and 8 workflow skills** that build on each other.
 
 It installs natively in Claude Code, Cursor, and Codex, and converts to other AI coding tools (OpenCode, Droid, Gemini, Copilot, and more) via the Bun CLI.
 
@@ -21,24 +21,25 @@ grooming → development → testing → review → delivery → documentation �
 
 | Skill | What it does |
 |-------|--------------|
+| `/wf-orchestrate` | **Default entry.** Drive a work item end to end, dispatching each stage skill |
 | `/wf-grooming` | Discover intent, reproduce bugs, groom, and plan work |
-| `/wf-development` | Implement the plan and coordinate the end-to-end development loop |
+| `/wf-development` | Implement the plan |
 | `/wf-testing` | Select and run the required test and verification strategy |
 | `/wf-review` | Review code, architecture, security, and pull-request feedback |
 | `/wf-delivery` | Repair CI, prepare and merge PRs, and hand off releases or deployments |
-| `/wf-documentation` | Create, review, compound, and ship durable documentation |
+| `/wf-documentation` | Create, review, and land durable documentation |
 | `/wf-setup` | Adopt and configure the plugin, repository contract, lifecycle, and hooks |
 
-Run the loop without babysitting it through **`/wf-development`**. Its orchestration route is fully autonomous by default: it drives the pipeline, delegates implementation, reviews the results, merges once the PR is landable, and surfaces only genuine blockers. Use `--final-review` to pause once before merge or `--steer` for the classic checkpoint cadence.
+Delegation is vertical: **`/wf-orchestrate`** is the default invocation path. It resolves the item's lifecycle stage, dispatches the owning stage skill, and enforces the gates between stages — fully autonomous on cleared tickets, surfacing only genuine blockers. Stage skills never route laterally to each other; each does its stage and returns control.
 
-Or run it bifurcated, splitting grooming from implementation at the `planned` boundary:
+Or run a single stage directly, split at the `planned` boundary:
 
 - **`/wf-grooming`** — turn an idea, bug report, or stub issue into a **groomed, ready-to-claim work item** and stop there. Bug reports must be reproduced before they are considered groomed.
-- **`/wf-development --implement`** — start from groomed work and drive it to `done`. An ungroomed item routes back to `wf-grooming` instead of being planned mid-run.
+- **`/wf-development`** — start from groomed, human-approved work and implement it. An ungroomed item routes back through the orchestrator to `wf-grooming` instead of being planned mid-run.
 
 📊 **[See FLOWS.md](plugins/agentic-engineering/FLOWS.md)** for mermaid diagrams of every flow and where the orchestrator pauses for you.
 
-The only supported tracker today is a GitHub Projects v2 lifecycle board (`github-project`); more trackers may come later. The workflows auto-detect whether the board is configured — an unconfigured repo still works, but with no lifecycle claims and no tracker writes until the `wf-setup` lifecycle bootstrap configures a board. [beads](https://github.com/gastownhall/beads) may optionally serve as an in-session implementer scratchpad, but it is never a source of truth: no gate reads it, nothing syncs it, and its files are never committed.
+The only supported tracker today is a GitHub Projects v2 lifecycle board (`github-project`); the workflows auto-detect whether the board is configured, and an unconfigured repo still works until the `wf-setup` lifecycle bootstrap configures one.
 
 ### Worktree cleanup
 
@@ -51,7 +52,7 @@ bun run worktrees:finish -- <name>  # done with one branch: remove its worktree,
                                     # branch, and fast-forward the primary tree onto base
 ```
 
-Both grade merge evidence by strength: branches with an unambiguous record — `git cherry` patch equivalence (squash/rebase merges) or a merge-commit record (GitHub's default merge button) — are reaped immediately, while branches indistinguishable from freshly created ones (fast-forwarded or commit-less: no unique commits, no merge record) must first sit idle through a 30-minute grace window, tunable via `WORKTREE_GC_GRACE_MIN`. Unmerged work is never touched (`finish` requires an explicit `--force` to discard it, and also refuses the ambiguous fresh-or-fast-forward shape without `--force`). `sync` is the catch-all for any teardown an agent session deferred — e.g. a session that could not `finish` its own worktree because it was running inside it. Note the `--` — `bun run` needs it to pass arguments through to the script.
+Unmerged work is never touched. Evidence tiers, the grace window, and `--force` semantics live in the [git-worktree reference](plugins/agentic-engineering/skills/wf-development/references/git-worktree.md). Note the `--` — `bun run` needs it to pass arguments through to the script.
 
 **In consuming repositories** — any repo that installs this marketplace — the same commands run through the bundled CLI, no checkout of this repo required (needs [Bun](https://bun.sh) on PATH):
 
@@ -60,7 +61,7 @@ npx github:Life-With-Data/agentic-engineering worktrees sync
 npx github:Life-With-Data/agentic-engineering worktrees finish <name>
 ```
 
-`worktrees` operates on whatever git repository you run it from and passes every argument straight through to the bundled `worktree-manager.sh` (`sync`, `finish <name> [base] [--force]`, `gc`, `list`, `create`, ...). Exit codes pass through unchanged, so it is safe to wire into scripts or hooks.
+`worktrees` operates on whatever git repository you run it from and passes every argument straight through to the bundled `worktree-manager.sh`. Exit codes pass through unchanged, so it is safe to wire into scripts or hooks.
 
 ## Install
 
@@ -192,8 +193,8 @@ Syncs personal skills from `~/.claude/skills/` (as symlinks, so edits reflect im
 
 | Component | Count |
 |-----------|-------|
-| Specialized agents | 33 |
-| Workflow skills | 7 |
+| Specialized agents | 25 |
+| Workflow skills | 8 |
 | MCP servers | 1 |
 
 → **[Full component reference](plugins/agentic-engineering/README.md)** — every agent and workflow skill.
@@ -204,17 +205,11 @@ The split is roughly **80% planning and review, 20% execution.** Plan thoroughly
 
 ## Contributing
 
-Repository guidance lives in [AGENTS.md](AGENTS.md); `bun test` is the
-authoritative gate. For local early warning, opt in to the versioned
-pre-commit hook (runs the fast `bun run skills:check` byte-comparison):
-
-```bash
-bun run hooks:install
-```
+See [CONTRIBUTING.md](.github/CONTRIBUTING.md) for the workflow and required
+checks, and [AGENTS.md](AGENTS.md) for repository guidance.
 
 ## Learn more
 
-- [Documentation site](https://life-with-data.github.io/agentic-engineering/) — full agent and skill reference
 - [FLOWS.md](plugins/agentic-engineering/FLOWS.md) — mermaid diagrams of every workflow and where the orchestrator pauses for you
 - [Multi-platform native plugin guide](docs/multi-platform-native-plugins.md) — extend a Claude Code plugin to Cursor and Codex without duplicating its implementation
 - [Release process](docs/solutions/plugin-versioning-requirements.md) — versions and changelogs are computed by release-please from Conventional Commit PR titles, not hand-bumped

@@ -1,4 +1,6 @@
 import fs from "fs/promises"
+import path from "path"
+import type { ClaudeSkill } from "../types/claude"
 
 /**
  * Create a symlink, safely replacing any existing symlink at target.
@@ -40,4 +42,19 @@ export function isValidSkillName(name: string): boolean {
   if (name.includes("\0")) return false
   if (name === "." || name === "..") return false
   return true
+}
+
+/**
+ * Symlink each skill into skillsDir, skipping unsafe names.
+ * Shared by every sync target.
+ */
+export async function syncSkills(skills: ClaudeSkill[], skillsDir: string): Promise<void> {
+  await fs.mkdir(skillsDir, { recursive: true })
+  for (const skill of skills) {
+    if (!isValidSkillName(skill.name)) {
+      console.warn(`Skipping skill with invalid name: ${skill.name}`)
+      continue
+    }
+    await forceSymlink(skill.sourceDir, path.join(skillsDir, skill.name))
+  }
 }

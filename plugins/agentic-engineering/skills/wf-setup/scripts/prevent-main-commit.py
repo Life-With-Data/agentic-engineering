@@ -30,7 +30,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from hook_payload import emit_allow, normalize
+from hook_payload import emit_allow, normalize, strip_quotes
 
 PROTECTED_BRANCHES = {"main", "master"}
 
@@ -60,12 +60,6 @@ def main():
         )
 
     emit_allow()
-
-
-def strip_quotes(command: str) -> str:
-    command = re.sub(r"'[^']*'", "", command)
-    command = re.sub(r'"[^"]*"', "", command)
-    return command
 
 
 def current_branch() -> str:

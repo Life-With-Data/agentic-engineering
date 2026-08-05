@@ -107,6 +107,10 @@ describe("frozen hook surface", () => {
     // destructure `const { hooks } = plugin`, a helper import, a comment) in a
     // converter that is supposed to be hook-free trips this.
     for (const t of ["claude", "codex", "droid", "pi"]) {
+      // claude has no converter file: the registry passes the plugin straight
+      // through (src/targets/index.ts), which trivially has no hook handling.
+      // If a claude-to-claude.ts ever reappears, it gets scanned again here.
+      if (t === "claude" && converterSource[t] === undefined) continue
       expect(converterSource[t]).toBeDefined()
       expect(/hook/i.test(converterSource[t])).toBe(false)
     }

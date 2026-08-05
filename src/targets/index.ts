@@ -1,6 +1,5 @@
 import type { ClaudePlugin } from "../types/claude"
-import { convertClaudeToOpenCode, type ClaudeToOpenCodeOptions } from "../converters/claude-to-opencode"
-import { convertClaudeToClaude } from "../converters/claude-to-claude"
+import { convertClaudeToOpenCode, type ConvertOptions } from "../converters/claude-to-opencode"
 import { convertClaudeToCodex } from "../converters/claude-to-codex"
 import { convertClaudeToCursor } from "../converters/claude-to-cursor"
 import { convertClaudeToDroid } from "../converters/claude-to-droid"
@@ -18,73 +17,23 @@ import { writeCopilotBundle } from "./copilot"
 import { writeGeminiBundle } from "./gemini"
 import { writeKiroBundle } from "./kiro"
 
-export type TargetHandler<TBundle = unknown> = {
+export type TargetHandler = {
   name: string
-  implemented: boolean
-  convert: (plugin: ClaudePlugin, options: ClaudeToOpenCodeOptions) => TBundle | null
-  write: (outputRoot: string, bundle: TBundle) => Promise<void>
-}
-
-// The registry maps target names to handlers with heterogeneous bundle types,
-// which the Record value type can't express — each entry erases TBundle here,
-// after inference has verified that convert's output matches write's input.
-function defineTarget<TBundle>(handler: TargetHandler<TBundle>): TargetHandler {
-  return handler as unknown as TargetHandler
+  convert: (plugin: ClaudePlugin, options: ConvertOptions) => unknown
+  // Each writer takes its own bundle type; `any` keeps the registry heterogeneous.
+  // Every target is exercised end-to-end by tests, which catch a mismatched pair.
+  write: (outputRoot: string, bundle: any) => Promise<void>
 }
 
 export const targets: Record<string, TargetHandler> = {
-  claude: defineTarget({
-    name: "claude",
-    implemented: true,
-    convert: convertClaudeToClaude,
-    write: writeClaudeBundle,
-  }),
-  opencode: defineTarget({
-    name: "opencode",
-    implemented: true,
-    convert: convertClaudeToOpenCode,
-    write: writeOpenCodeBundle,
-  }),
-  codex: defineTarget({
-    name: "codex",
-    implemented: true,
-    convert: convertClaudeToCodex,
-    write: writeCodexBundle,
-  }),
-  cursor: defineTarget({
-    name: "cursor",
-    implemented: true,
-    convert: convertClaudeToCursor,
-    write: writeCursorBundle,
-  }),
-  droid: defineTarget({
-    name: "droid",
-    implemented: true,
-    convert: convertClaudeToDroid,
-    write: writeDroidBundle,
-  }),
-  pi: defineTarget({
-    name: "pi",
-    implemented: true,
-    convert: convertClaudeToPi,
-    write: writePiBundle,
-  }),
-  copilot: defineTarget({
-    name: "copilot",
-    implemented: true,
-    convert: convertClaudeToCopilot,
-    write: writeCopilotBundle,
-  }),
-  gemini: defineTarget({
-    name: "gemini",
-    implemented: true,
-    convert: convertClaudeToGemini,
-    write: writeGeminiBundle,
-  }),
-  kiro: defineTarget({
-    name: "kiro",
-    implemented: true,
-    convert: convertClaudeToKiro,
-    write: writeKiroBundle,
-  }),
+  // Claude is a passthrough: the plugin itself is the bundle.
+  claude: { name: "claude", convert: (plugin) => plugin, write: writeClaudeBundle },
+  opencode: { name: "opencode", convert: convertClaudeToOpenCode, write: writeOpenCodeBundle },
+  codex: { name: "codex", convert: convertClaudeToCodex, write: writeCodexBundle },
+  cursor: { name: "cursor", convert: convertClaudeToCursor, write: writeCursorBundle },
+  droid: { name: "droid", convert: convertClaudeToDroid, write: writeDroidBundle },
+  pi: { name: "pi", convert: convertClaudeToPi, write: writePiBundle },
+  copilot: { name: "copilot", convert: convertClaudeToCopilot, write: writeCopilotBundle },
+  gemini: { name: "gemini", convert: convertClaudeToGemini, write: writeGeminiBundle },
+  kiro: { name: "kiro", convert: convertClaudeToKiro, write: writeKiroBundle },
 }

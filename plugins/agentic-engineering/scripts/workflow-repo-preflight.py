@@ -6,12 +6,9 @@ Outputs a JSON object with repository state, branch context, optional PR metadat
 issue-tracker availability, and a recommended next action so agents can branch on
 explicit state instead of re-deriving it from prose instructions.
 
-Issue-tracker resolution order (first match wins):
-  1. issue_tracker: field in agentic-engineering.local.md frontmatter (explicit
-     override; a git-tracked copy is ignored — a PR must never carry it)
-  2. committed board config (agentic-engineering.md with
-     github_project_owner + github_project_number)              -> "github-project"
-  3. otherwise                                                  -> "unconfigured"
+Issue-tracker resolution: committed board config (agentic-engineering.md with
+github_project_owner + github_project_number) -> "github-project", otherwise
+"unconfigured".
 
 The only supported tracker is a GitHub Project board ("github-project").
 "unconfigured" is a state, not a mode: the repo has not run the wf-setup
@@ -29,7 +26,6 @@ import functools
 import importlib.util
 import json
 import pathlib
-import re
 import shutil
 import subprocess
 import sys
@@ -165,37 +161,20 @@ def get_pr_context(origin_slug: str = "") -> dict[str, Any]:
 
 _LOCAL_CONFIG_NAME = "agentic-engineering.local.md"
 
-# Same flat `key: value` shape lifecycle_board.parse_frontmatter/config_registry
-# use for agentic-engineering.local.md (and the committed board config): a bare
-# identifier key, then everything up to trailing whitespace as the raw value.
-# Keeping this identical (rather than a per-key regex baked around the
-# expected value shape) is what fixes P3-2 -- the reader no longer has its own
-# opinion about what a value may look like, so a quoted or commented value
-# parses the same way config_registry.py already parses it.
-_FLAT_KEY_RE = re.compile(r"^\s*([A-Za-z_][\w-]*)\s*:\s*(.+?)\s*$")
-
 
 @functools.lru_cache(maxsize=None)
 def _load_local_config(repo_root: str) -> Optional[dict[str, str]]:
     """Read agentic-engineering.local.md's frontmatter for `repo_root`, once.
 
     Returns the flat key -> raw-value mapping, or None when the file is
-    absent, unreadable, has no parseable frontmatter block, or is *tracked*
-    in git (see the security invariant below) -- any of these is "no local
-    config available" to every caller.
+    absent, unreadable, has no parseable frontmatter, or is *tracked* in git
+    (see the security invariant below) -- any of these is "no local config
+    available" to every caller.
 
-    Value parsing mirrors config_registry.parse_frontmatter exactly: strip a
-    trailing ` # comment`, then strip one layer of surrounding double or
-    single quotes. Values are returned case-preserved; callers lowercase for
-    their own vocabulary comparisons.
-
-    Caching invariant (fixes P3-3): issue_tracker and delivery_mode both live
-    in this one file, so resolving both must not cost two `git ls-files`
-    subprocesses, two file reads, and two near-identical "tracked, ignoring"
-    warnings for the same underlying fact. `lru_cache` keys on `repo_root`
-    and this function only executes once per unique root within a process,
-    so the tracked-file check, the read, and the warning below each happen
-    at most once no matter how many keys are looked up against it.
+    Parsing is delegated to lifecycle_board.parse_frontmatter (the same
+    parser config_registry.py uses), so a quoted or commented value parses
+    the same way everywhere. Values are returned case-preserved; callers
+    lowercase for their own vocabulary comparisons.
 
     Security invariant (same gate as lifecycle_board.read_board_config): a
     .local.md that is *tracked* in git would ride a PR, letting the PR pin
@@ -214,7 +193,7 @@ def _load_local_config(repo_root: str) -> Optional[dict[str, str]]:
     if tracked.returncode == 0:
         print(
             f"warning: {config_path.name} is tracked in git — a PR must not carry it; "
-            "ignoring its local overrides (issue_tracker, delivery_mode) and falling "
+            "ignoring its local overrides (delivery_mode) and falling "
             "back to auto-detect/defaults",
             file=sys.stderr,
         )
@@ -224,20 +203,7 @@ def _load_local_config(repo_root: str) -> Optional[dict[str, str]]:
         text = config_path.read_text(encoding="utf-8")
     except OSError:
         return None
-    if not text.startswith("---"):
-        return None
-    # Extract frontmatter block between leading --- and the next ---.
-    match = re.match(r"^---\s*\n(.*?)\n---\s*(?:\n|$)", text, re.DOTALL)
-    if not match:
-        return None
-
-    values: dict[str, str] = {}
-    for line in match.group(1).splitlines():
-        line = re.sub(r"\s+#.*$", "", line)  # strip a trailing ` # comment`
-        km = _FLAT_KEY_RE.match(line)
-        if km:
-            values[km.group(1)] = km.group(2).strip().strip('"').strip("'")
-    return values
+    return lifecycle_board.parse_frontmatter(text) or None
 
 
 def _read_local_config_key(
@@ -267,23 +233,6 @@ def _read_local_config_key(
     return (None, value)
 
 
-# The only supported tracker mode today; more trackers may be added later.
-VALID_TRACKERS = {"github-project"}
-
-
-def read_local_config_tracker(repo_root: str) -> tuple[Optional[str], Optional[str]]:
-    """Read issue_tracker: from agentic-engineering.local.md frontmatter.
-
-    Returns (valid_value, invalid_raw_value). An unrecognized value (e.g. a
-    stale ``linear``/``none`` override from a retired mode) is surfaced as the
-    second element instead of being silently ignored, so callers can tell the
-    user their pinned tracker no longer resolves. See `_read_local_config_key`
-    and `_load_local_config` for parsing and the tracked-file security
-    invariant, shared with read_local_config_delivery_mode below.
-    """
-    return _read_local_config_key(repo_root, "issue_tracker", VALID_TRACKERS)
-
-
 # The only supported delivery-posture defaults today; more may follow the
 # posture vocabulary in lifecycle_board.py (POSTURE_VALUES).
 VALID_DELIVERY_MODES = {"standard", "autonomous"}
@@ -292,11 +241,13 @@ VALID_DELIVERY_MODES = {"standard", "autonomous"}
 def read_local_config_delivery_mode(repo_root: str) -> tuple[Optional[str], Optional[str]]:
     """Read delivery_mode: from agentic-engineering.local.md frontmatter.
 
-    Symmetric to read_local_config_tracker above: same (valid, invalid)
-    return shape, same shared parser, same tracked-file security invariant
-    (a .local.md that is *tracked* in git would ride a PR, letting the PR pin
-    every clone's default delivery posture; a tracked copy is ignored with a
-    warning and resolution falls back to the safe `standard` default).
+    Returns (valid_value, invalid_raw_value): a present-but-unrecognized
+    value surfaces via the second element so callers can warn that the
+    override did not take effect. Shares `_load_local_config`'s parsing and
+    tracked-file security invariant (a .local.md that is *tracked* in git
+    would ride a PR, letting the PR pin every clone's default delivery
+    posture; a tracked copy is ignored with a warning and resolution falls
+    back to the safe `standard` default).
     """
     return _read_local_config_key(repo_root, "delivery_mode", VALID_DELIVERY_MODES)
 
@@ -324,25 +275,12 @@ def resolve_delivery_mode(repo_root: str) -> dict[str, Any]:
     }
 
 
-def resolve_issue_tracker(
-    repo_root: str,
-    board_configured: bool,
-) -> dict[str, Any]:
-    """Apply the resolution chain and return both the decision and provenance."""
-    local_override, invalid_override = read_local_config_tracker(repo_root)
-    if local_override is not None:
-        return {
-            "resolved": local_override,
-            "source": "agentic-engineering.local.md",
-            "local_override": local_override,
-            "local_override_invalid": None,
-        }
-
+def resolve_issue_tracker(board_configured: bool) -> dict[str, Any]:
+    """Two-state resolution: a committed board config means github-project;
+    otherwise the repo is unconfigured (run the wf-setup lifecycle bootstrap)."""
     return {
         "resolved": "github-project" if board_configured else "unconfigured",
         "source": "auto-detect",
-        "local_override": None,
-        "local_override_invalid": invalid_override,
     }
 
 
@@ -445,18 +383,13 @@ def main() -> int:
         )
         return 1
 
-    tracker_info = resolve_issue_tracker(
-        repo_root=repo_root,
-        board_configured=board is not None,
-    )
+    tracker_info = resolve_issue_tracker(board_configured=board is not None)
     delivery_mode_info = resolve_delivery_mode(repo_root=repo_root)
 
     data["integrations"] = {
         "github_cli_authed": gh_authenticated,
         "board_owner": board.owner if board else None,
         "board_number": board.number if board else None,
-        "issue_tracker_local_config": tracker_info["local_override"],
-        "issue_tracker_local_config_invalid": tracker_info["local_override_invalid"],
         "issue_tracker_resolved": tracker_info["resolved"],
         "issue_tracker_source": tracker_info["source"],
         "delivery_mode_local_config": delivery_mode_info["local_override"],
@@ -464,14 +397,6 @@ def main() -> int:
         "delivery_mode_resolved": delivery_mode_info["resolved"],
         "delivery_mode_source": delivery_mode_info["source"],
     }
-    if tracker_info["local_override_invalid"]:
-        print(
-            "warning: agentic-engineering.local.md pins issue_tracker: "
-            f"'{tracker_info['local_override_invalid']}', which is not a supported tracker "
-            f"({' | '.join(sorted(VALID_TRACKERS))} is the only supported mode today); "
-            "falling back to auto-detect",
-            file=sys.stderr,
-        )
     if delivery_mode_info["local_override_invalid"]:
         print(
             "warning: agentic-engineering.local.md pins delivery_mode: "

@@ -7,7 +7,7 @@ description: Workflow policy for reviewing code, architecture, security, plans, 
 
 Layer: Workflow policy
 
-Owns: review scope, reviewer selection, finding severity, deduplication, fix/defer decisions, and approval readiness.
+Owns: reviewer selection.
 
 Requires repository capabilities: `repository-overview`, `test-execution`.
 
@@ -15,16 +15,13 @@ Does not contain: repository conventions, production access, test commands, or d
 
 ## Start here
 
-Scripts are bundled beside this `SKILL.md`; resolve `<skill-directory>` to that
-directory, never through a plugin root.
-
 ```bash
 python3 <skill-directory>/scripts/repository-context.py \
   --require repository-overview \
   --require test-execution
 ```
 
-Stop on contract failure. Read each required capability's primary target, then supporting targets only when needed, before judging convention or completeness.
+Stop on contract failure; read primary targets first, supporting targets only as needed.
 
 ## Route the request
 
@@ -38,13 +35,10 @@ Document-specific review policy lives in `wf-documentation`; testing sufficiency
 
 ## Sub-agent delegation
 
-Delegate one focused reviewer per selected review lens, in parallel when the
-lenses are independent; the orchestrator retains lens selection,
-deduplication, severity classification, fix/defer decisions, the final
-verdict, and a spot-check of every finding against the diff. Roles, dispatch,
-per-unit model selection, verification, and the inline fallback for hosts
-without a sub-agent mechanism are owned by [sub-agent
-delegation](../wf-development/references/subagent-delegation.md).
+Delegate per-unit stage work to focused sub-agents; the orchestrator retains
+verification and every tracker, board, and PR write. Roles, dispatch, model
+selection, and the inline fallback:
+[sub-agent delegation](../wf-orchestrate/references/subagent-delegation.md).
 
 ## Review contract
 
@@ -53,9 +47,9 @@ delegation](../wf-development/references/subagent-delegation.md).
 3. Select only reviewers relevant to the risk surface.
 4. Require reproducible evidence for findings.
 5. Deduplicate and classify findings by impact.
-6. Re-verify any fixes through `wf-testing`.
-7. Produce a clear ready/not-ready decision.
+6. Require re-verification evidence for any fixes made during review.
+7. Produce a clear ready/not-ready decision and return it with its findings to the caller (`wf-orchestrate` in the standard pipeline); a not-ready verdict names the blocking findings for the development stage.
 
 ## Wrong-layer recovery
 
-If a review reference asserts repository-specific style or commands without support from the repository contract, treat that assertion as ungrounded. Consult the mapped repository assets, then resume the review policy here.
+Workflow policy wins on process; repository guidance wins on mechanics — consult the mapped repository capability targets for the latter.

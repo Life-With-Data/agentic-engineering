@@ -159,41 +159,10 @@ Instrumentation is code; it can be wrong. Before calling the work done, trigger 
 - Follow one request across services in the tracing UI → no broken spans
 - Fire each new alert once (lower the threshold temporarily) → confirm it reaches the right channel and the runbook link works
 
-## Common Rationalizations
-
-| Rationalization | Reality |
-|---|---|
-| "I'll add logging after it works" | "After" becomes "after the first incident", which is the most expensive moment to discover the system is blind. Instrument as you build. |
-| "More logs = more observability" | Unstructured noise makes incidents slower, not faster. Three queryable events beat three hundred prose lines. |
-| "console.log is fine for now" | Unstructured output can't be filtered, correlated, or alerted on. The structured logger costs five extra minutes once. |
-| "We can just look at the dashboards when something breaks" | Dashboards built without defined questions show everything except the answer. Start from on-call questions. |
-| "Alert on everything important, we'll tune later" | A noisy pager trains people to ignore it. The tuning never happens; the missed real page does. |
-| "User ID as a metric label makes debugging easier" | It also makes the metrics backend fall over. High-cardinality lookups belong in logs and traces. |
-| "Tracing is overkill for our two services" | Two services already means cross-service latency questions logs can't answer. Auto-instrumentation makes the cost trivial. |
-
-## Red Flags
-
-- A feature PR with retries, queues, or external calls and zero new telemetry
-- Log lines built by string interpolation instead of structured fields
-- No correlation/request ID — each log line is an orphan
-- Metrics labeled with user IDs, raw URLs, or error message text (cardinality bomb)
-- Latency tracked as an average with no percentiles
-- Alerts that fire daily and get acknowledged without action
-- Alerts on causes (CPU, memory) paging humans while user-facing error rate is unmonitored
-- Secrets, tokens, or full request bodies appearing in logs
-- "It works on my machine" as the only evidence a production feature is healthy
-
 ## Verification
 
-After instrumenting a feature, confirm:
-
-- [ ] The on-call questions for this feature are written down, and each signal maps to one
-- [ ] All log output is structured (JSON), with stable event names and a correlation ID on every line
-- [ ] No secrets, tokens, or unredacted PII in any log line (spot-check actual output)
-- [ ] RED metrics exist for every new endpoint and every external dependency, with bounded label sets
-- [ ] Latency is a histogram; p95/p99 are queryable
-- [ ] A single request can be followed end-to-end in the tracing UI without broken spans
-- [ ] Every new alert is symptom-based, has a runbook link, and was test-fired once
-- [ ] An induced failure in staging was located via telemetry alone, without reading the source
-
-For the at-a-glance version of this list, including the pre-launch instrumentation gate, see [observability-checklist.md](observability-and-instrumentation-checklist.md).
+Verify the work item-by-item against the
+[observability checklist](observability-and-instrumentation-checklist.md),
+including its pre-launch instrumentation gate. That file is the single
+checklist for this capability; this reference carries the procedure and
+rationale only.

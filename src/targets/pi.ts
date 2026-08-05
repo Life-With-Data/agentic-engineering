@@ -72,49 +72,15 @@ export async function writePiBundle(
 }
 
 function resolvePiPaths(outputRoot: string) {
+  // Write directly into ~/.pi/agent or a project .pi dir; otherwise nest under .pi.
   const base = path.basename(outputRoot);
-
-  // Global install root: ~/.pi/agent
-  if (base === "agent") {
-    return {
-      skillsDir: path.join(outputRoot, "skills"),
-      promptsDir: path.join(outputRoot, "prompts"),
-      extensionsDir: path.join(outputRoot, "extensions"),
-      mcporterConfigPath: path.join(
-        outputRoot,
-        "agentic-engineering",
-        "mcporter.json"
-      ),
-      agentsPath: path.join(outputRoot, "AGENTS.md"),
-    };
-  }
-
-  // Project local .pi directory
-  if (base === ".pi") {
-    return {
-      skillsDir: path.join(outputRoot, "skills"),
-      promptsDir: path.join(outputRoot, "prompts"),
-      extensionsDir: path.join(outputRoot, "extensions"),
-      mcporterConfigPath: path.join(
-        outputRoot,
-        "agentic-engineering",
-        "mcporter.json"
-      ),
-      agentsPath: path.join(outputRoot, "AGENTS.md"),
-    };
-  }
-
-  // Custom output root -> nest under .pi
+  const root =
+    base === "agent" || base === ".pi" ? outputRoot : path.join(outputRoot, ".pi");
   return {
-    skillsDir: path.join(outputRoot, ".pi", "skills"),
-    promptsDir: path.join(outputRoot, ".pi", "prompts"),
-    extensionsDir: path.join(outputRoot, ".pi", "extensions"),
-    mcporterConfigPath: path.join(
-      outputRoot,
-      ".pi",
-      "agentic-engineering",
-      "mcporter.json"
-    ),
+    skillsDir: path.join(root, "skills"),
+    promptsDir: path.join(root, "prompts"),
+    extensionsDir: path.join(root, "extensions"),
+    mcporterConfigPath: path.join(root, "agentic-engineering", "mcporter.json"),
     agentsPath: path.join(outputRoot, "AGENTS.md"),
   };
 }

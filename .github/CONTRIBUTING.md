@@ -9,7 +9,7 @@ By participating you agree to abide by our
 
 ## Prerequisites
 
-- [Bun](https://bun.sh) — used for tests and the docs generator.
+- [Bun](https://bun.sh) — used for tests.
 - The [GitHub CLI](https://cli.github.com) (`gh`) — used to open pull requests.
 
 ```bash
@@ -30,9 +30,7 @@ bun install
 CI (`.github/workflows/ci.yml`) runs these on every PR. Run them locally first:
 
 ```bash
-bun test              # plugin consistency, docs sync, dependency policy, etc.
-bun run docs:build    # regenerate docs/pages/*.html + landing-page stats
-bun run docs:check    # verify the docs site is in sync (also run by bun test)
+bun test              # plugin consistency, dependency policy, converters, etc.
 ```
 
 `bun test` is the source of truth. If it fails, the message names the exact
@@ -41,23 +39,12 @@ generated output to make a check pass; fix the source and regenerate.
 
 ## Component changes
 
-When you **add or remove** an agent, command, or skill, several description
-strings and counts must match the filesystem. `tests/plugin-consistency.test.ts`
-enforces all of this:
-
-- **Update the component counts and descriptions** named by a failing
-  `bun test` run.
-- **Do not hand-bump versions or write release changelog entries.** Release
-  Please owns both; see
-  [plugin versioning](../docs/solutions/plugin-versioning-requirements.md).
-- **Regenerate the docs**: `bun run docs:build`.
-
+When components change, `bun test` names the exact file and string to fix on
+failure. Versions and changelogs are owned by Release Please — never hand-bump;
+see [plugin versioning](../docs/solutions/plugin-versioning-requirements.md).
 Changes that **don't** touch anything under `plugins/` (for example, these
 community-health files, or repo tooling) do **not** require a version bump or
 changelog entry.
-
-The repository's high-level conventions live in [`AGENTS.md`](../AGENTS.md),
-which points to the detailed operational guidance and automated checks.
 
 ## Pull request titles
 

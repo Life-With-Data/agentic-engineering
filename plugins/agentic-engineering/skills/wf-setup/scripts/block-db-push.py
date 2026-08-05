@@ -34,7 +34,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from hook_payload import emit_allow, normalize
+from hook_payload import emit_allow, normalize, strip_quotes
 
 # Direct invocation in any wrapper form: `prisma db push`, `npx prisma db
 # push`, `pnpm prisma db push`, `pnpm dlx prisma db push`, `dotenv -- prisma db
@@ -79,12 +79,6 @@ def evaluate(command: str) -> bool:
     """Return True if `command` should be blocked as a `prisma db push`."""
     cleaned = strip_quotes(command)
     return bool(DIRECT_DB_PUSH.search(cleaned) or FILTER_PUSH.search(cleaned))
-
-
-def strip_quotes(command: str) -> str:
-    command = re.sub(r"'[^']*'", "", command)
-    command = re.sub(r'"[^"]*"', "", command)
-    return command
 
 
 if __name__ == "__main__":

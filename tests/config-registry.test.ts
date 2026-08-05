@@ -2,21 +2,17 @@
 // nudge_todowrite shipped through in PR #90, before config_registry.py
 // existed): every `meta.get("some_key", ...)` read off a parsed frontmatter
 // dict in plugins/*/scripts/*.py must have a matching entry in the relevant
-// plugin's config_registry.py, OR be explicitly allowlisted with a
-// justification (a key that belongs to a *different* frontmatter document,
-// not agentic-engineering(.local).md).
+// plugin's config_registry.py.
 //
 // This is a forward check (every read is registered) plus a reverse check
 // (every registered flag's `owner` script exists and actually contains the
 // key literal) — the reverse check is the safety net for readers that don't
 // use the `meta.get("literal")` idiom this scanner targets (e.g.
-// workflow-repo-preflight.py's read_local_config_tracker, which hand-rolls a
-// regex instead).
+// workflow-repo-preflight.py's _read_local_config_key, which looks keys up
+// off the parsed dict by variable).
 //
 // If this fails: a new frontmatter-key read was added without a matching
-// CONFIG_FLAGS entry. Either register it in the plugin's config_registry.py
-// (preferred) or, if it's a legitimate exception (a different frontmatter
-// document entirely), add it to ALLOWLIST below with a one-line justification.
+// CONFIG_FLAGS entry. Register it in the plugin's config_registry.py.
 
 import { describe, expect, test } from "bun:test"
 import { existsSync, readdirSync, readFileSync } from "fs"
@@ -24,12 +20,6 @@ import path from "path"
 
 const ROOT = path.resolve(import.meta.dir, "..")
 const PLUGINS_DIR = path.join(ROOT, "plugins")
-
-// ---- allowlist: known-legitimate meta.get("literal") reads that are NOT --
-// ---- agentic-engineering(.local).md config flags -------------------------
-// Keyed by "<plugin>:<relpath-from-plugin>:<line>". Keep this list small and
-// current — a stale entry (no matching call at that key) fails the test.
-const ALLOWLIST: Record<string, string> = {}
 
 // ---- discovery: every plugin's scripts/*.py -------------------------------
 
@@ -109,23 +99,15 @@ describe("config flags are registered and discoverable", () => {
     const registryFile = path.join(plugin.dir, "scripts", "config_registry.py")
     if (!existsSync(registryFile)) continue
 
-    test(`${plugin.name}: every meta.get("key") read is registered or allowlisted`, () => {
+    test(`${plugin.name}: every meta.get("key") read is registered`, () => {
       const registered = new Set(parseRegistry(registryFile).map((f) => f.key))
       const scriptFiles = pyFiles(path.join(plugin.dir, "scripts"))
       const violations: string[] = []
-      const unusedAllow = new Set(
-        Object.keys(ALLOWLIST).filter((k) => k.startsWith(`${plugin.name}:`)),
-      )
 
       for (const file of scriptFiles) {
         for (const hit of collectMetaGetReads(file, plugin.dir)) {
-          const allowKey = `${plugin.name}:${hit.rel}:${hit.line}`
-          if (allowKey in ALLOWLIST) {
-            unusedAllow.delete(allowKey)
-            continue
-          }
           if (registered.has(hit.key)) continue
-          violations.push(`${allowKey}: meta.get("${hit.key}")`)
+          violations.push(`${plugin.name}:${hit.rel}:${hit.line}: meta.get("${hit.key}")`)
         }
       }
 
@@ -133,16 +115,7 @@ describe("config flags are registered and discoverable", () => {
         violations,
         `Unregistered config-flag read(s) — a script reads a frontmatter key with no ` +
           `matching CONFIG_FLAGS entry:\n${violations.join("\n")}\n\n` +
-          `Register it in ${path.relative(ROOT, registryFile)}, or if it belongs to a ` +
-          `different frontmatter document entirely, add it to ALLOWLIST in ` +
-          `tests/config-registry.test.ts with a justification.`,
-      ).toEqual([])
-
-      // Keep the allowlist honest: a stale entry means the read moved or was
-      // removed — remove it so a future unregistered read at that key is caught.
-      expect(
-        [...unusedAllow],
-        `Stale ALLOWLIST entries (no matching meta.get call) — remove them:`,
+          `Register it in ${path.relative(ROOT, registryFile)}.`,
       ).toEqual([])
     })
 

@@ -1,4 +1,5 @@
 import { formatFrontmatter } from "../utils/frontmatter"
+import { normalizeName, replaceSlashCommands, uniqueName } from "../utils/names"
 import type { ClaudeAgent, ClaudeCommand, ClaudeMcpServer, ClaudePlugin } from "../types/claude"
 import type {
   CopilotAgent,
@@ -6,15 +7,13 @@ import type {
   CopilotGeneratedSkill,
   CopilotMcpServer,
 } from "../types/copilot"
-import type { ClaudeToOpenCodeOptions } from "./claude-to-opencode"
-
-export type ClaudeToCopilotOptions = ClaudeToOpenCodeOptions
+import type { ConvertOptions } from "./claude-to-opencode"
 
 const COPILOT_BODY_CHAR_LIMIT = 30_000
 
 export function convertClaudeToCopilot(
   plugin: ClaudePlugin,
-  _options: ClaudeToCopilotOptions,
+  _options: ConvertOptions,
 ): CopilotBundle {
   const usedAgentNames = new Set<string>()
   const usedSkillNames = new Set<string>()
@@ -80,7 +79,7 @@ function convertCommandToSkill(
   command: ClaudeCommand,
   usedNames: Set<string>,
 ): CopilotGeneratedSkill {
-  const name = uniqueName(flattenCommandName(command.name), usedNames)
+  const name = uniqueName(normalizeName(command.name), usedNames)
 
   const frontmatter: Record<string, unknown> = {
     name,
@@ -114,13 +113,7 @@ export function transformContentForCopilot(body: string): string {
   })
 
   // 2. Transform slash command references (replace colons with hyphens)
-  const slashCommandPattern = /(?<![:\w])\/([a-z][a-z0-9_:-]*?)(?=[\s,."')\]}`]|$)/gi
-  result = result.replace(slashCommandPattern, (match, commandName: string) => {
-    if (commandName.includes("/")) return match
-    if (["dev", "tmp", "etc", "usr", "var", "bin", "home"].includes(commandName)) return match
-    const normalized = flattenCommandName(commandName)
-    return `/${normalized}`
-  })
+  result = replaceSlashCommands(result, (commandName) => `/${normalizeName(commandName)}`)
 
   // 3. Rewrite .claude/ paths to .github/ and ~/.claude/ to ~/.copilot/
   result = result
@@ -137,7 +130,7 @@ export function transformContentForCopilot(body: string): string {
   return result
 }
 
-function convertMcpServers(
+export function convertMcpServers(
   servers?: Record<string, ClaudeMcpServer>,
 ): Record<string, CopilotMcpServer> | undefined {
   if (!servers || Object.keys(servers).length === 0) return undefined
@@ -176,35 +169,4 @@ function prefixEnvVars(env: Record<string, string>): Record<string, string> {
     }
   }
   return result
-}
-
-function flattenCommandName(name: string): string {
-  return normalizeName(name)
-}
-
-function normalizeName(value: string): string {
-  const trimmed = value.trim()
-  if (!trimmed) return "item"
-  const normalized = trimmed
-    .toLowerCase()
-    .replace(/[\\/]+/g, "-")
-    .replace(/[:\s]+/g, "-")
-    .replace(/[^a-z0-9_-]+/g, "-")
-    .replace(/-+/g, "-")
-    .replace(/^-+|-+$/g, "")
-  return normalized || "item"
-}
-
-function uniqueName(base: string, used: Set<string>): string {
-  if (!used.has(base)) {
-    used.add(base)
-    return base
-  }
-  let index = 2
-  while (used.has(`${base}-${index}`)) {
-    index += 1
-  }
-  const name = `${base}-${index}`
-  used.add(name)
-  return name
 }

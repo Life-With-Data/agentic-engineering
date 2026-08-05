@@ -20,8 +20,8 @@ inventing references. Consume its inspiration digest and embed it in the issue's
 
 Record visual references in two tiers:
 
-- **Externally hosted references** — catalog links, Figma frames, hosted screen
-  images — embed directly as markdown images or links in the issue body.
+- **Externally hosted references** — catalog links, hosted screen images —
+  embed directly as markdown images or links in the issue body.
 - **Locally captured current-state screenshots** — attach through the
   repository's mapped screenshot/attachment mechanism. When no such mechanism
   exists, record the links or file paths and note the gap. Never invent an upload

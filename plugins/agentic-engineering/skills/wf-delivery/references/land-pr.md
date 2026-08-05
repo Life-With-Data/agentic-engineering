@@ -17,7 +17,7 @@ Merging is outward-facing and effectively irreversible. Called on its own,
 land-pr **pauses and asks the user before merging**. Merge automatically
 **only** in an autonomous context — `--auto`, an autonomous orchestrate run,
 or an autonomous
-[resolved delivery posture](../../wf-development/references/workflows-orchestrate.md#delivery-posture) —
+[resolved delivery posture](../../wf-orchestrate/references/orchestrate.md#delivery-posture) —
 **and** all landability conditions hold. Never auto-merge a PR that touches
 the default branch directly, force-pushes, or has an unresolved blocker.
 
@@ -62,7 +62,9 @@ N=$(gh pr view "$PR_NUM" --repo "$ORIGIN" --json body --jq '.body' | grep -oiE '
 
 If the PR is already `MERGED` or `CLOSED`, stop and report. `N` may
 legitimately be empty (a PR that closes no issue). Treat an empty `N` as "no
-ticket posture available", which resolves to `standard` — never as clearance.
+ticket posture available" — never as clearance by itself; the precedence
+chain in step 4 still applies, so an explicit `--auto` token or an autonomous
+run context can clear the merge while the absent ticket never can.
 
 ### 2. Assess landability
 
@@ -76,11 +78,9 @@ Emits `ci`, `review_decision`, `merge_state`, `blockers`, and `landable`
 ### 3. Drive to green (loop until conditions 1–3 hold)
 
 Loop on the mechanical conditions plus the review; the compounding gate (4)
-runs in step 5. Stop and escalate after ~2 attempts with **no
-strictly-measurable progress** — no reduction in the failing-check or open-P1
-count (stall bounds are item (d) of the
-[escalation contract](../../wf-development/references/escalation-contract.md)).
-Routine remediation that necessarily changes state — `update-branch`, conflict
+runs in step 5. ~2 dry attempts, then escalate —
+[escalation contract](../../wf-orchestrate/references/escalation-contract.md)
+item (d) defines a dry attempt. Routine remediation that necessarily changes state — `update-branch`, conflict
 resolution, the compounding docs push — is real progress, not a dry attempt.
 
 - **CI red** → `gh pr checks "$PR_NUM"`, `gh run view <run-id> --log-failed`,
@@ -116,16 +116,19 @@ waive the compounding gate in step 5.
   # Guard the empty-`N` case: no ticket means no clearance to read.
   [ -n "$N" ] && python3 "<skill-directory>/scripts/lifecycle_board.py" --groom-verify "$N"
   ```
-  Cleared when it reports **both** `approved: true` and `cleared: true` —
-  check `approved` first: `cleared` folds in attestation and posture but not
-  the human `ready_for_work` stamp, so reading it alone reintroduces the
-  self-approval gap. Anything else — empty `N`, non-zero exit,
-  `approved: false`, `cleared: false` — is not cleared
-  ([delivery posture](../../wf-development/references/workflows-orchestrate.md#delivery-posture)
-  owns the resolution rule). Then merge without asking once all conditions
-  hold — do not bounce "say the word and I'll merge" back to the user. A
-  genuinely unmet condition is escalated as a specific blocker, never merged
-  through.
+  Check `approved` first
+  ([delivery posture](../../wf-orchestrate/references/orchestrate.md#delivery-posture)
+  owns why). `approved: false` or a non-zero exit is never cleared —
+  route to the human. With `approved: true`, apply the precedence chain
+  ([delivery posture](../../wf-orchestrate/references/orchestrate.md#delivery-posture)
+  owns it): `cleared: true` proceeds hands-off; on `cleared: false`, an
+  explicit per-invocation `--auto` clears the run anyway, a
+  `posture_source: "ticket"` standard decision keeps the interactive gate,
+  and `posture_source: "unset"` (including an empty `N` on an approved run)
+  falls back to the preflight's `delivery_mode_resolved`. Then merge without
+  asking once all conditions hold — do not bounce "say the word and I'll
+  merge" back to the user. A genuinely unmet condition is escalated as a
+  specific blocker, never merged through.
 
 ### 5. Final compounding gate
 
@@ -221,23 +224,13 @@ manager's `finish` from the primary tree:
 bash <skill-directory>/scripts/worktree-manager.sh finish <worktree-name>
 ```
 
-`finish` is the worktree-safe single-target teardown: verifies the branch
-merged (cherry patch-equivalence or a merge commit; ambiguous branches are
-refused without `--force`), removes the worktree from outside it, deletes the
-orphaned branch, fast-forwards base. **Teardown is the session's job — never
-the user's.** A landing run ends with the worktree removed and its directory
-gone; handing the human a cleanup one-liner means the cleanup failed at its
-job. **When the session's cwd IS the worktree being landed**, run `finish` as
-the session's terminal shell action — write the report first, invoke the
-script by its path in the **primary tree**, and run nothing after it (the cwd
-dies with the worktree). Only a host that genuinely cannot execute a further
-shell command may leave the worktree behind, and then the report must state
-the teardown did NOT happen and name the exact command
-(`bun run worktrees:finish -- <worktree>` in this repo,
-`npx github:Life-With-Data/agentic-engineering worktrees finish <worktree>`
-in consuming repos) as an explicit failure handoff — never phrased as a
-manual `git worktree remove`. `worktree-manager.sh sync` (or
-`worktrees:sync`) is the batch catch-all that reaps every merged worktree.
+`finish` is the worktree-safe single-target teardown. **Teardown is the
+session's job — never the user's**: when the session's cwd IS the worktree
+being landed, run `finish` as the session's terminal shell action, invoked by
+its path in the **primary tree**, report written first. The
+[git worktree](../../wf-development/references/git-worktree.md) reference owns
+the failure-handoff wording and fallback commands; `worktree-manager.sh sync`
+(or `worktrees:sync`) is the batch catch-all that reaps every merged worktree.
 
 Then dispatch on tracker state:
 

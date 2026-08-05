@@ -1,18 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { promises as fs } from "fs";
+import { existsSync, promises as fs } from "fs";
 import path from "path";
 import os from "os";
 import { writePiBundle } from "../src/targets/pi";
 import type { PiBundle } from "../src/types/pi";
-
-async function exists(filePath: string): Promise<boolean> {
-  try {
-    await fs.access(filePath);
-    return true;
-  } catch {
-    return false;
-  }
-}
 
 describe("writePiBundle", () => {
   test("writes prompts, skills, extensions, mcporter config, and AGENTS.md block", async () => {
@@ -55,23 +46,23 @@ describe("writePiBundle", () => {
     await writePiBundle(outputRoot, bundle);
 
     expect(
-      await exists(path.join(outputRoot, "prompts", "workflows-plan.md"))
+      existsSync(path.join(outputRoot, "prompts", "workflows-plan.md"))
     ).toBe(true);
     expect(
-      await exists(path.join(outputRoot, "skills", "skill-one", "SKILL.md"))
+      existsSync(path.join(outputRoot, "skills", "skill-one", "SKILL.md"))
     ).toBe(true);
     expect(
-      await exists(
+      existsSync(
         path.join(outputRoot, "skills", "repo-research-analyst", "SKILL.md")
       )
     ).toBe(true);
     expect(
-      await exists(
+      existsSync(
         path.join(outputRoot, "extensions", "agentic-engineering-compat.ts")
       )
     ).toBe(true);
     expect(
-      await exists(
+      existsSync(
         path.join(outputRoot, "agentic-engineering", "mcporter.json")
       )
     ).toBe(true);
@@ -96,9 +87,9 @@ describe("writePiBundle", () => {
     await writePiBundle(outputRoot, bundle);
 
     expect(
-      await exists(path.join(outputRoot, "prompts", "workflows-work.md"))
+      existsSync(path.join(outputRoot, "prompts", "workflows-work.md"))
     ).toBe(true);
-    expect(await exists(path.join(outputRoot, ".pi"))).toBe(false);
+    expect(existsSync(path.join(outputRoot, ".pi"))).toBe(false);
   });
 
   test("backs up existing mcporter config before overwriting", async () => {

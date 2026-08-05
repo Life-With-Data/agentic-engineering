@@ -1,22 +1,19 @@
 ---
 name: wf-development
-description: Workflow policy for implementing planned engineering changes, diagnosing root causes, fixing reproduced bugs, refactoring, and building APIs and interfaces. Use when code or configuration must change after grooming, including end-to-end implementation orchestration. This skill owns development sequencing and handoffs; repository mechanics come from repository capability targets.
+description: Workflow policy for implementing planned engineering changes, diagnosing root causes, fixing reproduced bugs, refactoring, and building APIs and interfaces. Use when code or configuration must change after grooming. This skill owns implementation sequencing and completion evidence; cross-stage routing belongs to wf-orchestrate and repository mechanics to repository capability targets.
 ---
 
 # Development workflow
 
 Layer: Workflow policy
 
-Owns: claiming ready work, implementation sequencing, scope control, change isolation, sub-agent delegation and per-dispatch model selection, and handoffs to testing, review, and delivery.
+Owns: claiming ready work, scope control, and change isolation.
 
 Requires repository capabilities: `repository-overview`, `development-environment`, `test-execution`.
 
-Does not contain: repository build commands, framework-specific setup, infrastructure access, or secrets.
+Does not contain: repository build commands, framework-specific setup, infrastructure access, secrets, or cross-stage routing.
 
 ## Start here
-
-Scripts are bundled beside this `SKILL.md`; resolve `<skill-directory>` to that
-directory, never through a plugin root.
 
 ```bash
 python3 <skill-directory>/scripts/repository-context.py \
@@ -25,18 +22,17 @@ python3 <skill-directory>/scripts/repository-context.py \
   --require test-execution
 ```
 
-Stop on contract failure. Read each required capability's primary target, then supporting targets only when needed, before changing files.
+Stop on contract failure; read primary targets first, supporting targets only as needed.
+
+This skill implements one approved work item. It starts only after grooming produced the plan and a human stamped approval; it never routes tickets, decides delivery posture, or drives other stages — `wf-orchestrate` owns all of that.
 
 ## Route the request
 
-- Execute a prepared plan: read [workflow work](references/workflows-work.md).
-- Delegate lifecycle work to sub-agents while orchestrating and validating: read [sub-agent delegation](references/subagent-delegation.md).
+- Execute a prepared plan, including parallel independent units: read [workflow work](references/workflows-work.md). Pull-request review threads are out of scope here; `wf-review` owns them.
 - Diagnose a reproduced bug, establish root cause, and recover safely: read [debugging and error recovery](references/debugging-and-error-recovery.md). Require `bug-reproduction` and, for production or integration failures, `observability`.
-- Drive the complete cross-stage pipeline: read [workflow orchestrate](references/workflows-orchestrate.md), loading other `wf-*` skills at their boundaries.
 - Work in an isolated checkout: read [git worktree](references/git-worktree.md).
-- Resolve independent implementation units in parallel waves: read [workflow work](references/workflows-work.md). Pull-request review threads are out of scope here; `wf-review` owns them through its "Resolve review comments" route and the bundled scripts behind it.
 - Design an API or interface: read [API and interface design](references/api-and-interface-design.md).
-- Build a frontend: treat "frontend design" as a semantic runtime requirement, not a fixed skill name — resolve visual direction, typography, and component mechanics from the mapped repository assets and the host's available skill metadata. This plugin's `design-iterator` and `figma-design-sync` agents cover iterative refinement and design-to-implementation comparison when a design source exists. Report a missing-capability note when nothing resolves; this workflow does not prescribe aesthetics.
+- Build a frontend: resolve visual direction, typography, and component mechanics from the mapped repository assets and the host's available skill metadata. This plugin's `design-iterator` agent covers iterative visual refinement. Report a missing-capability note when nothing resolves; this workflow does not prescribe aesthetics.
 - Add instrumentation while building: read [observability and instrumentation](references/observability-and-instrumentation.md); require `observability` if it needs repository systems.
 
 Load only the selected reference. Framework, language, vendor, and tool-specific
@@ -45,25 +41,19 @@ installed capabilities; this workflow does not prescribe them.
 
 ## Sub-agent delegation
 
-Delegate each planned implementation unit and each isolated diagnosis
-experiment to a focused sub-agent; the orchestrator retains decomposition,
-diff verification, gate reruns, and every tracker write. Roles, dispatch,
-per-unit model selection, verification, and the inline fallback for hosts
-without a sub-agent mechanism are owned by [sub-agent
-delegation](references/subagent-delegation.md).
+Delegate per-unit stage work to focused sub-agents; the orchestrator retains
+verification and every tracker, board, and PR write. Roles, dispatch, model
+selection, and the inline fallback:
+[sub-agent delegation](../wf-orchestrate/references/subagent-delegation.md).
 
-## Quality handoffs
+## Completion contract
 
-Development does not declare completion by itself:
+Development ends when the change is implemented, repository gates pass, and the implementation evidence is reported. It never declares the work item done: testing, review, and delivery are separate stages that `wf-orchestrate` dispatches after this one returns. When invoked standalone, report completion and name `wf-testing` as the next stage without executing it.
 
-1. `wf-testing` proves behavior.
-2. `wf-review` evaluates the change and its risks.
-3. `wf-delivery` owns PR, merge, and deployment actions.
+In Project mode, development owns exactly two board transitions, each real only as an observable postcondition: the claim holds only when `--claim <N>` returns proceed (`Status = in_progress` on the board), and development's exit is `--set-status <N> in_review` succeeding at PR open. Sub-issue progress is the `status:*` label track, not board Status; the [work route](references/workflows-work.md) owns that mechanics.
 
-In Project mode, development owns exactly two board transitions, each real only as an observable postcondition: the claim holds only when `--claim <N>` returns proceed (`Status = in_progress` on the board), and development's exit is `--set-status <N> in_review` succeeding at PR open — a write the engine refuses while the parent has open sub-issues. Sub-issue progress is the `status:*` label track, not board Status; the [work route](references/workflows-work.md) owns that mechanics.
-
-For bug fixes, start with `wf-grooming`; it hands off only after reproduction evidence and an actionable bug report exist. Development owns localization, root cause, and the fix. It must not edit a speculative fix before root cause is established.
+A bug fix enters here only with reproduction evidence from `wf-grooming`. Development owns localization, root cause, and the fix; it must not edit a speculative fix before root cause is established.
 
 ## Wrong-layer recovery
 
-When a development reference guesses a repository command or convention, stop and use the corresponding repository capability targets instead. Workflow policy wins on sequencing; repository guidance wins on mechanics.
+Workflow policy wins on process; repository guidance wins on mechanics — consult the mapped repository capability targets for the latter.

@@ -55,7 +55,7 @@ class NudgeOptedInTest(unittest.TestCase):
         self.assertFalse(nudge.nudge_opted_in(self.repo))
 
     def test_flag_absent_is_not_opted_in(self) -> None:
-        _write_config(self.repo, "issue_tracker: github-project")
+        _write_config(self.repo, "some_other_key: value")
         self.assertFalse(nudge.nudge_opted_in(self.repo))
 
     def test_flag_true_is_opted_in(self) -> None:
@@ -91,7 +91,7 @@ class ResolveMessageTest(unittest.TestCase):
         # No board config -> the repo is unconfigured: there is no tracker
         # to nudge toward and no message to emit, regardless of the ambient
         # environment's gh state (gh auth is no longer a tracker signal).
-        self.assertIsNone(nudge.resolve_message(self.repo))
+        self.assertIsNone(nudge.resolve_message())
 
     def test_github_project_board_config_yields_project_message(self) -> None:
         board_config = Path(self.repo) / "agentic-engineering.md"
@@ -100,7 +100,7 @@ class ResolveMessageTest(unittest.TestCase):
             encoding="utf-8",
         )
         _git(self.repo, "remote", "add", "origin", "https://github.com/aagnone3/agentic-engineering.git")
-        message = nudge.resolve_message(self.repo)
+        message = nudge.resolve_message()
         self.assertIsNotNone(message)
         self.assertIn("GitHub Project board", message)
 

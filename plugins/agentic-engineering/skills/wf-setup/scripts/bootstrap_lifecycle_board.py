@@ -676,7 +676,7 @@ def link_repo(project: Project, ctx: "lb.RepoContext", runner: GhRunner) -> dict
 # The built-in auto-add workflow has no create API; actions/add-to-project
 # reproduces it. Mirrors link_repo: idempotent (never clobber an existing file)
 # and non-fatal (failures degrade to a summary warning). The scaffolded file is
-# what lifecycle_board.find_auto_add_workflow greps for, flipping the doctor's
+# what lifecycle_board._auto_add_candidates greps for, flipping the doctor's
 # board_forward_binding check WARN -> PASS.
 # --------------------------------------------------------------------------
 
@@ -803,7 +803,7 @@ def scaffold_add_to_project_workflow(project: Project, ctx: "lb.RepoContext",
 
     The workflow/dependabot files are repo content committed on the working
     branch, so they go to ctx.root (the worktree) — the same tree
-    lifecycle_board.find_auto_add_workflow scans, so the doctor agrees. This is
+    lifecycle_board._auto_add_candidates scans, so the doctor agrees. This is
     deliberately NOT ctx.main_root (where the shared board-identity config lives,
     resolved from the git-common-dir)."""
     path = pathlib.Path(ctx.root) / WORKFLOW_FILENAME

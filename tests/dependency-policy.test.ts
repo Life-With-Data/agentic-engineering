@@ -10,6 +10,7 @@
 import { describe, expect, test } from "bun:test"
 import { readFileSync, readdirSync, existsSync } from "fs"
 import path from "path"
+import { splitSections } from "./helpers"
 
 const ROOT = path.resolve(import.meta.dir, "..")
 const REGISTRY = path.join(ROOT, "docs/upstream-sources.md")
@@ -54,29 +55,24 @@ type RegistrySource = {
 }
 
 const registryContent = readFileSync(REGISTRY, "utf8").replace(/<!--[\s\S]*?-->/g, "")
-const registrySources: RegistrySource[] = [...registryContent.matchAll(/^## (.+)$/gm)].map(
-  (m, i, all) => {
-    const start = m.index! + m[0].length
-    const end = i + 1 < all.length ? all[i + 1].index! : registryContent.length
-    const block = registryContent.slice(start, end)
-    const rawDepLines = [...block.matchAll(/^- dependency: (.+)$/gm)].map((x) => x[1].trim())
-    const deps = rawDepLines
-      .map((l) => l.match(DEP_LINE))
-      .filter((x): x is RegExpMatchArray => x !== null)
-      .map((x) => ({ plugin: x[1], dir: x[2], marketplace: x[3], version: x[4] }))
-    const adoptedSection = block.match(/^- adopted:\n((?: {2}- .*\n?)*)/m)?.[1] ?? ""
-    const adoptedPaths = [...adoptedSection.matchAll(/\(upstream: (\S+)@[0-9a-f]{7,40},/g)].map(
-      (x) => x[1],
-    )
-    return {
-      slug: m[1].trim(),
-      scan: block.match(/^- scan: *(\S+)/m)?.[1] ?? "",
-      deps,
-      adoptedPaths,
-      rawDepLines,
-    }
-  },
-)
+const registrySources: RegistrySource[] = splitSections(registryContent).map(({ slug, block }) => {
+  const rawDepLines = [...block.matchAll(/^- dependency: (.+)$/gm)].map((x) => x[1].trim())
+  const deps = rawDepLines
+    .map((l) => l.match(DEP_LINE))
+    .filter((x): x is RegExpMatchArray => x !== null)
+    .map((x) => ({ plugin: x[1], dir: x[2], marketplace: x[3], version: x[4] }))
+  const adoptedSection = block.match(/^- adopted:\n((?: {2}- .*\n?)*)/m)?.[1] ?? ""
+  const adoptedPaths = [...adoptedSection.matchAll(/\(upstream: (\S+)@[0-9a-f]{7,40},/g)].map(
+    (x) => x[1],
+  )
+  return {
+    slug,
+    scan: block.match(/^- scan: *(\S+)/m)?.[1] ?? "",
+    deps,
+    adoptedPaths,
+    rawDepLines,
+  }
+})
 
 const registryDeps = registrySources.flatMap((s) => s.deps)
 

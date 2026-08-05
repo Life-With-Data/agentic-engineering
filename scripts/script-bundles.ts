@@ -18,6 +18,10 @@
 export type ScriptBundles = Record<string, Record<string, string>>
 
 export const SCRIPT_BUNDLES: ScriptBundles = {
+  "wf-orchestrate": {
+    "repository-context.py": "scripts/repository-context.py",
+    "lifecycle_board.py": "scripts/lifecycle_board.py",
+  },
   "wf-grooming": {
     "repository-context.py": "scripts/repository-context.py",
     "lifecycle_board.py": "scripts/lifecycle_board.py",

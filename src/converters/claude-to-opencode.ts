@@ -16,28 +16,29 @@ import type {
 
 export type PermissionMode = "none" | "broad" | "from-commands"
 
-export type ClaudeToOpenCodeOptions = {
+// Options shared by every claude-to-* converter.
+export type ConvertOptions = {
   agentMode: "primary" | "subagent"
   inferTemperature: boolean
   permissions: PermissionMode
 }
 
-const TOOL_MAP: Record<string, string> = {
-  bash: "bash",
-  read: "read",
-  write: "write",
-  edit: "edit",
-  grep: "grep",
-  glob: "glob",
-  list: "list",
-  webfetch: "webfetch",
-  skill: "skill",
-  patch: "patch",
-  task: "task",
-  question: "question",
-  todowrite: "todowrite",
-  todoread: "todoread",
-}
+const TOOLS = [
+  "read",
+  "write",
+  "edit",
+  "bash",
+  "grep",
+  "glob",
+  "list",
+  "webfetch",
+  "skill",
+  "patch",
+  "task",
+  "question",
+  "todowrite",
+  "todoread",
+]
 
 type HookEventMapping = {
   events: string[]
@@ -64,7 +65,7 @@ const HOOK_EVENT_MAP: Record<string, HookEventMapping> = {
 
 export function convertClaudeToOpenCode(
   plugin: ClaudePlugin,
-  options: ClaudeToOpenCodeOptions,
+  options: ConvertOptions,
 ): OpenCodeBundle {
   const agentFiles = plugin.agents.map((agent) => convertAgent(agent, options))
   const cmdFiles = convertCommands(plugin.commands)
@@ -87,7 +88,7 @@ export function convertClaudeToOpenCode(
   }
 }
 
-function convertAgent(agent: ClaudeAgent, options: ClaudeToOpenCodeOptions) {
+function convertAgent(agent: ClaudeAgent, options: ConvertOptions) {
   const frontmatter: Record<string, unknown> = {
     description: agent.description,
     mode: options.agentMode,
@@ -130,7 +131,7 @@ function convertCommands(commands: ClaudeCommand[]): OpenCodeCommandFile[] {
   return files
 }
 
-function convertMcp(servers: Record<string, ClaudeMcpServer>): Record<string, OpenCodeMcpServer> {
+export function convertMcp(servers: Record<string, ClaudeMcpServer>): Record<string, OpenCodeMcpServer> {
   const result: Record<string, OpenCodeMcpServer> = {}
   for (const [name, server] of Object.entries(servers)) {
     if (server.command) {
@@ -302,27 +303,11 @@ function applyPermissions(
 ) {
   if (mode === "none") return
 
-  const sourceTools = [
-    "read",
-    "write",
-    "edit",
-    "bash",
-    "grep",
-    "glob",
-    "list",
-    "webfetch",
-    "skill",
-    "patch",
-    "task",
-    "question",
-    "todowrite",
-    "todoread",
-  ]
   let enabled = new Set<string>()
   const patterns: Record<string, Set<string>> = {}
 
   if (mode === "broad") {
-    enabled = new Set(sourceTools)
+    enabled = new Set(TOOLS)
   } else {
     // Derive the permission set from allowedTools declared on BOTH commands
     // and skills — additive, so a skills-only plugin (empty commands/) still
@@ -346,16 +331,16 @@ function applyPermissions(
   const permission: NonNullable<OpenCodeConfig["permission"]> = {}
   const tools: Record<string, boolean> = {}
 
-  for (const tool of sourceTools) {
+  for (const tool of TOOLS) {
     tools[tool] = mode === "broad" ? true : enabled.has(tool)
   }
 
   if (mode === "broad") {
-    for (const tool of sourceTools) {
+    for (const tool of TOOLS) {
       permission[tool] = "allow"
     }
   } else {
-    for (const tool of sourceTools) {
+    for (const tool of TOOLS) {
       const toolPatterns = patterns[tool]
       if (toolPatterns && toolPatterns.size > 0) {
         const patternPermission: Record<string, "allow" | "deny"> = { "*": "deny" }
@@ -366,17 +351,6 @@ function applyPermissions(
       } else {
         permission[tool] = enabled.has(tool) ? "allow" : "deny"
       }
-    }
-  }
-
-  if (mode !== "broad") {
-    for (const [tool, toolPatterns] of Object.entries(patterns)) {
-      if (!toolPatterns || toolPatterns.size === 0) continue
-      const patternPermission: Record<string, "allow" | "deny"> = { "*": "deny" }
-      for (const pattern of toolPatterns) {
-        patternPermission[pattern] = "allow"
-      }
-      permission[tool] = patternPermission
     }
   }
 
@@ -400,16 +374,12 @@ function applyPermissions(
   config.tools = tools
 }
 
-function normalizeTool(raw: string): string | null {
-  return parseToolSpec(raw).tool
-}
-
 function parseToolSpec(raw: string): { tool: string | null; pattern?: string } {
   const trimmed = raw.trim()
   if (!trimmed) return { tool: null }
   const [namePart, patternPart] = trimmed.split("(", 2)
   const name = namePart.trim().toLowerCase()
-  const tool = TOOL_MAP[name] ?? null
+  const tool = TOOLS.includes(name) ? name : null
   if (!patternPart) return { tool }
   const normalizedPattern = patternPart.endsWith(")")
     ? patternPart.slice(0, -1).trim()

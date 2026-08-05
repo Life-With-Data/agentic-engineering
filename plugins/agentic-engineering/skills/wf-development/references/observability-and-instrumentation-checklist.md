@@ -1,21 +1,12 @@
 # Observability Checklist
 
-Quick reference for instrumenting production code. Use alongside the `observability-and-instrumentation` skill.
-
-## Table of Contents
-
-- [On-Call Questions (Start Here)](#on-call-questions-start-here)
-- [Structured Logging](#structured-logging)
-- [Metrics](#metrics)
-- [Distributed Tracing](#distributed-tracing)
-- [Alerting](#alerting)
-- [Dashboards](#dashboards)
-- [Verify the Telemetry](#verify-the-telemetry)
-- [Pre-Launch Gate](#pre-launch-gate)
+The single checklist for instrumenting production code. Procedure and
+rationale live in the
+[observability and instrumentation reference](observability-and-instrumentation.md).
 
 ## On-Call Questions (Start Here)
 
-Telemetry without a question is noise. Before instrumenting anything:
+Before instrumenting anything:
 
 - [ ] 2–4 questions an on-call engineer will ask about this feature are written down
 - [ ] Every signal below maps to one of those questions
@@ -70,8 +61,6 @@ Telemetry without a question is noise. Before instrumenting anything:
 - [ ] Default time range is sensible (1h–6h, not 30d)
 
 ## Verify the Telemetry
-
-Instrumentation is code; it can be wrong:
 
 - [ ] Forced an error in staging → found it in the logs by correlation ID
 - [ ] Sent test traffic → metric series appear with expected labels and sane values

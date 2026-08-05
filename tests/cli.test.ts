@@ -1,36 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { promises as fs } from "fs";
+import { existsSync, promises as fs } from "fs";
 import path from "path";
 import os from "os";
-
-async function exists(filePath: string): Promise<boolean> {
-  try {
-    await fs.access(filePath);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-async function runGit(
-  args: string[],
-  cwd: string,
-  env?: NodeJS.ProcessEnv
-): Promise<void> {
-  const proc = Bun.spawn(["git", ...args], {
-    cwd,
-    stdout: "pipe",
-    stderr: "pipe",
-    env: env ?? process.env,
-  });
-  const exitCode = await proc.exited;
-  const stderr = await new Response(proc.stderr).text();
-  if (exitCode !== 0) {
-    throw new Error(
-      `git ${args.join(" ")} failed (exit ${exitCode}).\nstderr: ${stderr}`
-    );
-  }
-}
+import { runGit } from "./helpers";
 
 describe("CLI", () => {
   test("install converts fixture plugin to OpenCode output", async () => {
@@ -67,24 +39,24 @@ describe("CLI", () => {
     }
 
     expect(stdout).toContain("Installed agentic-engineering");
-    expect(await exists(path.join(tempRoot, "opencode.json"))).toBe(true);
+    expect(existsSync(path.join(tempRoot, "opencode.json"))).toBe(true);
     expect(
-      await exists(
+      existsSync(
         path.join(tempRoot, ".opencode", "agents", "repo-research-analyst.md")
       )
     ).toBe(true);
     expect(
-      await exists(
+      existsSync(
         path.join(tempRoot, ".opencode", "agents", "security-sentinel.md")
       )
     ).toBe(true);
     expect(
-      await exists(
+      existsSync(
         path.join(tempRoot, ".opencode", "skills", "skill-one", "SKILL.md")
       )
     ).toBe(true);
     expect(
-      await exists(
+      existsSync(
         path.join(tempRoot, ".opencode", "plugins", "converted-hooks.ts")
       )
     ).toBe(true);
@@ -114,8 +86,8 @@ describe("CLI", () => {
     }
 
     expect(stdout).toContain("Installed agentic-engineering");
-    expect(await exists(path.join(tempRoot, "agentic-engineering", ".claude-plugin", "plugin.json"))).toBe(true);
-    expect(await exists(path.join(tempRoot, "agentic-engineering", "agents", "agent-one.md"))).toBe(true);
+    expect(existsSync(path.join(tempRoot, "agentic-engineering", ".claude-plugin", "plugin.json"))).toBe(true);
+    expect(existsSync(path.join(tempRoot, "agentic-engineering", "agents", "agent-one.md"))).toBe(true);
   });
 
   test("install converts fixture plugin to Cursor output", async () => {
@@ -152,11 +124,11 @@ describe("CLI", () => {
     }
 
     expect(stdout).toContain("Installed agentic-engineering");
-    expect(await exists(path.join(tempRoot, ".cursor", "rules", "repo-research-analyst.mdc"))).toBe(true);
-    expect(await exists(path.join(tempRoot, ".cursor", "rules", "security-sentinel.mdc"))).toBe(true);
-    expect(await exists(path.join(tempRoot, ".cursor", "commands", "review.md"))).toBe(true);
-    expect(await exists(path.join(tempRoot, ".cursor", "skills", "skill-one", "SKILL.md"))).toBe(true);
-    expect(await exists(path.join(tempRoot, ".cursor", "mcp.json"))).toBe(true);
+    expect(existsSync(path.join(tempRoot, ".cursor", "rules", "repo-research-analyst.mdc"))).toBe(true);
+    expect(existsSync(path.join(tempRoot, ".cursor", "rules", "security-sentinel.mdc"))).toBe(true);
+    expect(existsSync(path.join(tempRoot, ".cursor", "commands", "review.md"))).toBe(true);
+    expect(existsSync(path.join(tempRoot, ".cursor", "skills", "skill-one", "SKILL.md"))).toBe(true);
+    expect(existsSync(path.join(tempRoot, ".cursor", "mcp.json"))).toBe(true);
   });
 
   test("install defaults output to ~/.config/opencode", async () => {
@@ -200,10 +172,10 @@ describe("CLI", () => {
     expect(stdout).toContain("Installed agentic-engineering");
     // OpenCode global config lives at ~/.config/opencode per XDG spec
     expect(
-      await exists(path.join(tempRoot, ".config", "opencode", "opencode.json"))
+      existsSync(path.join(tempRoot, ".config", "opencode", "opencode.json"))
     ).toBe(true);
     expect(
-      await exists(
+      existsSync(
         path.join(
           tempRoot,
           ".config",
@@ -268,17 +240,9 @@ describe("CLI", () => {
     await fs.mkdir(path.dirname(pluginRoot), { recursive: true });
     await fs.cp(fixtureRoot, pluginRoot, { recursive: true });
 
-    const gitEnv = {
-      ...process.env,
-      GIT_AUTHOR_NAME: "Test",
-      GIT_AUTHOR_EMAIL: "test@example.com",
-      GIT_COMMITTER_NAME: "Test",
-      GIT_COMMITTER_EMAIL: "test@example.com",
-    };
-
-    await runGit(["init"], repoRoot, gitEnv);
-    await runGit(["add", "."], repoRoot, gitEnv);
-    await runGit(["commit", "-m", "fixture"], repoRoot, gitEnv);
+    await runGit(["init"], repoRoot);
+    await runGit(["add", "."], repoRoot);
+    await runGit(["commit", "-m", "fixture"], repoRoot);
 
     const projectRoot = path.join(import.meta.dir, "..");
     const proc = Bun.spawn(
@@ -316,10 +280,10 @@ describe("CLI", () => {
     expect(stdout).toContain("Installed agentic-engineering");
     // OpenCode global config lives at ~/.config/opencode per XDG spec
     expect(
-      await exists(path.join(tempRoot, ".config", "opencode", "opencode.json"))
+      existsSync(path.join(tempRoot, ".config", "opencode", "opencode.json"))
     ).toBe(true);
     expect(
-      await exists(
+      existsSync(
         path.join(
           tempRoot,
           ".config",
@@ -351,16 +315,9 @@ describe("CLI", () => {
     await fs.mkdir(path.dirname(pluginRoot), { recursive: true });
     await fs.cp(fixtureRoot, pluginRoot, { recursive: true });
 
-    const gitEnv = {
-      ...process.env,
-      GIT_AUTHOR_NAME: "Test",
-      GIT_AUTHOR_EMAIL: "test@example.com",
-      GIT_COMMITTER_NAME: "Test",
-      GIT_COMMITTER_EMAIL: "test@example.com",
-    };
-    await runGit(["init"], repoRoot, gitEnv);
-    await runGit(["add", "."], repoRoot, gitEnv);
-    await runGit(["commit", "-m", "fixture"], repoRoot, gitEnv);
+    await runGit(["init"], repoRoot);
+    await runGit(["add", "."], repoRoot);
+    await runGit(["commit", "-m", "fixture"], repoRoot);
 
     const projectRoot = path.join(import.meta.dir, "..");
     const proc = Bun.spawn(
@@ -399,7 +356,7 @@ describe("CLI", () => {
 
     // Should succeed by fetching from GitHub, NOT failing on the local shadow directory
     expect(stdout).toContain("Installed agentic-engineering");
-    expect(await exists(path.join(tempRoot, "opencode.json"))).toBe(true);
+    expect(existsSync(path.join(tempRoot, "opencode.json"))).toBe(true);
   });
 
   test("convert writes OpenCode output", async () => {
@@ -436,7 +393,7 @@ describe("CLI", () => {
     }
 
     expect(stdout).toContain("Converted agentic-engineering");
-    expect(await exists(path.join(tempRoot, "opencode.json"))).toBe(true);
+    expect(existsSync(path.join(tempRoot, "opencode.json"))).toBe(true);
   });
 
   test("convert supports explicit Claude passthrough target", async () => {
@@ -473,8 +430,8 @@ describe("CLI", () => {
     }
 
     expect(stdout).toContain("Converted agentic-engineering to claude");
-    expect(await exists(path.join(tempRoot, "agentic-engineering", ".claude-plugin", "plugin.json"))).toBe(true);
-    expect(await exists(path.join(tempRoot, "agentic-engineering", "commands", "command-one.md"))).toBe(true);
+    expect(existsSync(path.join(tempRoot, "agentic-engineering", ".claude-plugin", "plugin.json"))).toBe(true);
+    expect(existsSync(path.join(tempRoot, "agentic-engineering", "commands", "command-one.md"))).toBe(true);
   });
 
   test("convert supports --codex-home for codex output", async () => {
@@ -516,14 +473,14 @@ describe("CLI", () => {
     expect(stdout).toContain("Converted agentic-engineering");
     expect(stdout).toContain(codexRoot);
     expect(
-      await exists(path.join(codexRoot, "prompts", "workflows-review.md"))
+      existsSync(path.join(codexRoot, "prompts", "workflows-review.md"))
     ).toBe(true);
     expect(
-      await exists(
+      existsSync(
         path.join(codexRoot, "skills", "workflows-review", "SKILL.md")
       )
     ).toBe(true);
-    expect(await exists(path.join(codexRoot, "AGENTS.md"))).toBe(true);
+    expect(existsSync(path.join(codexRoot, "AGENTS.md"))).toBe(true);
   });
 
   test("install supports --also with codex output", async () => {
@@ -567,17 +524,17 @@ describe("CLI", () => {
     expect(stdout).toContain("Installed agentic-engineering");
     expect(stdout).toContain(codexRoot);
     expect(
-      await exists(path.join(codexRoot, "prompts", "workflows-review.md"))
+      existsSync(path.join(codexRoot, "prompts", "workflows-review.md"))
     ).toBe(true);
     expect(
-      await exists(
+      existsSync(
         path.join(codexRoot, "skills", "workflows-review", "SKILL.md")
       )
     ).toBe(true);
     expect(
-      await exists(path.join(codexRoot, "skills", "skill-one", "SKILL.md"))
+      existsSync(path.join(codexRoot, "skills", "skill-one", "SKILL.md"))
     ).toBe(true);
-    expect(await exists(path.join(codexRoot, "AGENTS.md"))).toBe(true);
+    expect(existsSync(path.join(codexRoot, "AGENTS.md"))).toBe(true);
   });
 
   test("convert supports --pi-home for pi output", async () => {
@@ -617,20 +574,20 @@ describe("CLI", () => {
     expect(stdout).toContain("Converted agentic-engineering");
     expect(stdout).toContain(piRoot);
     expect(
-      await exists(path.join(piRoot, "prompts", "workflows-review.md"))
+      existsSync(path.join(piRoot, "prompts", "workflows-review.md"))
     ).toBe(true);
     expect(
-      await exists(
+      existsSync(
         path.join(piRoot, "skills", "repo-research-analyst", "SKILL.md")
       )
     ).toBe(true);
     expect(
-      await exists(
+      existsSync(
         path.join(piRoot, "extensions", "agentic-engineering-compat.ts")
       )
     ).toBe(true);
     expect(
-      await exists(path.join(piRoot, "agentic-engineering", "mcporter.json"))
+      existsSync(path.join(piRoot, "agentic-engineering", "mcporter.json"))
     ).toBe(true);
   });
 
@@ -675,10 +632,10 @@ describe("CLI", () => {
     expect(stdout).toContain("Installed agentic-engineering");
     expect(stdout).toContain(piRoot);
     expect(
-      await exists(path.join(piRoot, "prompts", "workflows-review.md"))
+      existsSync(path.join(piRoot, "prompts", "workflows-review.md"))
     ).toBe(true);
     expect(
-      await exists(
+      existsSync(
         path.join(piRoot, "extensions", "agentic-engineering-compat.ts")
       )
     ).toBe(true);

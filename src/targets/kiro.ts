@@ -93,19 +93,8 @@ export async function writeKiroBundle(outputRoot: string, bundle: KiroBundle): P
 }
 
 function resolveKiroPaths(outputRoot: string) {
-  const base = path.basename(outputRoot)
-  // If already pointing at .kiro, write directly into it
-  if (base === ".kiro") {
-    return {
-      kiroDir: outputRoot,
-      agentsDir: path.join(outputRoot, "agents"),
-      skillsDir: path.join(outputRoot, "skills"),
-      steeringDir: path.join(outputRoot, "steering"),
-      settingsDir: path.join(outputRoot, "settings"),
-    }
-  }
-  // Otherwise nest under .kiro
-  const kiroDir = path.join(outputRoot, ".kiro")
+  // Write directly into a .kiro root; otherwise nest under .kiro.
+  const kiroDir = path.basename(outputRoot) === ".kiro" ? outputRoot : path.join(outputRoot, ".kiro")
   return {
     kiroDir,
     agentsDir: path.join(kiroDir, "agents"),

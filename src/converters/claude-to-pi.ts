@@ -1,4 +1,5 @@
 import { formatFrontmatter } from "../utils/frontmatter";
+import { normalizeName, replaceSlashCommands, sanitizeDescription, uniqueName } from "../utils/names";
 import type {
   ClaudeAgent,
   ClaudeCommand,
@@ -11,16 +12,12 @@ import type {
   PiMcporterConfig,
   PiMcporterServer,
 } from "../types/pi";
-import type { ClaudeToOpenCodeOptions } from "./claude-to-opencode";
+import type { ConvertOptions } from "./claude-to-opencode";
 import { PI_COMPAT_EXTENSION_SOURCE } from "../templates/pi/compat-extension";
-
-export type ClaudeToPiOptions = ClaudeToOpenCodeOptions;
-
-const PI_DESCRIPTION_MAX_LENGTH = 1024;
 
 export function convertClaudeToPi(
   plugin: ClaudePlugin,
-  _options: ClaudeToPiOptions
+  _options: ConvertOptions
 ): PiBundle {
   const promptNames = new Set<string>();
   const usedSkillNames = new Set<string>(
@@ -135,25 +132,13 @@ function transformContentForPi(body: string): string {
   );
 
   // /command-name or /workflows:command-name -> /workflows-command-name
-  const slashCommandPattern =
-    /(?<![:\w])\/([a-z][a-z0-9_:-]*?)(?=[\s,."')\]}`]|$)/gi;
-  result = result.replace(slashCommandPattern, (match, commandName: string) => {
-    if (commandName.includes("/")) return match;
-    if (
-      ["dev", "tmp", "etc", "usr", "var", "bin", "home"].includes(commandName)
-    ) {
-      return match;
-    }
-
+  result = replaceSlashCommands(result, (commandName) => {
     if (commandName.startsWith("skill:")) {
-      const skillName = commandName.slice("skill:".length);
-      return `/skill:${normalizeName(skillName)}`;
+      return `/skill:${normalizeName(commandName.slice("skill:".length))}`;
     }
-
     const withoutPrefix = commandName.startsWith("prompts:")
       ? commandName.slice("prompts:".length)
       : commandName;
-
     return `/${normalizeName(withoutPrefix)}`;
   });
 
@@ -175,7 +160,7 @@ function appendCompatibilityNoteIfNeeded(body: string): string {
   return body + note;
 }
 
-function convertMcpToMcporter(
+export function convertMcpToMcporter(
   servers: Record<string, ClaudeMcpServer>
 ): PiMcporterConfig {
   const mcpServers: Record<string, PiMcporterServer> = {};
@@ -200,44 +185,4 @@ function convertMcpToMcporter(
   }
 
   return { mcpServers };
-}
-
-function normalizeName(value: string): string {
-  const trimmed = value.trim();
-  if (!trimmed) return "item";
-  const normalized = trimmed
-    .toLowerCase()
-    .replace(/[\\/]+/g, "-")
-    .replace(/[:\s]+/g, "-")
-    .replace(/[^a-z0-9_-]+/g, "-")
-    .replace(/-+/g, "-")
-    .replace(/^-+|-+$/g, "");
-  return normalized || "item";
-}
-
-function sanitizeDescription(
-  value: string,
-  maxLength = PI_DESCRIPTION_MAX_LENGTH
-): string {
-  const normalized = value.replace(/\s+/g, " ").trim();
-  if (normalized.length <= maxLength) return normalized;
-  const ellipsis = "...";
-  return (
-    normalized.slice(0, Math.max(0, maxLength - ellipsis.length)).trimEnd() +
-    ellipsis
-  );
-}
-
-function uniqueName(base: string, used: Set<string>): string {
-  if (!used.has(base)) {
-    used.add(base);
-    return base;
-  }
-  let index = 2;
-  while (used.has(`${base}-${index}`)) {
-    index += 1;
-  }
-  const name = `${base}-${index}`;
-  used.add(name);
-  return name;
 }
