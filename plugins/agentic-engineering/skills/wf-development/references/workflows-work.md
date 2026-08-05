@@ -327,7 +327,8 @@ arrive and the loop re-enters.
   sub-issue resumable — the orchestrator **continues other ready-work**; one
   blocked sub-issue never stops the wave.
 - **Consult before asking.** Before a question surfaces, search the
-  sub-issue's — and its parent's — `human`-labeled comments for an existing
+  sub-issue's — and its parent's — `human`-labeled comments, and any human
+  replies in the thread beneath or after them, for an existing
   answer; they are the escalation's system of record (see the
   [escalation contract](escalation-contract.md)). A persisted answer is
   consumed and cited, never re-asked.

@@ -125,7 +125,8 @@ Use the GitHub issue/project state and explicitly supplied artifacts.
 
 A re-run reconstructs open questions from the tracker, not from memory. For
 any item carrying a `blocked-by` edge, read the sub-issue's — and its
-parent's — `human`-labeled comments before surfacing a question; they are the
+parent's — `human`-labeled comments, and any human replies that follow them,
+before surfacing a question; they are the
 escalation's system of record (see the
 [escalation contract](escalation-contract.md)). A persisted answer is
 consumed and cited, never re-asked — only a question with no recorded answer

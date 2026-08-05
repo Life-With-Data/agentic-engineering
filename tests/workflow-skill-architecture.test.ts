@@ -935,6 +935,11 @@ describe("workflow skill architecture", () => {
     const refHandoff = brainstorming.indexOf("### Phase 4: Handoff");
     expect(refHandoff).toBeGreaterThan(-1);
     expect(flow(brainstorming.slice(refHandoff))).toContain("say stop to redirect");
+    // Same negative freeze as the primary site: the duplicate handoff cannot
+    // regrow a menu — no AskUserQuestion drive and no options-menu token may
+    // coexist with the proceed-statement (review hardening from issue #388).
+    expect(brainstorming.slice(refHandoff)).not.toContain("AskUserQuestion");
+    expect(brainstorming).not.toContain("Present clear options");
 
     // 2. The groom route's ask throttle carries the default-and-note rule:
     // resolvable scope questions get a recorded default, revisable at the

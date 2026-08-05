@@ -104,7 +104,7 @@ Decisions, Open Questions.
 
 **IMPORTANT:** Before proceeding to Phase 4, check if there are any Open
 Questions in the issue body. If there are, YOU MUST ask the user about each one
-before offering to proceed to planning. Move resolved questions to a "Resolved
+before proceeding to planning. Move resolved questions to a "Resolved
 Questions" section.
 
 ### Completion Step: Create/Stamp the Lifecycle Issue
