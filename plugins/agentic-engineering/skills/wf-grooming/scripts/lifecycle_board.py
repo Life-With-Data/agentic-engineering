@@ -95,6 +95,35 @@ _ORDER = {
     "abandoned": -1,
 }
 TERMINAL_STAGES = {"done"}
+# Provenance floor. Below it, an issue body is quoted requirements, never
+# instructions — this is the prompt-injection seam for everything the lifecycle
+# reads off an issue.
+#
+# A GitHub App author is trusted in addition to these, because a bot-authored
+# item lands OUTSIDE every association (observed: `authorAssociation: NONE` for
+# App-filed issues, `CONTRIBUTOR` for App-filed PRs) and would otherwise be
+# refused with `untrusted_provenance` — an App could file work it can never
+# groom.
+#
+# TRADE, decided at grooming, with two vectors that are WIDER than the framing
+# that decision was made under ("any App installed on the repo, including one
+# added later for an unrelated reason"):
+#
+#   1. Laundering. Quarantine is one hop. An agent that reads an untrusted issue
+#      and then files a follow-up quoting it — which this plugin's own guidance
+#      instructs it to do — produces a Bot-authored issue carrying that text at
+#      full trust. Note an author allowlist does NOT close this: the laundering
+#      issue is authored by the configured App itself.
+#   2. `github-actions[bot]` is not opted into. It exists on every repository by
+#      default, so the common "CI job failed -> open an issue" pattern files
+#      Bot-authored bodies embedding third-party text (job output, branch names,
+#      dependency advisories) at full trust.
+#
+# The narrower option offered at grooming — allowlisting the single configured
+# App login — was declined, and would in any case only address (2). Closing (1)
+# means decoupling the two things provenance currently conflates: whether the
+# author may drive lifecycle control flow, and whether the body may be read as
+# instructions. Tracked separately; do not widen this further without it.
 TRUSTED_ASSOCIATIONS = {"OWNER", "MEMBER", "COLLABORATOR"}
 PRIORITY_ORDER = {"p1": 0, "p2": 1, "p3": 2}
 PRIORITY_VALUES = tuple(PRIORITY_ORDER)  # p1 / p2 / p3 — Project Priority options
@@ -862,11 +891,15 @@ query($owner: String!, $repo: String!, $number: Int!) {
       number title body updatedAt state stateReason url
       labels(first: 20) { nodes { name } }
       authorAssociation
+      author { login __typename }
 parent { number }
       blockedBy(first: 100) { nodes { number title url state } }
       assignees(first: 10) { nodes { login } }
-      closedByPullRequestsReferences(first: 5) {
-        nodes { number state merged baseRefName author { login } }
+      closedByPullRequestsReferences(first: 5, includeClosedPrs: true) {
+        nodes {
+          number state merged baseRefName authorAssociation
+          author { login __typename }
+        }
       }
       subIssues(first: 100) {
         nodes {
@@ -910,6 +943,9 @@ class IssueState:
     # gate reroutes to the parent — the Project tracks the parent, and the
     # child's own board stage is noise for routing.
     parent_number: Optional[int] = None
+    # Author is a GitHub App (`author.__typename == "Bot"`), which lands outside
+    # every authorAssociation. Feeds resolve_provenance.
+    author_is_bot: bool = False
     url: str = ""
     title: str = ""
     body: str = ""
@@ -964,12 +1000,19 @@ def parse_issue_state(data: dict, board: BoardConfig) -> Optional[IssueState]:
         state_reason=issue.get("stateReason"),
         assignees=[n["login"] for n in issue.get("assignees", {}).get("nodes", [])],
         author_association=issue.get("authorAssociation", "NONE"),
+        author_is_bot=(issue.get("author") or {}).get("__typename") == "Bot",
         stage=stage,
         item_id=item_id,
         priority=priority,
         closing_prs=[
             {"number": n["number"], "state": n["state"], "merged": n["merged"],
-             "baseRefName": n.get("baseRefName", ""), "author": (n.get("author") or {}).get("login", "")}
+             "baseRefName": n.get("baseRefName", ""),
+             "author": (n.get("author") or {}).get("login", ""),
+             # Same provenance rule as the issue author — a closing reference is
+             # anyone's to create, so rules 3 and 5 consult it before repairing.
+             "provenance": resolve_provenance(
+                 n.get("authorAssociation", "NONE"),
+                 (n.get("author") or {}).get("__typename") == "Bot")}
             for n in issue.get("closedByPullRequestsReferences", {}).get("nodes", [])
         ],
         open_sub_issues=[n["number"] for n in issue.get("subIssues", {}).get("nodes", [])
@@ -1022,6 +1065,15 @@ def fetch_issue_state(number: int, board: BoardConfig, ctx: RepoContext,
 # Pure decision core
 # --------------------------------------------------------------------------
 
+def resolve_provenance(author_association: str, author_is_bot: bool = False) -> str:
+    """The one provenance rule. `--gate` and `--groom-entry` both derive it, and
+    a second spelling is how the two silently disagree — see TRUSTED_ASSOCIATIONS
+    for the Bot trade."""
+    if author_is_bot:
+        return "trusted"
+    return "trusted" if author_association in TRUSTED_ASSOCIATIONS else "untrusted"
+
+
 def stage_at_least(stage: Optional[str], floor: str) -> bool:
     if stage is None:
         return False
@@ -1043,7 +1095,8 @@ def evaluate_gate(command: str, stage: Optional[str], has_issue: bool,
                   plan_doc: Optional[str], brainstorm_doc: Optional[str],
                   author_association: str = "OWNER",
                   parent_number: Optional[int] = None,
-                  issue_state: Optional[str] = None) -> GateResult:
+                  issue_state: Optional[str] = None,
+                  author_is_bot: bool = False) -> GateResult:
     """The idempotent entry-gate decision table.
 
     ``plan_doc`` and ``brainstorm_doc`` remain positional compatibility
@@ -1057,7 +1110,7 @@ def evaluate_gate(command: str, stage: Optional[str], has_issue: bool,
     the child's stage. Terminal (CLOSED) sub-issues fall through to the normal
     already_done paths.
     """
-    provenance = "trusted" if author_association in TRUSTED_ASSOCIATIONS else "untrusted"
+    provenance = resolve_provenance(author_association, author_is_bot)
 
     def gr(verdict: str, route: str, reason: str) -> GateResult:
         return GateResult(verdict=verdict, route=route, reason=reason, stage=stage, provenance=provenance)
@@ -1370,12 +1423,31 @@ class ClaimDecision:
     reason: str
 
 
-def decide_claim(assignees: "list[str]", me: str, blocked_by_count: int) -> ClaimDecision:
+def is_assignable_principal(login: str) -> bool:
+    """A GitHub App installation token's `viewer.login` carries a `[bot]` suffix
+    and resolves to no User, so it can never be an issue assignee (the repo's
+    `assignableUsers` omits it and `user(login:)` 404s). Everything else is a
+    User and assigns normally."""
+    return not login.endswith("[bot]")
+
+
+def decide_claim(assignees: "list[str]", me: str, blocked_by_count: int,
+                 assignable: bool = True) -> ClaimDecision:
     """Post-assignment confirmation: sole assignee, unblocked. GitHub has no
     CAS on assignment — two winners are legal, so the sole-assignee re-read
-    is load-bearing."""
+    is load-bearing.
+
+    A non-assignable principal (a GitHub App) has no assignment to re-read, so
+    it confirms on the Status transition instead. That is a strictly weaker
+    guarantee — see the ceiling recorded at the `verb_claim` call site. A
+    foreign assignee still wins: someone holds it, so it is not ours to claim.
+    """
     if blocked_by_count > 0:
         return ClaimDecision("blocked", f"issue has {blocked_by_count} open blocking issue(s); dependencies are advisory — do not claim")
+    if not assignable:
+        if assignees:
+            return ClaimDecision("conflict", f"assigned to {assignees}; not ours to claim")
+        return ClaimDecision("proceed", f"{me} is not assignable — confirming the claim on Status")
     if assignees == [me]:
         return ClaimDecision("proceed", "sole assignee confirmed")
     if me in assignees:
@@ -1409,7 +1481,32 @@ def plan_repairs(states: "list[IssueState]", default_branch: str) -> "tuple[list
     flags: "list[Flag]" = []
     for s in states:
         merged_pr = next((p for p in s.closing_prs if p["merged"]), None)
-        assignee_prs = [p for p in s.closing_prs if p["author"] in s.assignees] if s.assignees else []
+        # Rules 3 and 5 drive off the issue's OWN closing references
+        # (`closedByPullRequestsReferences`), scoped by PROVENANCE rather than by
+        # assignment.
+        #
+        # The previous `author in s.assignees` filter silently disabled both
+        # repairs whenever the author was not an assignee — every bot-authored PR,
+        # and every unassigned issue (the `if s.assignees else []` guard). Nothing
+        # errored; repairs just stopped happening.
+        #
+        # Assignment was the wrong axis. What the old filter was really reaching
+        # for is trust: a closing reference is anyone's to create (any fork PR
+        # whose body says `Closes #N` lands in this list), so a stranger could
+        # otherwise drive a Status repair. `authorAssociation` on the PR node is
+        # the direct signal, so rules 3 and 5 reuse the issue-author rule. This
+        # keeps every case unit 3 was filed for — a bot-authored PR and an
+        # unassigned issue both repair — while a stranger's `Closes #N` is ignored
+        # as it was before.
+        #
+        # Filtering also has to happen BEFORE the `all()` in rule 3: an untrusted
+        # OPEN reference mixed into the list would otherwise make `all(closed and
+        # unmerged)` false and silently SUPPRESS a repair that should fire.
+        #
+        # `merged_pr` above is deliberately NOT filtered: a merge is a maintainer
+        # action, so an outside contributor's merged PR is legitimate and must
+        # still drive rule 1 and the non-default-branch flag.
+        closing_prs = [p for p in s.closing_prs if p.get("provenance", "trusted") == "trusted"]
 
         # Rule 1: merged close missed by automation -> done
         if s.state == "CLOSED" and s.state_reason == "COMPLETED" and merged_pr \
@@ -1446,9 +1543,9 @@ def plan_repairs(states: "list[IssueState]", default_branch: str) -> "tuple[list
                 deboard_item_id=s.item_id))
             continue
 
-        # Rule 3: assignee's PR closed without merge -> regress to in_progress
-        if s.state == "OPEN" and s.stage == "in_review" and assignee_prs \
-                and all(p["state"] == "CLOSED" and not p["merged"] for p in assignee_prs):
+        # Rule 3: a closing PR closed without merge -> regress to in_progress
+        if s.state == "OPEN" and s.stage == "in_review" and closing_prs \
+                and all(p["state"] == "CLOSED" and not p["merged"] for p in closing_prs):
             repairs.append(Repair(s.number, "pr_closed_unmerged", s.stage, "in_progress",
                                   "reconciler: linked PR closed without merging — Status → in_progress"))
             continue
@@ -1460,13 +1557,13 @@ def plan_repairs(states: "list[IssueState]", default_branch: str) -> "tuple[list
                                   close_sub_issues=list(s.open_sub_issues)))
             continue
 
-        # Rule 5: assignee's PR (re)opened while item regressed -> in_review.
+        # Rule 5: a closing PR (re)opened while item regressed -> in_review.
         # Skipped while sub-issues are open: the repair must not force the exact
         # write the open_sub_issues seam gate refuses; the parent stays
         # in_progress, which is accurate.
         if s.state == "OPEN" and s.stage == "in_progress" \
                 and not s.open_sub_issues \
-                and any(p["state"] == "OPEN" for p in assignee_prs):
+                and any(p["state"] == "OPEN" for p in closing_prs):
             repairs.append(Repair(s.number, "pr_reopened", s.stage, "in_review",
                                   "reconciler: linked PR is open — Status → in_review"))
             continue
@@ -1559,12 +1656,47 @@ def _require_board(ctx: RepoContext) -> BoardConfig:
     return board
 
 
+# A genuinely unauthenticated `gh` — as opposed to an authenticated token that
+# is merely forbidden on one endpoint. `gh` exits 4 on auth errors; the text
+# probe is the fallback for versions that do not. Deliberately narrow: `gh`
+# appends a generic "gh auth login" hint to failures that are NOT auth failures,
+# so matching on that hint would send an App-token operator to re-login for a
+# network or GraphQL error — inverting the distinction this exists to draw.
+_UNAUTHENTICATED_STDERR = re.compile(r"HTTP 401|Bad credentials", re.IGNORECASE)
+
+# `gh api --jq` prints a bare `null` (exit 0) when the filtered field resolves to
+# null, so a null `viewer` would otherwise be accepted as a principal literally
+# named "null" and carried into an assignment write.
+_NON_LOGINS = frozenset({"", "null"})
+
+
 def _gh_me(runner: GhRunner) -> str:
-    result = _run_gh_retry(runner, ["api", "user", "--jq", ".login"])
-    if result.returncode != 0:
+    """Resolve the acting principal through GraphQL `viewer`.
+
+    REST `/user` answers only for a User token: a GitHub App installation token
+    gets `HTTP 403 Resource not accessible by integration` there, which is not
+    an authentication failure and must not be reported as one. `viewer` answers
+    for both.
+
+    An App's login carries a `[bot]` suffix (`acme-dev[bot]`). Anything
+    comparing this value against a login from another surface must not assume
+    the suffix is present — `ProjectV2ItemFieldSingleSelectValue.creator`
+    omits it.
+    """
+    result = _run_gh_retry(runner, ["api", "graphql", "-f", "query={viewer{login}}",
+                                    "--jq", ".data.viewer.login"])
+    login = result.stdout.strip()
+    if result.returncode == 0 and login not in _NON_LOGINS:
+        return login
+    stderr = result.stderr.strip()
+    if result.returncode == 4 or _UNAUTHENTICATED_STDERR.search(stderr):
         raise BoardError("gh_unauthenticated", "gh is not authenticated",
                          "Run `gh auth login`, then `gh auth refresh -s project`")
-    return result.stdout.strip()
+    raise BoardError(
+        "gh_principal_unresolved",
+        f"gh is authenticated but the acting principal did not resolve: "
+        f"{stderr[:200] or 'empty viewer response'}",
+        "Check the token's scopes with `gh auth status`")
 
 
 def verb_gate(command: str, issue: Optional[int], ctx: RepoContext, runner: GhRunner) -> dict:
@@ -1580,6 +1712,7 @@ def verb_gate(command: str, issue: Optional[int], ctx: RepoContext, runner: GhRu
     has_issue = issue is not None
     plan_doc = brainstorm_doc = None  # pure-function compatibility parameters
     author_association = "OWNER"
+    author_is_bot = False
     parent_number = None
     issue_state = None
     packet_cleanup = None
@@ -1594,11 +1727,12 @@ def verb_gate(command: str, issue: Optional[int], ctx: RepoContext, runner: GhRu
                     "issue": issue, "flags": flags}
         stage = state.stage
         author_association = state.author_association
+        author_is_bot = state.author_is_bot
         parent_number = state.parent_number
         issue_state = state.state
         packet_cleanup = _cleanup_packet_for_terminal_state(state, ctx)
     result = evaluate_gate(command, stage, has_issue, plan_doc, brainstorm_doc,
-                           author_association, parent_number, issue_state)
+                           author_association, parent_number, issue_state, author_is_bot)
     return {"mode": mode, "verdict": result.verdict, "route": result.route,
             "reason": result.reason, "stage": result.stage, "issue": issue,
             "author_association": author_association, "provenance": result.provenance,
@@ -1926,6 +2060,7 @@ def verb_groom_entry(issue: Optional[int], ctx: RepoContext, runner: GhRunner) -
     reconcile = verb_reconcile(ctx, runner)  # issue=None => TTL-gated global sweep
     stage = plan_doc = brainstorm_doc = None  # pure-function compatibility parameters
     author_association = "OWNER"
+    author_is_bot = False
     parent_number = None
     issue_state = None
     stale = False
@@ -1936,10 +2071,11 @@ def verb_groom_entry(issue: Optional[int], ctx: RepoContext, runner: GhRunner) -
         else:
             stage = state.stage
             author_association = state.author_association
+            author_is_bot = state.author_is_bot
             parent_number = state.parent_number
             issue_state = state.state
             _cleanup_packet_for_terminal_state(state, ctx)
-    provenance = "trusted" if author_association in TRUSTED_ASSOCIATIONS else "untrusted"
+    provenance = resolve_provenance(author_association, author_is_bot)
     gr = route_for_groom(issue is not None, stage, plan_doc, brainstorm_doc, provenance, stale,
                          parent_number, issue_state)
     return {"mode": mode, "route": gr.route, "reason": gr.reason, "blocker": gr.blocker,
@@ -2558,15 +2694,37 @@ def verb_claim(issue: int, ctx: RepoContext, runner: GhRunner) -> dict:
             f"Issue #{issue} is at {state.stage!r} — work requires Status >= ready_for_work",
             "A human approves it by dragging the card to the `ready_for_work` column in "
             "the Projects UI, or running --set-status <N> ready_for_work --force")
+    # A GitHub App principal cannot be assigned, so the claim is confirmed on the
+    # Status transition instead of the sole-assignee re-read below.
+    #
+    # ACCEPTED CEILING: an App's claim leaves NO durable identity anywhere — only
+    # `Status = in_progress`, which carries no actor. Two consequences, and the
+    # second is the larger one:
+    #
+    #   1. Two App runs that both read `ready_for_work` inside the same few-second
+    #      window can both reach `in_progress`.
+    #   2. An App's claim is invisible to a later human `--claim`. The human sees
+    #      no assignee, passes every check, assigns self, and is told "sole
+    #      assignee confirmed" while the App is mid-flight. Unlike (1) this window
+    #      is not seconds — it lasts as long as the App holds the work. A human's
+    #      claim is still exclusive against other HUMANS; it is not exclusive
+    #      against an App.
+    #
+    # Upgrade path for both: a `claim:<login>` label as the identity-carrying
+    # token (`item-list --query` does filter labels). Rejected at grooming —
+    # `no:assignee` filtered 0 of 47 ready items, so exclusion appeared to buy
+    # nothing. Note that measurement was human-vs-human contention and does not
+    # speak to (2), which this change created.
+    assignable = is_assignable_principal(me)
     if state.assignees and me not in state.assignees:
-        decision = decide_claim(state.assignees, me, state.blocked_by_count)
+        decision = decide_claim(state.assignees, me, state.blocked_by_count, assignable)
         return {"issue": issue, "claimed": False, "verdict": "claim_conflict", "reason": decision.reason}
     if state.blocked_by_count > 0:
-        decision = decide_claim(state.assignees, me, state.blocked_by_count)
+        decision = decide_claim(state.assignees, me, state.blocked_by_count, assignable)
         return {"issue": issue, "claimed": False, "verdict": "blocked", "reason": decision.reason}
 
     assigned_by_us = False
-    if not state.assignees:
+    if assignable and not state.assignees:
         assign = _run_gh_retry(runner, ["issue", "edit", str(issue), "--repo", ctx.slug,
                                         "--add-assignee", "@me"])
         if assign.returncode != 0:
@@ -2589,7 +2747,7 @@ def verb_claim(issue: int, ctx: RepoContext, runner: GhRunner) -> dict:
                 _self_unassign()
             except BoardError:
                 pass
-        raise BoardError("claim_unverified", "assignment succeeded but the confirming read failed",
+        raise BoardError("claim_unverified", "the confirming read failed; the claim is unverified",
                          "retry --claim")
     if confirm is None:
         if assigned_by_us:
@@ -2597,10 +2755,10 @@ def verb_claim(issue: int, ctx: RepoContext, runner: GhRunner) -> dict:
                 _self_unassign()
             except BoardError:
                 pass
-        raise BoardError("claim_unverified", "assignment succeeded but the confirming read failed",
+        raise BoardError("claim_unverified", "the confirming read failed; the claim is unverified",
                          "retry --claim")
 
-    decision = decide_claim(confirm.assignees, me, confirm.blocked_by_count)
+    decision = decide_claim(confirm.assignees, me, confirm.blocked_by_count, assignable)
     if decision.action != "proceed":
         if me in confirm.assignees and len(confirm.assignees) > 1:
             _self_unassign()  # loser yields visibly
@@ -2609,7 +2767,8 @@ def verb_claim(issue: int, ctx: RepoContext, runner: GhRunner) -> dict:
                 "reason": decision.reason}
     status = verb_set_status(issue, "in_progress", ctx, runner)
     return {"issue": issue, "claimed": True, "verdict": "proceed",
-            "assignee": me, "previous_stage": status["previous_stage"]}
+            "principal": me, "assignee": me if assignable else None,
+            "previous_stage": status["previous_stage"]}
 
 
 def _item_list(board: BoardConfig, runner: GhRunner, query: str,
