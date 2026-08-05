@@ -25,5 +25,13 @@ jobs:
       # SHA-pinned per docs/solutions/security-issues/hardening-scaffolded-github-actions-workflows.md
       - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
         with:
+          # A PR authored by GITHUB_TOKEN cannot trigger workflows (GitHub's
+          # anti-recursion rule), so CI on the release PR lands as
+          # `action_required` and a human must click "Approve and run" before
+          # the required `test` check can report. Authoring under a
+          # collaborator PAT removes that gate. Falls back to GITHUB_TOKEN so
+          # the workflow still runs where the secret is absent — the release
+          # PR is then gated again, but never broken.
+          token: ${{ secrets.RELEASE_PLEASE_PAT || secrets.GITHUB_TOKEN }}
           config-file: .github/release-please-config.json
           manifest-file: .github/.release-please-manifest.json
