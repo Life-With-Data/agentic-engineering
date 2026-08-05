@@ -40,6 +40,23 @@ If invoked after the `wf-grooming` brainstorm or planning route, also check:
 
 Among everything found in Steps 2-3, does one issue stand out? If something would significantly improve the document's quality, this is the "must address" item. Highlight it prominently.
 
+## Invocation Mode for Steps 5-6
+
+Determine the invocation mode before making changes; it governs both Step 5
+and Step 6. The discriminator is a responsive user, not the call path: a user
+who asked for the review and can answer makes the session interactive even
+when a workflow routed the call here.
+
+- **Standalone interactive session** (a responsive user asked for the review,
+  directly or through a workflow redirect): follow Steps 5 and 6 as written.
+  Asking before changing a document's meaning is correct here.
+- **Non-interactive invocation** (no responsive user — CI, `/loop`, scheduled
+  runs, or any autonomous loop): do not pause for approval and do not offer the
+  Step 6 menu. Auto-fix everything found in Steps 2-4, including substantive
+  changes, then report what changed — flagging substantive changes
+  (restructuring, removed sections, changed meaning) as such in the report.
+  After one pass, return control to the calling workflow.
+
 ## Step 5: Make Changes
 
 Present your findings, then:

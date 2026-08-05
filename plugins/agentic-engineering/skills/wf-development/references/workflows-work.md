@@ -326,11 +326,19 @@ arrive and the loop re-enters.
 - **Escalation is resumable, not blocking.** A recorded blocker makes the
   sub-issue resumable — the orchestrator **continues other ready-work**; one
   blocked sub-issue never stops the wave.
+- **Consult before asking.** Before a question surfaces, search the
+  sub-issue's — and its parent's — `human`-labeled comments, and any human
+  replies in the thread beneath or after them, for an existing
+  answer; they are the escalation's system of record (see the
+  [escalation contract](escalation-contract.md)). A persisted answer is
+  consumed and cited, never re-asked.
 - **Questions batch** into a single `AskUserQuestion` rather than surfacing
   one at a time. In non-interactive contexts (CI, `/loop`, scheduled runs) the
   batch surfaces at end-of-run instead.
 - **A reply resumes the item** — the blocker is removed and the sub-issue is
-  re-dispatched; nothing else waits on it in the meantime.
+  re-dispatched; nothing else waits on it in the meantime. An answer received
+  interactively is written back as a `human`-labeled comment on the sub-issue
+  first, so the next run consumes it instead of asking again.
 
 See the [escalation contract](escalation-contract.md) for the complete set of
 reasons a run stops.

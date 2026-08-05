@@ -22,8 +22,10 @@ Present one item at a time with:
 - dependencies and likely owner;
 - recommendation: groom now, defer, merge with an existing issue, or reject.
 
-Ask for a decision when priority or product scope requires judgment. Do not code
-during triage.
+Estimate priority and record it without asking, matching
+[workflow plan](workflows-plan.md)'s priority rule; humans revise it at the
+`ready_for_work` stamp. Reserve asks for product-scope judgment that repository
+evidence cannot resolve. Do not code during triage.
 
 ## Record the decision
 

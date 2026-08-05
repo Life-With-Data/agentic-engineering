@@ -282,6 +282,14 @@ describe("workflow skill architecture", () => {
     // surface rather than the old "resolved posture" claim it displaced.
     expect(planningRoute).toContain("posture_source");
     expect(planningRoute).toContain("`cleared`");
+    // Issue #389: on a standard-mode repo the resolved posture is REPORTED in
+    // the decompose report, not raised as an interactive offer — the #262/#298
+    // proactive offer added nothing over the silent default. Category tokens:
+    // require the report line, ban the offer verb (whitespace-normalized so a
+    // reflow across the hard wrap does not false-fail/false-pass).
+    const flowPlanning = planningRoute.replace(/\s+/g, " ");
+    expect(flowPlanning).toContain("decompose report");
+    expect(flowPlanning).not.toContain("proactively offer");
 
     const publicWorkflowDocs = [
       path.join(PLUGIN, "README.md"),
@@ -569,6 +577,69 @@ describe("workflow skill architecture", () => {
     expect(work).toContain("in_review");
   });
 
+  test("escalation asking sites consult tracker-persisted answers first (issue #390)", () => {
+    // Category-level assertions (repo guardrail policy: freeze the category,
+    // not the spelling — a frozen sentence silently false-passes once prose is
+    // reworded). escalation-contract.md makes the `human`-labeled tracker
+    // comment the escalation's system of record; both asking sites must
+    // consult it before re-asking, and workflows-work must persist an
+    // interactively received answer back as one. Whitespace-normalized so a
+    // pure reflow cannot fail this.
+    const flow = (s: string) => s.replace(/\s+/g, " ");
+
+    const work = flow(readFileSync(
+      path.join(SKILLS, "wf-development", "references", "workflows-work.md"),
+      "utf8",
+    ));
+    const orchestrate = flow(readFileSync(
+      path.join(SKILLS, "wf-development", "references", "workflows-orchestrate.md"),
+      "utf8",
+    ));
+
+    // Consult-before-ask at BOTH asking sites: read persisted `human`-labeled
+    // comments (sub-issue and parent) and consume rather than re-ask.
+    for (const doc of [work, orchestrate]) {
+      expect(doc).toContain("`human`-labeled comments");
+      expect(doc).toContain("consumed and cited, never re-asked");
+    }
+
+    // Write-back: an interactive answer is persisted to the tracker so the
+    // next run can consume it.
+    expect(work).toContain("written back as a `human`-labeled comment");
+  });
+
+  test("document-review carves out non-interactive invocation (issue #391)", () => {
+    // Category-level assertions (freeze the category, not the spelling):
+    // document-review's Step 5 approval gate and Step 6 menu must be governed
+    // by an invocation-mode carve-out — non-interactive/workflow callers get
+    // auto-fix-and-report (substantive changes flagged, not gated on
+    // approval) and control returned to the caller, while standalone
+    // interactive sessions keep the ask-before-substantive-change behavior.
+    // Whitespace-normalized so a pure reflow cannot fail this.
+    const flow = (s: string) => s.replace(/\s+/g, " ");
+    const review = flow(readFileSync(
+      path.join(SKILLS, "wf-documentation", "references", "document-review.md"),
+      "utf8",
+    ));
+
+    // The carve-out names both modes and covers both sites (Steps 5-6).
+    expect(review).toContain("Non-interactive invocation");
+    expect(review).toContain("Standalone interactive session");
+    expect(review).toContain("both Step 5 and Step 6");
+
+    // Non-interactive branch: auto-fix and report, substantive changes
+    // flagged in the report rather than gated on approval, no menu, control
+    // returned to the calling workflow.
+    expect(review).toContain("do not pause for approval");
+    expect(review).toContain("do not offer the Step 6 menu");
+    expect(review).toContain("including substantive changes");
+    expect(review).toContain("flagging substantive changes");
+    expect(review).toContain("return control to the calling workflow");
+
+    // Interactive behavior is unchanged: the Step 5 approval gate survives.
+    expect(review).toContain("**Ask approval** before substantive changes");
+  });
+
   test("orchestrate honors per-ticket delivery posture at the routing boundary", () => {
     // Guardrail (issue #302): the validation section of the source issue asked
     // for a skill-routing case matrix under tests/skill-routing-cases/, but
@@ -824,5 +895,69 @@ describe("workflow skill architecture", () => {
     // duplicate dispatch on unchanged scope. Concept tokens with slack between
     // them, not a pinned phrase.
     expect(beforePersist).toMatch(/\bskip\b[\s\S]{0,300}\balready\b/i);
+  });
+
+  test("grooming hands off with proceed-statements and throttles asks (issue #388)", () => {
+    // Category-token assertions per repo guardrail policy: freeze the category,
+    // never a frozen literal spelling (see docs/solutions/testing-patterns/
+    // grep-acceptance-checks-and-subset-fixtures-give-false-confidence.md).
+    const references = path.join(SKILLS, "wf-grooming", "references");
+    // Whitespace-normalized so a pure reflow of a sentence cannot fail this.
+    const flow = (s: string) => s.replace(/\s+/g, " ");
+
+    // 1. Handoff sites are proceed-statements, not menus. The pipeline order is
+    // fixed, so the old AskUserQuestion-driven next-steps menu carried no
+    // information; the handoff must announce the next stage and continue.
+    const brainstormRoute = readFileSync(
+      path.join(references, "workflows-brainstorm.md"),
+      "utf8",
+    );
+    // Menu token gone: no next-steps menu presentation at the handoff.
+    expect(brainstormRoute).not.toContain("present next steps");
+    expect(brainstormRoute).not.toContain("What would you like to do next?");
+    // Proceed-statement token present at BOTH former menu sites (Phase 4
+    // handoff and the post-document-review continuation).
+    const proceedMentions = flow(brainstormRoute).split("say stop to redirect").length - 1;
+    expect(proceedMentions).toBeGreaterThanOrEqual(2);
+    // The handoff phase itself no longer drives an AskUserQuestion menu.
+    // (AskUserQuestion stays legitimate earlier, in the interview phases.)
+    const handoffStart = brainstormRoute.indexOf("### Phase 4: Handoff");
+    expect(handoffStart).toBeGreaterThan(-1);
+    expect(brainstormRoute.slice(handoffStart)).not.toContain("AskUserQuestion");
+
+    // The duplicate handoff menu in the brainstorming reference is also a
+    // proceed-statement now. (Per-section validation pauses are untouched and
+    // deliberately unasserted — they are in scope for validation, not handoff.)
+    const brainstorming = readFileSync(
+      path.join(references, "brainstorming.md"),
+      "utf8",
+    );
+    const refHandoff = brainstorming.indexOf("### Phase 4: Handoff");
+    expect(refHandoff).toBeGreaterThan(-1);
+    expect(flow(brainstorming.slice(refHandoff))).toContain("say stop to redirect");
+    // Same negative freeze as the primary site: the duplicate handoff cannot
+    // regrow a menu — no AskUserQuestion drive and no options-menu token may
+    // coexist with the proceed-statement (review hardening from issue #388).
+    expect(brainstorming.slice(refHandoff)).not.toContain("AskUserQuestion");
+    expect(brainstorming).not.toContain("Present clear options");
+
+    // 2. The groom route's ask throttle carries the default-and-note rule:
+    // resolvable scope questions get a recorded default, revisable at the
+    // human's ready_for_work stamp, instead of an ask.
+    const groom = readFileSync(
+      path.join(references, "workflows-groom.md"),
+      "utf8",
+    );
+    expect(groom).toContain("Default-and-note");
+    expect(groom).toContain("ready_for_work");
+
+    // 3. Triage no longer asks for priority — it is estimated and recorded
+    // without asking (aligned with workflows-plan.md's no-ask priority rule);
+    // asks are reserved for product-scope judgment.
+    const triage = readFileSync(path.join(references, "triage.md"), "utf8");
+    expect(triage).not.toContain("Ask for a decision when priority");
+    expect(triage.replace(/\s+/g, " ")).toContain(
+      "Estimate priority and record it without asking",
+    );
   });
 });
