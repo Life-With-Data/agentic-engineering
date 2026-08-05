@@ -55,8 +55,8 @@ OWNED_TRANSITIONS: dict[str, tuple[str, ...]] = {
 # policy (see the docstring above).
 HEAD_BOUND_REVIEW_GATE: dict[str, tuple[str, ...]] = {
     "wf-review": ("head SHA", "invalidates"),
-    "wf-orchestrate": ("current head", "invalidates"),
-    "wf-delivery": ("current head", "stale"),
+    "wf-orchestrate": ("current head", "invalidates", "single-lens"),
+    "wf-delivery": ("reviewed SHA", "stale"),
 }
 
 # Coarse inverse-guard keyword: a `wf-*` skill whose `Owns:` block claims a
