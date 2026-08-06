@@ -20,7 +20,7 @@ See [WORKFLOW_SKILLS.md](WORKFLOW_SKILLS.md) for the layer model and repository 
 
 #### Issue tracker
 
-**`github-project`** (a GitHub Projects v2 lifecycle board) is the only supported mode. An unconfigured repo still works without lifecycle claims or tracker writes — the engine's `no_board` verdict says exactly this — until the `wf-setup` lifecycle bootstrap configures a board. Beads is never a source of truth (the `block-beads-jsonl-stage` hook enforces it); everything else lives in the [lifecycle reference](skills/wf-setup/references/lifecycle.md).
+**`github-project`** (a GitHub Projects v2 lifecycle board) is the only supported mode. An unconfigured repo still works without lifecycle claims or tracker writes — the engine's `no_board` verdict says exactly this — until the `wf-setup` lifecycle bootstrap configures a board. Everything else lives in the [lifecycle reference](skills/wf-setup/references/lifecycle.md).
 
 #### Lifecycle
 

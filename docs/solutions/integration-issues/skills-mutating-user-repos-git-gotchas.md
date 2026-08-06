@@ -59,16 +59,16 @@ Scenarios that mattered: fresh repo *run from a subdirectory* (root-anchoring), 
 
 ## 6. `core.hooksPath` REPLACES the hook search path — an installed git hook can be a silent no-op
 
-**Trap.** Offering "install a git hook" (here: graphify's `graphify hook install`, which writes a `post-commit` that rebuilds the knowledge graph) assumes hooks live in `.git/hooks`. `core.hooksPath` breaks that assumption: it does not *add* a search location, it *replaces* it. Any tool that sets it — beads, husky, lefthook, pre-commit — silently redirects git's entire hook lookup away from `.git/hooks`, so a hook installed there never fires. No error, no warning; the install reports success.
+**Trap.** Offering "install a git hook" (here: graphify's `graphify hook install`, which writes a `post-commit` that rebuilds the knowledge graph) assumes hooks live in `.git/hooks`. `core.hooksPath` breaks that assumption: it does not *add* a search location, it *replaces* it. Any tool that sets it — husky, lefthook, pre-commit, or any tracker CLI that ships its own hooks — silently redirects git's entire hook lookup away from `.git/hooks`, so a hook installed there never fires. No error, no warning; the install reports success.
 
 The live probe found the degenerate case, which is worse than a conflict. In this repo:
 
 ```
-core.hooksPath = <repo>/.beads/hooks   (set in .git/config, local scope)
-.beads/hooks   → DOES NOT EXIST
+core.hooksPath = <repo>/.tool/hooks   (set in .git/config, local scope)
+.tool/hooks    → DOES NOT EXIST
 ```
 
-Beads had pointed the lookup at a directory that wasn't there, so **no git hook fired in the repo at all**, from any tool. A graph-rebuild hook installed into that repo would have reported success and then quietly never run — leaving the graph permanently stale with zero signal. Note the scope trap too: `core.hooksPath` lives in `.git/config`, which is **shared across worktrees**, so a per-clone setting silently governs every worktree of it.
+A previously-installed CLI had pointed the lookup at a directory that wasn't there, so **no git hook fired in the repo at all**, from any tool. A graph-rebuild hook installed into that repo would have reported success and then quietly never run — leaving the graph permanently stale with zero signal. Note the scope trap too: `core.hooksPath` lives in `.git/config`, which is **shared across worktrees**, so a per-clone setting silently governs every worktree of it.
 
 **Fix.** Preflight before offering any git-hook install: read `git config --get core.hooksPath`, and treat "unset" as the only trivially safe state. When it *is* set, the offer is only sound if the target directory exists **and** the installing tool writes *there* rather than to `.git/hooks` — two facts most tools don't document. If that can't be proven, don't offer the hook. The `setup` skill therefore offers graphify's CLI but **not** its hook, and the refresh runs as an explicit step inside `/workflows-compound` instead.
 
