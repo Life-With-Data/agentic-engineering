@@ -28,8 +28,9 @@ lifecycle field or synchronization process.
 3. `planned` — a trusted Project writer attests implementation-ready scope,
    acceptance and validation criteria, dependencies, and security/provenance
    handling. Grooming's ceiling: *groomed*, not yet *claimable*.
-4. `ready_for_work` — a human has approved the groomed issue for work; the
-   work-entry floor. No agent path emits it (see
+4. `ready_for_work` — the groomed issue is approved for work; the work-entry
+   floor. A human stamps it on every path but `wf-auto`, which holds the
+   approval itself (see
    [the approval seam](#agent-write-scope-and-the-approval-seam)).
 5. `in_progress` — the issue is claimed. A human principal claims by becoming
    its sole assignee; a GitHub App cannot be assigned, so its claim is carried
