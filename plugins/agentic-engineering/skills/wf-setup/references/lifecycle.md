@@ -58,7 +58,7 @@ hand-assemble Project mutations.
 | -> `stub` | `wf-grooming` triage, repository maintenance, humans | Create issue, add to Project, `--set-status stub` |
 | -> `brainstormed` | `wf-grooming` brainstorm route; humans for post-planning regression | Complete the brainstorm / deliberate `--set-status brainstormed` |
 | -> `planned` | `wf-grooming` planning route | `--decompose` (attests via `Status = planned`) |
-| -> `ready_for_work` | A human — the sole approver; no agent path emits this | Drag the card in the Projects UI, or `--set-status <N> ready_for_work --force` |
+| -> `ready_for_work` | A human, on every path but one; `wf-auto` is the sanctioned exception | Drag the card in the Projects UI, or `--set-status <N> ready_for_work --force` |
 | -> `in_progress` | `wf-development` work route | `--claim` |
 | -> `in_review` | `wf-development` work route | Open a closing PR, then `--set-status in_review` |
 | -> `done` | Built-in "Item closed" automation | Merge closes the issue through `Closes #N` |
@@ -89,8 +89,14 @@ a visible, logged act.
 
 Do not oversell this: a credential-holding agent that bypasses the engine with
 raw `gh project item-edit` can still write the field. The seam is a convention
-the engine enforces on every sanctioned path, not a permission boundary. There
-is exactly one approver role for `ready_for_work`, and it is not an agent.
+the engine enforces on every sanctioned path, not a permission boundary.
+
+There is exactly one approver role for `ready_for_work`, and on every path but
+one it is not an agent. The exception is deliberate and singular: `wf-auto`,
+the maximally autonomous entry point, holds the approval itself and forces the
+stamp, because invoking it *is* the human's authorization for that run. The
+seam still does its job there — `--force` is what makes the bypass an explicit
+act rather than a silent one, and no other route may take it.
 
 ## Entry-gate pattern
 

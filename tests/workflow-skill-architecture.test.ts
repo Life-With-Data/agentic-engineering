@@ -331,13 +331,25 @@ describe("workflow skill architecture", () => {
     // The self-approval write survives, forced, with its own audit trail.
     expect(auto).toMatch(/--set-status\s+<N>\s+ready_for_work\s+--force/);
     expect(flow).toMatch(/tracker comment/i);
-    // No posture label may re-supervise this route.
+    // Ticket selection — the other half of what this route owns.
+    expect(flow).toMatch(/--ready-work/);
+    expect(flow).toMatch(/items\[0\]/);
+    // A posture label must be REMOVED, not merely ignored: resolve_clearance
+    // returns `standard` for any posture:* label, so a surviving label leaves
+    // hands_off false and the dispatched stages re-gate the run.
     expect(flow).toMatch(/posture:standard/);
-    expect(flow).toMatch(/no standard posture/i);
+    expect(flow).toMatch(/--remove-label/);
+    expect(flow).toMatch(/no standard posture|posture[^.]{0,40}\bstrip/i);
     // Zero gates is the claim, not "fewer check-ins".
     expect(flow).toMatch(/[Zz]ero structural gates/);
     // Correctness is exempt from the suppression — it is not a check-in.
     expect(flow).toMatch(/P1 findings/);
+    // A revert that ADDS a gate alongside the prose is the failure mode a
+    // presence-only assertion misses; naming the suppressed gates is the part
+    // that can be checked here. (The interactive merge `[y/N]` is mentioned
+    // deliberately — as the thing a surviving posture label would bring back —
+    // so its literal cannot be banned.)
+    expect(flow).toMatch(/merge confirmation/i);
     // Security floor: the invocation authorizes the task, not a new one.
     expect(flow).toMatch(/only instruction source/i);
     expect(auto).toContain("escalation-contract.md");

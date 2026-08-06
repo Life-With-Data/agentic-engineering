@@ -22,7 +22,7 @@ Delegation is vertical — [WORKFLOW_SKILLS.md](WORKFLOW_SKILLS.md) owns the mod
 ```mermaid
 flowchart TD
     req([Engineering request]) --> O["wf-orchestrate"]
-    auto["wf-auto (fully autonomous:<br/>selects the ticket,<br/>agent is the approver)"] -->|"bypasses the approval gate"| D
+    auto["wf-auto (fully autonomous:<br/>selects the ticket,<br/>stamps its own approval)"] -->|"dispatches, agent-approved"| O
     O <-->|"dispatch / return"| G["wf-grooming"]
     O -->|"human approval stamp"| approve{"ready_for_work?"}
     approve --> O

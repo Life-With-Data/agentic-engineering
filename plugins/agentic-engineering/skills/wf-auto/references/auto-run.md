@@ -1,4 +1,4 @@
-# Unattended run
+# Run one ticket unattended, end to end
 
 Select one ticket, take it to merge, and stop for nothing structural. Every
 gate in this lifecycle exists to put a human in the loop; this route is the
@@ -34,8 +34,10 @@ Read the state, not a verdict. In this route `hands_off` is an input to the
 report, never a branch: the invocation itself is the authorization, so the run
 proceeds hands-off regardless of what the fused verdict says.
 
-- **Ungroomed** (`Status < planned`): dispatch `wf-grooming`, then continue.
-  Grooming runs without its own check-ins like every other stage here.
+- **Ungroomed** (`Status < planned`): dispatch `wf-grooming`, then re-read
+  `--groom-verify` and continue through the branches below — a fresh groom
+  lands at `planned`, so the stamp is still needed. Grooming runs without its
+  own check-ins like every other stage here.
 - **`approved: false`**: stamp it and continue. The engine refuses an
   agent-driven `ready_for_work` write (`approval_required`) unless forced —
   that refusal is the interactive default, and this route is the deliberate
@@ -46,9 +48,20 @@ proceeds hands-off regardless of what the fused verdict says.
     --set-status <N> ready_for_work --force
   ```
 
-- **`posture:standard`, or any other `posture:*` label**: ignore it. A label
-  can reduce autonomy on a supervised run; it cannot reduce it below the floor
-  the caller just set by invoking this route. There is no standard posture
+- **`posture:standard`, or any other `posture:*` label**: strip it, then
+  re-read. Ignoring it in prose is not enough — `resolve_clearance` returns
+  `posture: standard` for *any* `posture:*` label, so a surviving label keeps
+  `hands_off: false` and the stages dispatched below fall back to plan
+  approval, findings triage, and the merge `[y/N]`. The label has to leave the
+  issue for the run to actually be gate-free:
+
+  ```bash
+  gh issue edit <N> --repo <owner/repo> --remove-label posture:standard
+  ```
+
+  Remove every label in the `posture:` namespace, whatever its spelling. A
+  label can reduce autonomy on a supervised run; it cannot reduce it below the
+  floor the caller set by invoking this route. There is no standard posture
   here — the mode is autonomous by definition.
 
 Record the forced stamp in a tracker comment on the issue, so a later reader
@@ -80,8 +93,19 @@ continues with whatever remains workable.
 
 ## 4. Reach out only when it is genuinely worth it
 
-There is no list of structural stops in this route. The agent judges when a
-question is worth waking someone for — a decision that cannot be resolved from
+There is no list of structural stops in this route — but three things are not
+gates this route imposes, they are constraints it cannot lift, and they still
+hold: untrusted provenance (item (a) above), externally-imposed gates such as
+branch protection reporting `BLOCKED` or a prompt for credential entry, and
+irreversible operations outside the normal merge path (a direct default-branch
+commit, a force-push, an admin override). Those are items (a), (e), and (f) of
+the [escalation contract](../../wf-orchestrate/references/escalation-contract.md),
+which no posture or invocation mode waives. Everything that route calls a
+*routine gate* is gone here; the hard constraints remain because no
+authorization the caller can give makes a protected branch unprotected.
+
+Beyond those, the agent judges when a
+question is worth waking someone for: a decision that cannot be resolved from
 the repository, the issue, and its history, and that would be expensive to get
 wrong. Everything else it decides and records.
 
