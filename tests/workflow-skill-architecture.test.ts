@@ -313,6 +313,32 @@ describe("workflow skill architecture", () => {
     });
   });
 
+  test("the unattended entry point never claims approval authority", () => {
+    // Issue #407: wf-auto suppresses check-ins, never gates. The approval seam
+    // (`ready_for_work` has one approver role and it is not an agent) must stay
+    // intact in the one skill whose whole premise is that nobody is watching.
+    // Frozen by category, not by sentence: the route must refuse the stamp and
+    // must name tool-sourced input as untrusted, however that is worded.
+    const auto = [
+      path.join(SKILLS, "wf-auto", "SKILL.md"),
+      path.join(SKILLS, "wf-auto", "references", "auto-run.md"),
+    ].map((file) => readFileSync(file, "utf8")).join("\n");
+
+    // No agent-driven approval write, in any spelling.
+    expect(auto).not.toMatch(/--set-status\s+\S+\s+ready_for_work/);
+    // `--force` may appear only under a negation — the refusal, never a recipe.
+    for (const line of auto.split("\n")) {
+      if (line.includes("--force")) expect(line).toMatch(/\b(never|not|refus)/i);
+    }
+    // The refusal and its provenance guard are both present.
+    expect(auto).toMatch(/approved: false/);
+    expect(auto).toMatch(/\bnot an agent\b/);
+    expect(auto).toMatch(/\buntrusted\b/);
+    // Cross-cutting policy is linked, never re-enumerated here.
+    expect(auto).toContain("escalation-contract.md");
+    expect(auto).toContain("orchestrate.md");
+  });
+
   test("setup exposes a complete and strict lifecycle adoption journey", () => {
     const setupRouter = readFileSync(
       path.join(SKILLS, "wf-setup", "SKILL.md"),

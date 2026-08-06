@@ -14,8 +14,9 @@ Requires repository capabilities: `repository-overview`; the dispatched
 lifecycle validates its own additional capabilities at each stage boundary.
 
 Does not contain: stage sequencing, stage-internal procedure, gate
-definitions, the escalation set, or repository commands. This skill is a thin
-front door onto `wf-orchestrate`, never a second pipeline.
+definitions, the escalation set, posture resolution, or repository commands.
+This skill is a thin front door onto `wf-orchestrate`, never a second
+pipeline.
 
 ## Start here
 
@@ -25,33 +26,27 @@ python3 <skill-directory>/scripts/repository-context.py \
 ```
 
 Stop on contract failure. Then read [unattended run](references/auto-run.md):
-it selects the ticket, states the authorized posture, and dispatches
-`wf-orchestrate` for that item.
+it selects the ticket and dispatches `wf-orchestrate` for that item.
 
 ## What "unattended" means
 
-Suppressed for the whole run: plan approval, non-blocking findings triage,
-the interactive merge confirmation, and every "shall I continue?" between
-stages. Fix P2 findings, defer P3 in the tracker, and merge under repository
-merge policy without asking.
+An unattended run is `wf-orchestrate`'s autonomous mode with every optional
+check-in suppressed — it adds no new authority and relaxes no gate. Which
+gates autonomous mode already suppresses, and which stops survive it, are
+stated once in the
+[escalation contract](../wf-orchestrate/references/escalation-contract.md)
+and in [orchestrate](../wf-orchestrate/references/orchestrate.md); this skill
+adds nothing to either list.
 
-Not suppressed: the named stops in the
-[escalation contract](../wf-orchestrate/references/escalation-contract.md).
-Untrusted provenance, externally-imposed gates, and irreversible ops outside
-the merge path stop an unattended run exactly as they stop any other. A
-blocker is recorded on the tracker and the run ends there — the tracker
-comment is the escalation, not a chat prompt.
-
-Correctness gates are not check-ins and never relax: P1 review findings still
-block delivery and route back to development, and every repository gate still
-has to pass.
+What it does add: no run ever stops merely to ask whether to continue. A stop
+that the contract does not name is not a stop. When the contract does name
+one, the escalation is recorded on the tracker and the run ends there — the
+tracker comment is the escalation, not a chat prompt.
 
 ## Completion
 
-Report the ticket worked, the stage reached, verification evidence, decisions
-made, deferred findings, and any recorded blocker. When ticket selection
-found no ready work, report that and stop — an empty queue is a result, not a
-question.
+Report as `wf-orchestrate` does, plus the ticket selected and why. No ready
+work is a result, not a question.
 
 ## Wrong-layer recovery
 
