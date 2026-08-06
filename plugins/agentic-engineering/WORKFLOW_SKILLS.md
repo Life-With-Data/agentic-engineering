@@ -30,9 +30,12 @@ returns control to the orchestrator. A stage skill never routes laterally to
 a sibling stage, never decides what runs next in the pipeline, and never
 inlines another stage's procedure.
 
-`wf-auto` sits above the orchestrator without adding a layer: it selects the
-ticket when the caller names none, suppresses every optional check-in for the
-run, and dispatches `wf-orchestrate`. It owns no stage and no gate.
+`wf-auto` is a separate top-level entry point, not a route inside the
+orchestrator. It selects the ticket when the caller names none, holds the
+run's own approvals, removes every structural gate, and dispatches
+`wf-orchestrate` for stage work. It is the one path where the agent is the
+approver — invoking it *is* the authorization, which is why it stays visibly
+distinct from `wf-orchestrate` rather than hiding inside it as a flag.
 
 Two consequences:
 

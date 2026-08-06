@@ -22,7 +22,7 @@ grooming → development → testing → review → delivery → documentation �
 | Skill | What it does |
 |-------|--------------|
 | `/wf-orchestrate` | **Default entry.** Drive a work item end to end, dispatching each stage skill |
-| `/wf-auto` | **Unattended.** Work the highest-priority ready ticket (or a named one) to merge with no check-ins |
+| `/wf-auto` | **Fully autonomous.** Work the highest-priority ready ticket (or a named one) to merge — agent approves, zero gates |
 | `/wf-grooming` | Discover intent, reproduce bugs, groom, and plan work |
 | `/wf-development` | Implement the plan |
 | `/wf-testing` | Select and run the required test and verification strategy |

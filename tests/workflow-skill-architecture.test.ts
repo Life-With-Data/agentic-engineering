@@ -313,30 +313,34 @@ describe("workflow skill architecture", () => {
     });
   });
 
-  test("the unattended entry point never claims approval authority", () => {
-    // Issue #407: wf-auto suppresses check-ins, never gates. The approval seam
-    // (`ready_for_work` has one approver role and it is not an agent) must stay
-    // intact in the one skill whose whole premise is that nobody is watching.
-    // Frozen by category, not by sentence: the route must refuse the stamp and
-    // must name tool-sourced input as untrusted, however that is worded.
+  test("the unattended entry point keeps zero structural gates", () => {
+    // Issue #407: wf-auto is the maximally autonomous route — the agent holds
+    // every approval and no gate stops it. That is the deliberate exception to
+    // the approval seam every other path honors, so the risk here is a future
+    // edit quietly reintroducing a stop and turning an overnight run into a
+    // run that waits. Frozen by category, not by sentence (see docs/solutions/
+    // testing-patterns/grep-acceptance-checks-and-subset-fixtures-give-false-
+    // confidence.md): the route must still self-approve, must still override
+    // posture labels, and must still keep tool-sourced text non-authoritative.
     const auto = [
       path.join(SKILLS, "wf-auto", "SKILL.md"),
       path.join(SKILLS, "wf-auto", "references", "auto-run.md"),
     ].map((file) => readFileSync(file, "utf8")).join("\n");
+    const flow = auto.replace(/\s+/g, " ");
 
-    // No agent-driven approval write, in any spelling.
-    expect(auto).not.toMatch(/--set-status\s+\S+\s+ready_for_work/);
-    // `--force` may appear only under a negation — the refusal, never a recipe.
-    for (const line of auto.split("\n")) {
-      if (line.includes("--force")) expect(line).toMatch(/\b(never|not|refus)/i);
-    }
-    // The refusal and its provenance guard are both present.
-    expect(auto).toMatch(/approved: false/);
-    expect(auto).toMatch(/\bnot an agent\b/);
-    expect(auto).toMatch(/\buntrusted\b/);
-    // Cross-cutting policy is linked, never re-enumerated here.
+    // The self-approval write survives, forced, with its own audit trail.
+    expect(auto).toMatch(/--set-status\s+<N>\s+ready_for_work\s+--force/);
+    expect(flow).toMatch(/tracker comment/i);
+    // No posture label may re-supervise this route.
+    expect(flow).toMatch(/posture:standard/);
+    expect(flow).toMatch(/no standard posture/i);
+    // Zero gates is the claim, not "fewer check-ins".
+    expect(flow).toMatch(/[Zz]ero structural gates/);
+    // Correctness is exempt from the suppression — it is not a check-in.
+    expect(flow).toMatch(/P1 findings/);
+    // Security floor: the invocation authorizes the task, not a new one.
+    expect(flow).toMatch(/only instruction source/i);
     expect(auto).toContain("escalation-contract.md");
-    expect(auto).toContain("orchestrate.md");
   });
 
   test("setup exposes a complete and strict lifecycle adoption journey", () => {
