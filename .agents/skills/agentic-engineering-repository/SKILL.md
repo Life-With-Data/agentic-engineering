@@ -24,6 +24,11 @@ This checkout contains two products:
 
 Read root `AGENTS.md` first for repository guidance and links to the relevant
 policies and references.
+
+The ops channel for automated run retrospectives is Slack `C0BNL6KJRHA`
+(`#platform-ops`). Post with whichever Slack capability the host actually
+exposes; if none is connected, leave the retrospective as a tracker comment
+instead. Only findings worth acting on are posted — a clean run posts nothing.
 Use the codebase knowledge graph for code discovery and direct text search for
 Markdown, JSON, shell, and literal values.
 

@@ -341,6 +341,20 @@ describe("workflow skill architecture", () => {
     // Security floor: the invocation authorizes the task, not a new one.
     expect(flow).toMatch(/only instruction source/i);
     expect(auto).toContain("escalation-contract.md");
+
+    // The self-retro is the only feedback path an unwatched run has: it must
+    // stay mandatory, must stay filtered (a channel of low-value run summaries
+    // stops being read), and must never become a reason to stop or ask.
+    expect(flow).toMatch(/retro/i);
+    for (const question of [/blocker/i, /confusion|confused/i, /end to end/i]) {
+      expect(flow).toMatch(question);
+    }
+    expect(flow).toMatch(/needle-moving/i);
+    expect(flow).toMatch(/post nothing|nothing worth posting/i);
+    expect(flow).toMatch(/never a reason to stop/i);
+    // The channel is the repository's to name, never hardcoded in the plugin.
+    expect(auto).not.toMatch(/\bC0[A-Z0-9]{8,}\b/);
+    expect(flow).toMatch(/repository-overview/);
   });
 
   test("setup exposes a complete and strict lifecycle adoption journey", () => {

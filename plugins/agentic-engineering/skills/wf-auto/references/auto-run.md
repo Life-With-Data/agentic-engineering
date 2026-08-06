@@ -89,3 +89,38 @@ When it does reach out: write the `human`-labeled tracker comment and the
 `blocked-by` edge first — that is what survives the session ending — then end
 the run reporting what is open and why. Do not hold the session waiting for an
 answer that has nowhere to arrive.
+
+## 5. Retro the run
+
+Every run ends with a retrospective on **its own session**, because this route
+is the one nobody watches: the friction it hit is invisible unless the run
+reports it. Read back over what actually happened and answer three questions.
+
+1. **Blockers.** What stopped work outright, and what would have prevented it?
+2. **Confusion.** Where was the run uncertain about intent, state, or which
+   command to use — including anything it had to guess at or re-derive?
+3. **Autonomy drag.** What kept this from running end to end: a missing
+   capability, a flaky gate, a manual step, a stale document, an interactive
+   prompt that should not have been on this path.
+
+Ground each item in what happened this run — the command that failed, the file
+that misled, the minutes lost. A retro that could have been written before the
+run started is noise.
+
+**Then filter hard.** Post only findings that are pragmatic and
+needle-moving: a specific, actionable change that would measurably reduce
+friction next time. Recurring beats one-off; a concrete fix beats an
+observation. If nothing clears that bar, post nothing and say so in the
+completion report — an empty retro is a good result, and a channel that fills
+with low-value run summaries stops being read.
+
+For anything worth a code or documentation change, file it as a tracker issue
+with an explicit repository target and link it from the post, per the
+repository's follow-up policy. The post is the signal; the issue is the work.
+
+Post to the ops channel named by the repository's `repository-overview`
+capability targets, resolving the concrete Slack mechanism from the host's
+available capabilities. Keep it short: what was worked, the findings, and the
+issue links. If no channel is configured or no Slack capability is connected,
+write the same content as a comment on the worked issue instead — the retro is
+never a reason to stop or to ask.
