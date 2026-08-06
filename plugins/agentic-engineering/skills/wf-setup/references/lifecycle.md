@@ -179,10 +179,6 @@ never delete a guessed path.
 state, not a mode: gates return `no_board` and direct to the lifecycle
 bootstrap; until then, no lifecycle claims and no tracker writes of any kind.
 
-Beads is never a tracker and never a source of truth — optional in-session
-scratch only; its files must never be committed (the
-`block-beads-jsonl-stage` hook enforces this).
-
 Project identity lives in committed config (`github_project_owner:` /
 `github_project_number:` in `agentic-engineering.md`; an untracked
 `agentic-engineering.local.md` may override for testing). Commands identify

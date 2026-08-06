@@ -20,7 +20,6 @@ platform:
 | `prevent-main-commit.py` | Ships | Ships | Ships | Safety net |
 | `block-slack-webhook.py` | Ships (Bash + Write/Edit/MultiEdit) | Ships (shell + `preToolUse` Write) | Ships (Bash + `apply_patch`) | Safety net; Cursor has no MultiEdit matcher |
 | `block-db-push.py` | Ships | Ships | Ships | Safety net |
-| `block-beads-jsonl-stage.py` | Ships | Claude-only | Claude-only | Claude-primary |
 | `nudge-todowrite-to-tracker.py` | Ships (`TodoWrite`) | N/A | N/A | No TodoWrite equivalent on Cursor/Codex |
 | `sdd-cache-pre.py` / `sdd-cache-post.py` | Ships (`WebFetch`, opt-in) | N/A | N/A | WebFetch-specific; opt-in via `AGENTIC_SDD_CACHE=1` |
 | `worktree-session.py` | Ships (`SessionStart` / `startup`) | N/A | N/A | Worktree bootstrap + staleness advisory; no-op outside `.claude/worktrees/*` |
@@ -165,9 +164,9 @@ fought.
 config -> `github-project`, otherwise `unconfigured`), so the reminder always
 names the same tracker the rest of the lifecycle tooling agrees on. An
 `unconfigured` repo (no board yet) → silent (nothing to nudge toward until
-the wf-setup lifecycle bootstrap configures a board). Beads is
-intentionally not a nudge target: under the unified lifecycle GitHub is the
-sole authoritative tracker and beads is a non-authoritative scratchpad.
+the wf-setup lifecycle bootstrap configures a board). Under the unified
+lifecycle GitHub is the sole authoritative tracker, so the board is the only
+nudge target.
 
 **Enable it:** add `nudge_todowrite: true` to `agentic-engineering.local.md`'s
 frontmatter (same file the `setup` skill writes `issue_tracker:` into). A

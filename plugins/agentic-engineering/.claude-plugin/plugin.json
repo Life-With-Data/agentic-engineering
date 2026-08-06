@@ -52,15 +52,6 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 ${CLAUDE_PLUGIN_ROOT}/scripts/block-beads-jsonl-stage.py"
-          }
-        ]
-      },
-      {
-        "matcher": "Bash",
-        "hooks": [
-          {
-            "type": "command",
             "command": "python3 ${CLAUDE_PLUGIN_ROOT}/scripts/block-slack-webhook.py"
           }
         ]

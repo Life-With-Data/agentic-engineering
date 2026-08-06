@@ -14,8 +14,8 @@ Silent (exit 0, no output) unless BOTH:
     toward — TodoWrite stays ephemeral in-session scratch until the wf-setup
     lifecycle bootstrap configures a board)
 
-Under the unified lifecycle GitHub is the sole authoritative tracker; beads is
-a non-authoritative scratchpad and is therefore not a nudge target here.
+Under the unified lifecycle GitHub is the sole authoritative tracker, so the
+configured board is the only nudge target here.
 
 Never blocks: this hook only ever exits 0.
 """

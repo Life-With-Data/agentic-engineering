@@ -29,7 +29,7 @@ repository.
 An independent `acceptance-criteria-reviewer` subagent, diffing the PR against every file type (not
 just markdown), found **9 leftover references** in two more passes:
 
-- `.py` scripts and tests entirely outside the swept directories: `scripts/block-beads-jsonl-stage.py`,
+- `.py` scripts and tests entirely outside the swept directories:
   `scripts/config_registry.py` (×2), `scripts/workflow-repo-preflight.py`, `scripts/lifecycle_board.py`,
   `tests/plan_tracker_guard_test.py`.
 - A generated docs page: `docs/pages/getting-started.html` (a stale `/resolve_todo_parallel` example

@@ -13,7 +13,5 @@ __pycache__/
 # is ignored by the engine's trust check, but keep it out of git entirely).
 agentic-engineering.local.md
 
-# Beads / Dolt files (added by bd init)
-.dolt/
+# Local database files
 *.db
-.beads-credential-key
