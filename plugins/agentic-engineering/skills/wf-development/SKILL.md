@@ -24,7 +24,7 @@ python3 <skill-directory>/scripts/repository-context.py \
 
 Stop on contract failure; read primary targets first, supporting targets only as needed.
 
-This skill implements one approved work item. It starts only after grooming produced the plan and a human stamped approval; it never routes tickets, decides delivery posture, or drives other stages — `wf-orchestrate` owns all of that.
+This skill implements one approved work item. It starts only after grooming produced the plan and the item was stamped approved — by a human on every path but `wf-auto`, which holds that approval itself; it never routes tickets, decides delivery posture, or drives other stages — `wf-orchestrate` owns all of that.
 
 ## Route the request
 

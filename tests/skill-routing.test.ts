@@ -40,6 +40,7 @@ const DEFAULT_TOP_K = 3
 // cannot drift or lose frontmatter selection coverage.
 const REQUIRED_CASE_SKILLS = [
   "wf-orchestrate",
+  "wf-auto",
   "wf-grooming",
   "wf-development",
   "wf-testing",

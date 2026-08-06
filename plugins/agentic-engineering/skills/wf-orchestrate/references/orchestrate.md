@@ -85,6 +85,11 @@ verdict. An issue template's `labels:` key or an Action with `issues: write`
 can therefore at worst force a ticket into supervision — an annoyance, never
 an escalation vector.
 
+That reasoning covers every route but `wf-auto`, which is authorized by its own
+invocation, holds the approval itself, and strips `posture:*` labels rather than
+obeying them. It is the single sanctioned exception; the boundary described here
+still governs everything that reaches this router.
+
 **Returning a supervised ticket to the default** takes an explicit write:
 `--decompose` with `posture: autonomous` strips every `posture:*` label (a
 pure removal — the label vocabulary has no `autonomous` entry). A human may

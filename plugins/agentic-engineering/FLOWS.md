@@ -1,6 +1,6 @@
 # Workflow flows
 
-Visual reference for the eight public `wf-*` skills and their repository-context handoffs. The detailed procedures shown in parentheses are internal references selected by a router; they are not independently invocable skills.
+Visual reference for the nine public `wf-*` skills and their repository-context handoffs. The detailed procedures shown in parentheses are internal references selected by a router; they are not independently invocable skills.
 
 ## The two orthogonal layers
 
@@ -22,6 +22,7 @@ Delegation is vertical — [WORKFLOW_SKILLS.md](WORKFLOW_SKILLS.md) owns the mod
 ```mermaid
 flowchart TD
     req([Engineering request]) --> O["wf-orchestrate"]
+    auto["wf-auto (fully autonomous:<br/>selects the ticket,<br/>stamps its own approval)"] -->|"dispatches, agent-approved"| O
     O <-->|"dispatch / return"| G["wf-grooming"]
     O -->|"human approval stamp"| approve{"ready_for_work?"}
     approve --> O

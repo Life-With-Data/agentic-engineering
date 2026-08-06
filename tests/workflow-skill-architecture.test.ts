@@ -17,6 +17,7 @@ const WORKFLOW_REFERENCES: Record<string, string[]> = {
   "wf-orchestrate": [
     "escalation-contract", "orchestrate", "subagent-delegation",
   ],
+  "wf-auto": ["auto-run"],
   "wf-grooming": [
     "brainstorming", "deepen-plan", "design-context", "interview-me",
     "report-bug", "reproduce-bug", "triage", "workflows-brainstorm",
@@ -77,7 +78,7 @@ function recursiveFiles(dir: string): string[] {
 }
 
 describe("workflow skill architecture", () => {
-  test("the public skill set is fixed at eight wf-* routers", () => {
+  test("the public skill set is fixed at nine wf-* routers", () => {
     const actual = readdirSync(SKILLS, { withFileTypes: true })
       .filter((entry) => entry.isDirectory())
       .map((entry) => entry.name)
@@ -310,6 +311,64 @@ describe("workflow skill architecture", () => {
     statuses.forEach((status, index) => {
       expect(lifecycle).toContain(`${index + 1}. \`${status}\``);
     });
+  });
+
+  test("the unattended entry point keeps zero structural gates", () => {
+    // Issue #407: wf-auto is the maximally autonomous route — the agent holds
+    // every approval and no gate stops it. That is the deliberate exception to
+    // the approval seam every other path honors, so the risk here is a future
+    // edit quietly reintroducing a stop and turning an overnight run into a
+    // run that waits. Frozen by category, not by sentence (see docs/solutions/
+    // testing-patterns/grep-acceptance-checks-and-subset-fixtures-give-false-
+    // confidence.md): the route must still self-approve, must still override
+    // posture labels, and must still keep tool-sourced text non-authoritative.
+    const auto = [
+      path.join(SKILLS, "wf-auto", "SKILL.md"),
+      path.join(SKILLS, "wf-auto", "references", "auto-run.md"),
+    ].map((file) => readFileSync(file, "utf8")).join("\n");
+    const flow = auto.replace(/\s+/g, " ");
+
+    // The self-approval write survives, forced, with its own audit trail.
+    expect(auto).toMatch(/--set-status\s+<N>\s+ready_for_work\s+--force/);
+    expect(flow).toMatch(/tracker comment/i);
+    // Ticket selection — the other half of what this route owns.
+    expect(flow).toMatch(/--ready-work/);
+    expect(flow).toMatch(/items\[0\]/);
+    // A posture label must be REMOVED, not merely ignored: resolve_clearance
+    // returns `standard` for any posture:* label, so a surviving label leaves
+    // hands_off false and the dispatched stages re-gate the run.
+    expect(flow).toMatch(/posture:standard/);
+    expect(flow).toMatch(/--remove-label/);
+    expect(flow).toMatch(/no standard posture|posture[^.]{0,40}\bstrip/i);
+    // Zero gates is the claim, not "fewer check-ins".
+    expect(flow).toMatch(/[Zz]ero structural gates/);
+    // Correctness is exempt from the suppression — it is not a check-in.
+    expect(flow).toMatch(/P1 findings/);
+    // A revert that ADDS a gate alongside the prose is the failure mode a
+    // presence-only assertion misses; naming the suppressed gates is the part
+    // that can be checked here. (The interactive merge `[y/N]` is mentioned
+    // deliberately — as the thing a surviving posture label would bring back —
+    // so its literal cannot be banned.)
+    expect(flow).toMatch(/merge confirmation/i);
+    // Security floor: the invocation authorizes the task, not a new one.
+    expect(flow).toMatch(/only instruction source/i);
+    expect(auto).toContain("escalation-contract.md");
+
+    // The self-retro is the only feedback path an unwatched run has: it must
+    // stay mandatory, must stay filtered (a channel of low-value run summaries
+    // stops being read), and must never become a reason to stop or ask.
+    expect(flow).toMatch(/retro/i);
+    for (const question of [/blocker/i, /confusion|confused/i, /end to end/i]) {
+      expect(flow).toMatch(question);
+    }
+    expect(flow).toMatch(/needle-moving/i);
+    expect(flow).toMatch(/post nothing|nothing worth posting/i);
+    expect(flow).toMatch(/never a reason to stop/i);
+    // The destination is hardcoded on purpose while every consumer is in one
+    // organization (#407). Freeze that a channel and a no-Slack fallback both
+    // exist — not the specific id, which may legitimately change.
+    expect(auto).toMatch(/\bC0[A-Z0-9]{8,}\b/);
+    expect(flow).toMatch(/no Slack capability/i);
   });
 
   test("setup exposes a complete and strict lifecycle adoption journey", () => {

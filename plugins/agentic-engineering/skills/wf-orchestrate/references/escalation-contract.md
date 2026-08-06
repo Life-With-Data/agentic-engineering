@@ -107,5 +107,5 @@ A chat channel — Slack, email, or any other transport — may **carry** the
 question to a human, but it is transport only. No chat integration may become
 a second writer of lifecycle state: the tracker comment and the blocker edge
 remain the sole source of truth regardless of which channel a human answers
-through. (Wiring an actual chat integration is out of scope for this
-contract.)
+through. (`wf-auto` posts its end-of-run retrospective to a chat channel, which
+is exactly this: transport for findings, never a writer of lifecycle state.)

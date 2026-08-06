@@ -12,7 +12,9 @@ Agents are organized into categories — Review, Research, Design, Workflow. The
 
 Delegation is vertical: **`wf-orchestrate` is the default invocation path**, resolving a work item's lifecycle stage, dispatching the owning stage skill, and enforcing the gates between stages. Invoke a stage skill directly only for a genuinely single-stage request.
 
-The eight routers: `wf-orchestrate`, `wf-grooming`, `wf-development`, `wf-testing`, `wf-review`, `wf-delivery`, `wf-documentation`, `wf-setup`. Each skill's frontmatter (via `/skills`) states what it does and when to use it.
+`wf-auto` is the maximally autonomous entry point, deliberately separate from the orchestrator: it selects the ticket when none is named, holds every approval the run needs — including the `ready_for_work` stamp other paths reserve for a human — and has **zero structural gates**. No `posture:*` label can pull it back into supervision. It reaches out only when the agent judges a question worth waking someone for.
+
+The nine routers: `wf-orchestrate`, `wf-auto`, `wf-grooming`, `wf-development`, `wf-testing`, `wf-review`, `wf-delivery`, `wf-documentation`, `wf-setup`. Each skill's frontmatter (via `/skills`) states what it does and when to use it.
 
 ### Workflow and repository layers
 

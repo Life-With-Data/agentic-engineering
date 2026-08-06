@@ -22,6 +22,10 @@ export const SCRIPT_BUNDLES: ScriptBundles = {
     "repository-context.py": "scripts/repository-context.py",
     "lifecycle_board.py": "scripts/lifecycle_board.py",
   },
+  "wf-auto": {
+    "repository-context.py": "scripts/repository-context.py",
+    "lifecycle_board.py": "scripts/lifecycle_board.py",
+  },
   "wf-grooming": {
     "repository-context.py": "scripts/repository-context.py",
     "lifecycle_board.py": "scripts/lifecycle_board.py",

@@ -1,0 +1,29 @@
+{
+  "skill_name": "wf-auto",
+  "trigger": {
+    "positive": [
+      {
+        "prompt": "Work the highest-priority ready ticket unattended while I am away",
+        "top_k": 2
+      },
+      {
+        "prompt": "Go hands-off: pick a ticket and merge it without asking me anything",
+        "top_k": 2
+      }
+    ],
+    "negative": [
+      {
+        "prompt": "Reproduce this bug report and groom it into a plan",
+        "owner": "wf-grooming"
+      },
+      {
+        "prompt": "Review this pull request for security and architecture findings",
+        "owner": "wf-review"
+      },
+      {
+        "prompt": "Drive this ticket through the lifecycle and dispatch each stage skill",
+        "owner": "wf-orchestrate"
+      }
+    ]
+  }
+}
