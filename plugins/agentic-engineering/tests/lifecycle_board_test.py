@@ -661,6 +661,12 @@ class ReadyWorkTest(unittest.TestCase):
         ready, _ = lb.merge_ready_legs(items, {}, "o/r")
         self.assertEqual([r.number for r in ready], [2, 4, 1, 3])
 
+    def test_equal_priority_ties_break_to_the_oldest_issue(self) -> None:
+        items = [self._item(9, priority="p1"), self._item(2, priority="p1"),
+                 self._item(5, priority="p1")]
+        ready, _ = lb.merge_ready_legs(items, {}, "o/r")
+        self.assertEqual([r.number for r in ready], [2, 5, 9])
+
     def test_truncation_flag_at_cap(self) -> None:
         items = [self._item(i) for i in range(lb.READY_WORK_LIMIT)]
         _, truncated = lb.merge_ready_legs(items, {}, "o/r")

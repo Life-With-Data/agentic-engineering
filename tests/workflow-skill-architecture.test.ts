@@ -17,6 +17,7 @@ const WORKFLOW_REFERENCES: Record<string, string[]> = {
   "wf-orchestrate": [
     "escalation-contract", "orchestrate", "subagent-delegation",
   ],
+  "wf-auto": ["auto-run"],
   "wf-grooming": [
     "brainstorming", "deepen-plan", "design-context", "interview-me",
     "report-bug", "reproduce-bug", "triage", "workflows-brainstorm",
@@ -77,7 +78,7 @@ function recursiveFiles(dir: string): string[] {
 }
 
 describe("workflow skill architecture", () => {
-  test("the public skill set is fixed at eight wf-* routers", () => {
+  test("the public skill set is fixed at nine wf-* routers", () => {
     const actual = readdirSync(SKILLS, { withFileTypes: true })
       .filter((entry) => entry.isDirectory())
       .map((entry) => entry.name)

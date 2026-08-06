@@ -1637,7 +1637,9 @@ def merge_ready_legs(board_items: "list[dict]", blocked_counts: "dict[int, int]"
         content = item.get("content") or {}
         ready.append(ReadyItem(number=number, title=content.get("title", item.get("title", "")),
                                priority=(item.get("priority") or None), repo=origin_slug))
-    ready.sort(key=lambda r: PRIORITY_ORDER.get((r.priority or "").lower(), 99))
+    # Ties break to the oldest issue (ascending number), so the queue head is
+    # deterministic — an unattended run picks the same ticket every time.
+    ready.sort(key=lambda r: (PRIORITY_ORDER.get((r.priority or "").lower(), 99), r.number))
     return ready, truncated
 
 

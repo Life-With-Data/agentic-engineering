@@ -5,7 +5,7 @@
 
 **Each unit of work should make the next one easier — not harder.**
 
-Most codebases drift the other way. Every feature adds complexity, every shortcut adds debt, and the work gets slower over time. This plugin inverts that by turning a deliberate loop — explore, plan, build, review, and *capture what you learned* — into first-class tooling: **25 agents and 8 workflow skills** that build on each other.
+Most codebases drift the other way. Every feature adds complexity, every shortcut adds debt, and the work gets slower over time. This plugin inverts that by turning a deliberate loop — explore, plan, build, review, and *capture what you learned* — into first-class tooling: **25 agents and 9 workflow skills** that build on each other.
 
 It installs natively in Claude Code, Cursor, and Codex, and converts to other AI coding tools (OpenCode, Droid, Gemini, Copilot, and more) via the Bun CLI.
 
@@ -22,6 +22,7 @@ grooming → development → testing → review → delivery → documentation �
 | Skill | What it does |
 |-------|--------------|
 | `/wf-orchestrate` | **Default entry.** Drive a work item end to end, dispatching each stage skill |
+| `/wf-auto` | **Unattended.** Work the highest-priority ready ticket (or a named one) to merge with no check-ins |
 | `/wf-grooming` | Discover intent, reproduce bugs, groom, and plan work |
 | `/wf-development` | Implement the plan |
 | `/wf-testing` | Select and run the required test and verification strategy |
@@ -194,7 +195,7 @@ Syncs personal skills from `~/.claude/skills/` (as symlinks, so edits reflect im
 | Component | Count |
 |-----------|-------|
 | Specialized agents | 25 |
-| Workflow skills | 8 |
+| Workflow skills | 9 |
 | MCP servers | 1 |
 
 → **[Full component reference](plugins/agentic-engineering/README.md)** — every agent and workflow skill.

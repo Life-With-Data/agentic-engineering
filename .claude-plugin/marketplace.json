@@ -11,7 +11,7 @@
   "plugins": [
     {
       "name": "agentic-engineering",
-      "description": "AI-powered development tools that get smarter with every use. Make each unit of engineering work easier than the last. Includes 25 specialized agents and 8 workflow skills.",
+      "description": "AI-powered development tools that get smarter with every use. Make each unit of engineering work easier than the last. Includes 25 specialized agents and 9 workflow skills.",
       "version": "8.0.0",
       "author": {
         "name": "Anthony Agnone",
