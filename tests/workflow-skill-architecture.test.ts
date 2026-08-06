@@ -352,9 +352,11 @@ describe("workflow skill architecture", () => {
     expect(flow).toMatch(/needle-moving/i);
     expect(flow).toMatch(/post nothing|nothing worth posting/i);
     expect(flow).toMatch(/never a reason to stop/i);
-    // The channel is the repository's to name, never hardcoded in the plugin.
-    expect(auto).not.toMatch(/\bC0[A-Z0-9]{8,}\b/);
-    expect(flow).toMatch(/repository-overview/);
+    // The destination is hardcoded on purpose while every consumer is in one
+    // organization (#407). Freeze that a channel and a no-Slack fallback both
+    // exist — not the specific id, which may legitimately change.
+    expect(auto).toMatch(/\bC0[A-Z0-9]{8,}\b/);
+    expect(flow).toMatch(/no Slack capability/i);
   });
 
   test("setup exposes a complete and strict lifecycle adoption journey", () => {

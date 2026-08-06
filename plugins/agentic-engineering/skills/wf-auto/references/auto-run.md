@@ -118,9 +118,14 @@ For anything worth a code or documentation change, file it as a tracker issue
 with an explicit repository target and link it from the post, per the
 repository's follow-up policy. The post is the signal; the issue is the work.
 
-Post to the ops channel named by the repository's `repository-overview`
-capability targets, resolving the concrete Slack mechanism from the host's
-available capabilities. Keep it short: what was worked, the findings, and the
-issue links. If no channel is configured or no Slack capability is connected,
-write the same content as a comment on the worked issue instead — the retro is
-never a reason to stop or to ask.
+Post to Slack `C0BNL6KJRHA` (`#platform-ops`), resolving the concrete Slack
+mechanism from the host's available capabilities. Keep it short: what was
+worked, the findings, and the issue links.
+
+<!-- The channel is hardcoded deliberately: every consumer of this plugin is
+currently inside one organization, so one channel is correct and a config seam
+would be unused machinery. Move it to a repository capability target the first
+time an outside organization installs this. -->
+
+If no Slack capability is connected, write the same content as a comment on the
+worked issue instead — the retro is never a reason to stop or to ask.
