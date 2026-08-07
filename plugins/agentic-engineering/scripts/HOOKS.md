@@ -23,6 +23,7 @@ platform:
 | `nudge-todowrite-to-tracker.py` | Ships (`TodoWrite`) | N/A | N/A | No TodoWrite equivalent on Cursor/Codex |
 | `sdd-cache-pre.py` / `sdd-cache-post.py` | Ships (`WebFetch`, opt-in) | N/A | N/A | WebFetch-specific; opt-in via `AGENTIC_SDD_CACHE=1` |
 | `worktree-session.py` | Ships (`SessionStart` / `startup`) | N/A | N/A | Worktree bootstrap + staleness advisory; no-op outside `.claude/worktrees/*` |
+| `stale-conversation-guard.py` | Ships (`UserPromptSubmit`) | N/A | N/A | Pauses a conversation idle past the prompt-cache TTL |
 
 Harness config files:
 
@@ -268,6 +269,62 @@ clone.
 so this is Claude-only. Adapted and generalized
 from the BlueStar monorepo's `setup-worktree.sh` / `check-stale-worktree.sh`.
 
+## `stale-conversation-guard.py` — UserPromptSubmit — Claude-only
+
+**Blocks the first prompt** submitted into a conversation whose newest
+transcript entry is older than `AGENTIC_STALE_MINUTES` (default **60**), and
+shows the user why. **Submitting again within 10 minutes is the approval** — the
+guard records the wall-clock time of the block and stands down for the next
+prompt. After that grace window (or once a resumed conversation goes cold again)
+it re-arms. Note that blocking *erases* the prompt, so the user's text is not
+preserved; the message says so.
+
+**Why exit 0 + JSON, not exit 2:** on `UserPromptSubmit` the documented exit-2
+behavior is "blocks prompt processing and erases the prompt", and exit-2 stderr
+is fed back to *Claude* — the user would watch their prompt vanish with no
+explanation. So the hook emits `{"decision": "block", "reason": …,
+"systemMessage": …}` and exits 0; `systemMessage` is the documented
+user-visible channel.
+
+**Why the ack is wall-clock, not transcript-keyed:** the transcript is written
+asynchronously and may lag the live conversation. An ack keyed to the newest
+transcript timestamp desyncs if a pending entry flushes between the block and
+the re-submit, re-blocking a prompt the user has no way to approve.
+
+**Only blocks when a human is watching.** `UserPromptSubmit` also fires under
+`claude -p`, scheduled agents, and SDK embeddings, where an erased prompt is a
+silent no-op nobody can approve. So the guard runs only for a recognized
+interactive entrypoint (`CLAUDE_CODE_ENTRYPOINT` in `cli`, `claude-desktop`,
+`vscode`, `jetbrains`) with `CI` unset. The allowlist direction is deliberate:
+an unknown entrypoint — a new automation surface, `mcp`, `sdk-*` — skips the
+guard, so being wrong costs a missed warning rather than a lost prompt. A TTY
+check can't stand in for it (the desktop app has no controlling terminal, and
+`claude -p` inherits one).
+
+**Why:** Anthropic's prompt cache expires minutes after the last turn. Resuming
+an hour-cold conversation re-sends the entire context uncached — the same tokens
+you already paid to cache, billed again at full write price, and the bigger the
+conversation the worse the bill. After an idle hour a fresh session (or
+`/clear`) with the task stated directly is usually cheaper than reheating stale
+context. This hook makes that a deliberate choice rather than an accident.
+
+**Config is by environment variable, not frontmatter** — matching the
+`sdd-cache` / `worktree-session` precedent: cost tolerance is a per-machine
+choice that shouldn't ride a PR and change behavior for every clone.
+
+- `AGENTIC_STALE_MINUTES` — idle minutes before the guard fires (default `60`);
+  `0` disables it.
+
+**Ack file:** `<transcript>.stale-ack`, one ISO timestamp (the moment of the
+block), written next to the transcript under `~/.claude/projects/…` — never in
+the repo, and inert to session discovery, which looks for `*.jsonl`.
+
+**Fail-open:** an unreadable transcript, an unparseable timestamp, a missing
+payload, or an unwritable ack file all resolve to "allow the prompt". A broken
+guard can never wedge a session.
+
+**Cursor/Codex:** N/A — neither exposes a prompt-submission event.
+
 ## Testing hooks
 
 Each PreToolUse / beforeShellExecution hook reads a JSON payload on stdin and
@@ -303,6 +360,7 @@ Automated regression tests live in [`../tests/`](../tests) and run in CI via
 - [`sdd_cache_pre_test.py`](../tests/sdd_cache_pre_test.py)
 - [`sdd_cache_post_test.py`](../tests/sdd_cache_post_test.py)
 - [`worktree_session_test.py`](../tests/worktree_session_test.py)
+- [`stale_conversation_guard_test.py`](../tests/stale_conversation_guard_test.py)
 - [`hook_payload_test.py`](../tests/hook_payload_test.py)
 
 These pin the tricky false-positive / false-negative edges (prose that mentions

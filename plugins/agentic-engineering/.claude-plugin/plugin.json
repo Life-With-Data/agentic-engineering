@@ -104,6 +104,16 @@
         ]
       }
     ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 ${CLAUDE_PLUGIN_ROOT}/scripts/stale-conversation-guard.py"
+          }
+        ]
+      }
+    ],
     "SessionStart": [
       {
         "matcher": "startup",
