@@ -186,5 +186,7 @@ results, review findings and dispositions, delivery state, and remaining risk.
 
 Report the stage reached, tracker and artifact links, exact verification
 evidence, decisions made, deferred work, and blockers. The complete loop ends
-only after the pre-merge knowledge-disposition check and delivery have
-completed.
+only after a head-bound `wf-review` comprehensive verdict exists for the
+head that was merged (see [land-pr condition
+2](../../wf-delivery/references/land-pr.md#landability-conditions)), the
+pre-merge knowledge-disposition check has run, and delivery has completed.

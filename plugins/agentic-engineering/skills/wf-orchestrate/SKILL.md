@@ -45,8 +45,11 @@ directly and it reports its own completion.
 
 ## Completion
 
-The run is complete only after delivery's terminal state is verified by
-read-back and the pre-merge knowledge-disposition check has run.
+The run is complete only after a head-bound `wf-review` comprehensive verdict
+exists for the head that was merged (see [land-pr condition
+2](../wf-delivery/references/land-pr.md#landability-conditions)), the
+pre-merge knowledge-disposition check has run, and delivery's terminal state
+is verified by read-back.
 
 ## Wrong-layer recovery
 
