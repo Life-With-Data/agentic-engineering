@@ -140,7 +140,9 @@ with low-value run summaries stops being read.
 
 For anything worth a code or documentation change, file it as a tracker issue
 with an explicit repository target and link it from the post, per the
-repository's follow-up policy. The post is the signal; the issue is the work.
+repository's follow-up policy. A follow-on filed from a retro finding inherits
+the source ticket's milestone unless a strong reason, recorded on the follow-on,
+says otherwise. The post is the signal; the issue is the work.
 
 Post to Slack `C0BNL6KJRHA` (`#platform-ops`), resolving the concrete Slack
 mechanism from the host's available capabilities. Keep it short: what was

@@ -257,7 +257,9 @@ cleanup by mode — a linked-worktree landing reports that `finish` runs as the
 terminal action immediately after this report; only a host that cannot run
 another shell command reports the teardown as NOT done, naming the worktree +
 branch left behind and the exact one-liner. Note follow-on work discovered
-while landing. Never claim a local fast-forward or delete that did not
+while landing; a follow-on issue filed from those notes inherits the landed
+ticket's milestone unless a strong reason, recorded on the follow-on, says
+otherwise. Never claim a local fast-forward or delete that did not
 happen.
 
 ## Scripts
