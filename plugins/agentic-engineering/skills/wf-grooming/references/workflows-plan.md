@@ -109,8 +109,26 @@ re-running `--decompose`.
 
 A milestone is the tier above parent-plus-sub-issues: a named body of work
 grouping several parents. Reach for it when a groomed scope decomposes into
-more than one parent, or when it shrinks the scope of pre-existing issues. A
-single parent with its sub-issues needs no milestone.
+more than one parent, or when it shrinks the scope of pre-existing issues.
+
+**Parent independence.** When a groomed scope decomposes into more than one
+parent, each parent must be independently mergeable — shippable and revertible
+on its own, the same bar [ready boundary](#ready-boundary) sets for sub-issue
+units. Split differently when a parent's change cannot land without another's.
+Cross-parent ordering is expressed only as existing-issue `blocked_by` edges,
+never as prose ordering or a "start here" pointer.
+
+**Survey before assigning.** Every planning run lists the repository's open
+milestones first:
+
+```bash
+gh api repos/{owner}/{repo}/milestones --jq '.[] | {number, title}'
+```
+
+Assign the parent to a fitting open milestone through the spec `milestone` key.
+Consider creating a new milestone when the scope starts a new named body of
+work. A standalone parent that fits no milestone may omit the key — record that
+judgment in the plan.
 
 Two optional spec keys carry the tier:
 
