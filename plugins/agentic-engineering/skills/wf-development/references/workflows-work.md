@@ -287,7 +287,7 @@ Only the orchestrator touches board/tracker state — subagents never do.
 | Mark in progress / in review | `lifecycle_board.py --sub-status <sub> in_progress` / `in_review` |
 | Close (done) | `lifecycle_board.py --sub-status <sub> done` — never a raw `gh issue close` |
 | Block / needs human | `lifecycle_board.py --sub-status <sub> blocked`, then `gh issue edit <sub> --repo <origin> --add-blocked-by <blocker>` + a comment; surface the question |
-| Add follow-on (gates parent) | `gh issue create --repo <origin> --parent <N> --blocked-by <sub> --milestone "<parent milestone>" --title "…" --body-file …` — the follow-on inherits the parent's milestone unless a strong reason, recorded on the follow-on, says otherwise; drop the flag when the parent has none |
+| Add follow-on (gates parent) | `gh issue create --repo <origin> --parent <N> --blocked-by <sub> --milestone "<parent milestone>" --title "…" --body-file …` — read the parent's milestone with `gh issue view <N> --repo <origin> --json milestone`; the follow-on inherits it unless a strong reason, recorded on the follow-on, says otherwise; drop the flag when the parent has none |
 
 ### Terminal conditions (a sub-issue is terminal when ONE holds)
 
