@@ -5,6 +5,28 @@ All notable changes to the agentic-engineering plugin will be documented in this
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [9.0.0](https://github.com/Life-With-Data/agentic-engineering/compare/agentic-engineering-v8.0.0...agentic-engineering-v9.0.0) (2026-08-09)
+
+
+### ⚠ BREAKING CHANGES
+
+* **workflows:** add wf-auto, the agent-approved zero-gate entry point ([#410](https://github.com/Life-With-Data/agentic-engineering/issues/410))
+* **hooks:** the `block-beads-jsonl-stage` PreToolUse hook no longer ships. Repos still running `bd` should gitignore `.beads/*.jsonl` themselves.
+* **lifecycle:** repos that relied on the standard default now run approved work hands-off unless the ticket carries posture:standard. The human ready_for_work approval stamp still gates every run.
+
+### Features
+
+* **hooks:** drop beads entirely from the plugin and repo operations ([#408](https://github.com/Life-With-Data/agentic-engineering/issues/408)) ([46b369a](https://github.com/Life-With-Data/agentic-engineering/commit/46b369a5b02f04c149983fa0f545ed8972f69aa9))
+* **hooks:** pause conversations gone cold past the prompt-cache TTL ([#412](https://github.com/Life-With-Data/agentic-engineering/issues/412)) ([24994cc](https://github.com/Life-With-Data/agentic-engineering/commit/24994cc899c62127196ecfc809ee7c16fd9589ca))
+* **lifecycle:** default delivery posture to autonomous; posture:standard opts out ([#402](https://github.com/Life-With-Data/agentic-engineering/issues/402)) ([e2a0651](https://github.com/Life-With-Data/agentic-engineering/commit/e2a0651db4a696f5d59ccf174494a0f0da5f9b74))
+* **workflows:** add wf-auto, the agent-approved zero-gate entry point ([#410](https://github.com/Life-With-Data/agentic-engineering/issues/410)) ([6c0d4e9](https://github.com/Life-With-Data/agentic-engineering/commit/6c0d4e9b79c4f633582a64f6d3ef9c90d88d4aef))
+
+
+### Bug Fixes
+
+* **workflows:** bind review verdicts to the reviewed head SHA ([#406](https://github.com/Life-With-Data/agentic-engineering/issues/406)) ([23f04f9](https://github.com/Life-With-Data/agentic-engineering/commit/23f04f90e5d0e829a96f33cbfd049d4e9def3663))
+* **workflows:** name the head-bound review verdict in wf-orchestrate completion ([#415](https://github.com/Life-With-Data/agentic-engineering/issues/415)) ([abb80e5](https://github.com/Life-With-Data/agentic-engineering/commit/abb80e500c4d784b3fa12591a5c586382c9b34ef))
+
 ## [8.0.0](https://github.com/Life-With-Data/agentic-engineering/compare/agentic-engineering-v7.1.1...agentic-engineering-v8.0.0) (2026-08-05)
 
 
