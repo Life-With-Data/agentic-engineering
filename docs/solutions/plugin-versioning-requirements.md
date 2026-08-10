@@ -26,7 +26,9 @@ release-please composes its standing release PR. Contributors must:
 1. **Use a Conventional Commit type prefix in the PR title** (`feat:`, `fix:`,
    `docs:`, `refactor:`, `chore:`, `perf:`) — enforced in CI by
    `.github/workflows/pr-title.yml`. This is what drives MINOR (`feat`) vs.
-   PATCH (`fix`, `perf`) vs. no-release (`docs`, `chore`, `test`, `ci`).
+   PATCH (`fix`, `perf`, `docs`) vs. no-release (`chore`, `refactor`, `test`,
+   `ci`) — `docs` releases because these plugins ship markdown as their payload;
+   see "Forcing a release" below.
 2. **NOT hand-edit** `plugin.json`'s version, any of its mirrors, or
    `CHANGELOG.md` — those are release-please's outputs. A manual edit causes
    version drift: `.github/.release-please-manifest.json` (the last-released
@@ -41,17 +43,28 @@ release-please composes its standing release PR. Contributors must:
 
 ## Forcing a release for an under-typed commit
 
-A `docs:`/`chore:` PR title produces no version bump, so plugin behavior that
-lands under one of those types never ships. To cut it after the fact, add
-`"release-as": "<version>"` to that package's entry in
-`.github/release-please-config.json` and merge. Release-please then opens its
-release PR at that exact version on the next push to `main`.
+Release-please only opens a release PR when a package has **user-facing**
+commits — commits whose type maps to a non-hidden `changelog-sections` entry.
+Both packages here ship markdown as their payload, so `docs` is configured
+visible (`Documentation`) and a docs-only change to a skill releases as a patch.
+`chore`, `refactor`, `test`, `build`, `ci`, and `style` stay hidden and never
+release on their own.
 
-`release-as` is sticky: it pins **every** subsequent release of that package to
-the same version. Remove the key in a follow-up PR once the tag lands. Do not
-use the `Release-As:` commit footer here — in a multi-package manifest,
-release-please attributes commits to packages by file path, so a footer on a
-commit that touches no file under the package path is ignored.
+Two mechanics that look like they force a release but do not:
+
+- **`release-as` in the config** sets the version release-please *would* pick.
+  It does not make a package releasable: with only hidden-type commits the run
+  still logs `No user facing commits found … skipping`. It is also sticky —
+  every later release of that package pins to the same version until the key is
+  removed.
+- **A `Release-As:` commit footer** is attributed to a package by file path. In
+  this multi-package manifest a footer on a commit touching nothing under
+  `plugins/<package>/` is dropped.
+
+So the way to ship a change that landed under a hidden type is to land a
+user-facing commit under that package's path — or, as with `docs` here, make the
+type user-facing in `changelog-sections`, which reclassifies the already-merged
+commits on the next run.
 
 ## Checklist for Plugin Changes
 
