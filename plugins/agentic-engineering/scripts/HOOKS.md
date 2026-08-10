@@ -20,6 +20,8 @@ platform:
 | `prevent-main-commit.py` | Ships | Ships | Ships | Safety net |
 | `block-slack-webhook.py` | Ships (Bash + Write/Edit/MultiEdit) | Ships (shell + `preToolUse` Write) | Ships (Bash + `apply_patch`) | Safety net; Cursor has no MultiEdit matcher |
 | `block-db-push.py` | Ships | Ships | Ships | Safety net |
+| `block-secret-commit.py` | Ships (Bash + Write/Edit/MultiEdit) | Ships (shell + `preToolUse` Write) | Ships (Bash + Write/Edit) | Safety net; portable (bundled for skills-only installs) |
+| `nudge-test-suppression.py` | Ships (Bash + Write/Edit/MultiEdit) | N/A | N/A | Non-blocking nudge; Claude-only (advisory `systemMessage` channel) |
 | `nudge-todowrite-to-tracker.py` | Ships (`TodoWrite`) | N/A | N/A | No TodoWrite equivalent on Cursor/Codex |
 | `sdd-cache-pre.py` / `sdd-cache-post.py` | Ships (`WebFetch`, opt-in) | N/A | N/A | WebFetch-specific; opt-in via `AGENTIC_SDD_CACHE=1` |
 | `worktree-session.py` | Ships (`SessionStart` / `startup`) | N/A | N/A | Worktree bootstrap + staleness advisory; no-op outside `.claude/worktrees/*` |
@@ -145,6 +147,65 @@ commands are untouched.
 
 **Correct alternative:** `prisma migrate dev --name <migration-name>` (or the
 repo's wrapper), which records a migration that keeps the DB and history in sync.
+
+## `block-secret-commit.py` — PreToolUse (Bash, Write, Edit, MultiEdit, apply_patch) / beforeShellExecution + Write
+
+**Blocks** introducing a *live credential* into a Bash command, a tracked file,
+or a Codex patch. It scans for structurally unmistakable provider-secret shapes:
+Stripe `sk_live_`/`rk_live_` keys, AWS `AKIA…` access keys, GitHub `ghp_`/`gho_`/
+`ghu_`/`ghs_`/`ghr_` tokens, Google `AIza…` API keys, Slack `xox[baprs]-` tokens,
+`sk-`/`sk-ant-`/`sk-proj-` model-provider keys, and PEM `PRIVATE KEY` headers.
+
+**Why:** A provider secret is a bearer credential — whoever holds it can act as
+you. Writing one into a tracked file bakes it into git history and build logs
+(hard to fully revoke); passing one on a command line leaks it into shell
+history and process listings. This is the broad sibling of `block-slack-webhook`
+(which guards one specific live credential).
+
+**Precision:** Precision over recall, like the other guards. It fires only on
+provider-specific token shapes — never on a bare provider name or a
+`DATABASE_URL`-style connection string that legitimately fills configs and docs.
+Each alnum-run token additionally has to *look real* (mixed letters and digits,
+no `EXAMPLE`/`xxxx`/`your…` placeholder body), so documented samples such as
+AWS's `AKIAIOSFODNN7EXAMPLE` and a bare `sk_live_` prefix with no body do not
+trip it. On the Bash path the raw command is scanned (quotes are **not**
+stripped — a real secret almost always sits inside quotes).
+
+**Exemptions:** documentation files (`.md`/`.mdx`/`.markdown`/`.txt`/`.rst`),
+placeholder/fixture paths (`*.example`, `*.sample`, `fixtures/`, `__fixtures__/`),
+and the plugin's own `/hooks/` and `/scripts/` (which name the patterns by
+design). It is one of the portable safety guards bundled into the
+[`wf-setup` install-hooks reference](../skills/wf-setup/references/install-hooks.md)
+for skills-only installs.
+
+**Correct alternative:** read the secret from an environment variable or a
+secret manager and reference it by name; keep real values out of tracked files
+and off the command line.
+
+## `nudge-test-suppression.py` — PreToolUse (Bash, Write, Edit, MultiEdit) — Claude-only
+
+**Nudges (never blocks)** away from suppressing test signal instead of fixing
+it. Two green-washing moves get a one-line reminder: a Bash command that lets a
+failing or empty run report success (`--passWithNoTests` / `--pass-with-no-tests`
+/ `--allowEmptyTestSuite`, or `TESTCONTAINERS_RYUK_DISABLED=`), and a file
+mutation that *adds* a skipped/focused test to a test file (`it.skip`,
+`describe.only`, `xit`, a pytest/unittest skip decorator, Go `t.Skip(`, Rust
+`#[ignore]`).
+
+**Why:** Skipping, focusing, or passing-with-no-tests is the easy way to get a
+suite green while hiding a real failure — the exact failure mode the workflow's
+testing stage exists to prevent. Surfacing the tradeoff keeps the signal honest.
+
+**Why a nudge and not a block:** each move has legitimate, reviewed uses (a spec
+that genuinely cannot run in this environment, a temporary focus while
+debugging). So this only ever exits `0`, emitting an advisory `systemMessage` +
+`additionalContext` (a Claude-only channel, like `nudge-todowrite-to-tracker`);
+Bash detection strips quotes/comments so a *mentioned* flag does not fire, and
+the file path must match a test-file pattern.
+
+**Correct alternative:** fix the root cause (make the test infra reachable, fix
+the glob, repair the failing spec), or gate the skip explicitly and visibly (a
+documented condition) rather than a bare `.skip`.
 
 ## `nudge-todowrite-to-tracker.py` — PreToolUse (TodoWrite) — Claude-only
 

@@ -60,6 +60,7 @@ export const SCRIPT_BUNDLES: ScriptBundles = {
     "config_registry.py": "scripts/config_registry.py",
     "block-db-push.py": "scripts/block-db-push.py",
     "block-no-verify.py": "scripts/block-no-verify.py",
+    "block-secret-commit.py": "scripts/block-secret-commit.py",
     "block-slack-webhook.py": "scripts/block-slack-webhook.py",
     "hook_payload.py": "scripts/hook_payload.py",
     "prevent-main-commit.py": "scripts/prevent-main-commit.py",

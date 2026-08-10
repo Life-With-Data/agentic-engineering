@@ -17,11 +17,20 @@
       {
         "command": "python3 ./scripts/block-db-push.py",
         "failClosed": true
+      },
+      {
+        "command": "python3 ./scripts/block-secret-commit.py",
+        "failClosed": true
       }
     ],
     "preToolUse": [
       {
         "command": "python3 ./scripts/block-slack-webhook.py",
+        "matcher": "Write",
+        "failClosed": true
+      },
+      {
+        "command": "python3 ./scripts/block-secret-commit.py",
         "matcher": "Write",
         "failClosed": true
       }

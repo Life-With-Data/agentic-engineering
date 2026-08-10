@@ -12,7 +12,7 @@ first (step 1) and stop if they are already active.
 
 ## What gets installed
 
-Four PreToolUse guards, shared across harnesses. Each reads a JSON payload on
+Five PreToolUse guards, shared across harnesses. Each reads a JSON payload on
 stdin and signals its decision via exit code (`0` allows, `2` blocks); the allow
 path also prints `{"permission": "allow"}` on stdout, which Cursor's
 `failClosed: true` hooks require and which is inert on Claude Code / Codex:
@@ -23,6 +23,7 @@ path also prints `{"permission": "allow"}` on stdout, which Cursor's
 | [prevent-main-commit.py](../scripts/prevent-main-commit.py) | committing on `main`/`master` (pushes are not blocked — that policy belongs on the forge) |
 | [block-slack-webhook.py](../scripts/block-slack-webhook.py) | introducing a live Slack incoming-webhook URL into commands or files |
 | [block-db-push.py](../scripts/block-db-push.py) | `prisma db push` (schema drift without a migration) |
+| [block-secret-commit.py](../scripts/block-secret-commit.py) | introducing a live credential (Stripe/AWS/GitHub/Google/Slack token, PEM private key) into a command or a tracked file — documentation, `*.example`/`*.sample`, and `fixtures/` paths are exempt |
 
 [hook_payload.py](../scripts/hook_payload.py) is a shared normalizer imported by
 the guards — it maps Cursor's `beforeShellExecution` (`{command}`) and
@@ -72,7 +73,9 @@ project):
       { "matcher": "Bash", "hooks": [{ "type": "command", "command": "python3 <scripts>/prevent-main-commit.py" }] },
       { "matcher": "Bash", "hooks": [{ "type": "command", "command": "python3 <scripts>/block-slack-webhook.py" }] },
       { "matcher": "Bash", "hooks": [{ "type": "command", "command": "python3 <scripts>/block-db-push.py" }] },
-      { "matcher": "Write|Edit|MultiEdit", "hooks": [{ "type": "command", "command": "python3 <scripts>/block-slack-webhook.py" }] }
+      { "matcher": "Bash", "hooks": [{ "type": "command", "command": "python3 <scripts>/block-secret-commit.py" }] },
+      { "matcher": "Write|Edit|MultiEdit", "hooks": [{ "type": "command", "command": "python3 <scripts>/block-slack-webhook.py" }] },
+      { "matcher": "Write|Edit|MultiEdit", "hooks": [{ "type": "command", "command": "python3 <scripts>/block-secret-commit.py" }] }
     ]
   }
 }
@@ -92,10 +95,12 @@ fail-closed, matching the native plugin wiring:
       { "command": "python3 <scripts>/block-no-verify.py", "failClosed": true },
       { "command": "python3 <scripts>/prevent-main-commit.py", "failClosed": true },
       { "command": "python3 <scripts>/block-slack-webhook.py", "failClosed": true },
-      { "command": "python3 <scripts>/block-db-push.py", "failClosed": true }
+      { "command": "python3 <scripts>/block-db-push.py", "failClosed": true },
+      { "command": "python3 <scripts>/block-secret-commit.py", "failClosed": true }
     ],
     "preToolUse": [
-      { "command": "python3 <scripts>/block-slack-webhook.py", "matcher": "Write", "failClosed": true }
+      { "command": "python3 <scripts>/block-slack-webhook.py", "matcher": "Write", "failClosed": true },
+      { "command": "python3 <scripts>/block-secret-commit.py", "matcher": "Write", "failClosed": true }
     ]
   }
 }

@@ -1,4 +1,4 @@
-"""Cursor `failClosed` allow-contract regression tests for the four safety gates.
+"""Cursor `failClosed` allow-contract regression tests for the five safety gates.
 
 Cursor's `beforeShellExecution` / `preToolUse` hooks (wired in
 [hooks/hooks-cursor.json](../hooks/hooks-cursor.json) with `failClosed: true`)
@@ -36,6 +36,11 @@ ALLOW_CASES = [
     ("block-slack-webhook.py", {"command": "echo hello"}),
     (
         "block-slack-webhook.py",
+        {"tool_name": "Write", "tool_input": {"file_path": "a.ts", "content": "x"}},
+    ),
+    ("block-secret-commit.py", {"command": "echo hello"}),
+    (
+        "block-secret-commit.py",
         {"tool_name": "Write", "tool_input": {"file_path": "a.ts", "content": "x"}},
     ),
 ]
