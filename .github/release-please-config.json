@@ -6,7 +6,6 @@
     "plugins/agentic-engineering": {
       "release-type": "simple",
       "package-name": "agentic-engineering",
-      "release-as": "9.1.0",
       "changelog-path": "CHANGELOG.md",
       "extra-files": [
         {
