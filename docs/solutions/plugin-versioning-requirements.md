@@ -39,6 +39,20 @@ release-please composes its standing release PR. Contributors must:
    tables must match the filesystem — `tests/plugin-consistency.test.ts`
    enforces this regardless of how the version itself gets bumped.
 
+## Forcing a release for an under-typed commit
+
+A `docs:`/`chore:` PR title produces no version bump, so plugin behavior that
+lands under one of those types never ships. To cut it after the fact, add
+`"release-as": "<version>"` to that package's entry in
+`.github/release-please-config.json` and merge. Release-please then opens its
+release PR at that exact version on the next push to `main`.
+
+`release-as` is sticky: it pins **every** subsequent release of that package to
+the same version. Remove the key in a follow-up PR once the tag lands. Do not
+use the `Release-As:` commit footer here — in a multi-package manifest,
+release-please attributes commits to packages by file path, so a footer on a
+commit that touches no file under the package path is ignored.
+
 ## Checklist for Plugin Changes
 
 ```markdown
