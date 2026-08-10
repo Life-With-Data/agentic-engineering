@@ -66,6 +66,13 @@ user-facing commit under that package's path — or, as with `docs` here, make t
 type user-facing in `changelog-sections`, which reclassifies the already-merged
 commits on the next run.
 
+Worked example — 9.1.0 (2026-08-10). #419 landed workflow policy under `docs:`
+and never shipped. `release-as: 9.1.0` alone did nothing (`No user facing
+commits found … skipping`); flipping `docs` visible made release-please
+reclassify #419, and the still-present `release-as` lifted the cut from the
+9.0.1 a bare docs patch would have given to 9.1.0. The key was then removed in
+a follow-up PR — leave it in place and every later release pins to 9.1.0.
+
 ## Checklist for Plugin Changes
 
 ```markdown
