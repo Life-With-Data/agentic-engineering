@@ -67,6 +67,18 @@ change individual settings later.
 
 After setup, enter work through **`/wf-orchestrate`**.
 
+### Other agents (converter)
+
+Non-Claude agents consume this plugin through the repository's converter CLI
+(`npx github:Life-With-Data/agentic-engineering install agentic-engineering
+--to <target>`). Hermes agents ([NousResearch
+hermes-agent](https://github.com/NousResearch/hermes-agent)) are supported via
+`--to hermes`: skills land under `~/.hermes/skills/` (commands and agents are
+emitted as generated skills, loadable in-chat with `/skill <name>`), and MCP
+servers arrive as a ready-to-merge `mcp_servers` snippet. See the
+[Hermes target spec](../../docs/specs/hermes.md) for the full asset mapping,
+and the [root README](../../README.md) for every supported target.
+
 ## Verify your setup
 
 Run the **`wf-setup` diagnostics route** after install or bootstrap and **before
