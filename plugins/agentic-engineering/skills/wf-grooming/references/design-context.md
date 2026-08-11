@@ -30,6 +30,18 @@ Record visual references in two tiers:
 Cover inspiration references, relevant current-state visuals, and any potential
 future-state visuals the item already implies.
 
+## Capture behavioral UX into acceptance criteria
+
+Visual direction settles how a surface looks; it does not settle how it
+converts. When the work item carries a conversion, onboarding, or commitment
+step, consult [UX psychology](ux-psychology.md) and express the principles that
+apply as observable acceptance criteria in the issue body — behavior a reviewer
+can check, never "apply principle X".
+
+Three of those principles are human-opt-in only. Grooming never applies them on
+its own: surface the question, record the human's decision in the issue, and
+note the principles considered and dismissed.
+
 ## Completion boundary
 
 A missing inspiration or attachment capability is a recorded note, not a

@@ -26,11 +26,42 @@ Use only lenses supported by the risk surface:
 - concurrency, performance, and resource use;
 - architecture and interface compatibility;
 - test sufficiency and observability;
-- documentation and operational readiness.
+- documentation and operational readiness;
+- UX psychology, mandatory for a UI-affecting change (see the
+  [conditional UX gate](#conditional-ux-gate)).
 
 Specialized reviewers are optional. Give each the intended behavior, relevant
 diff, and repository evidence; do not ask every available reviewer to inspect
 every change.
+
+## Conditional UX gate
+
+This gate applies only to a **UI-affecting change**: one that adds or modifies
+what an end user sees or interacts with — screens, components, templates,
+styles, user-facing copy, or an onboarding, conversion, or commitment flow. A
+change that touches no such surface skips this section entirely; nothing else
+in this reference changes for it. Judge the condition by what the diff does to
+the user-visible surface, not by which directories it lands in.
+
+When the condition holds, the UX lens is mandatory. Read
+[UX psychology](../../wf-grooming/references/ux-psychology.md) and evaluate the
+change against it. A UX finding blocks only when it is one of:
+
+1. A violation of a UX acceptance criterion recorded in the work item.
+2. An application of an opt-in principle — endowed progress, loss-aversion
+   framing, or anchoring/contrast — with no explicit human opt-in recorded in
+   the work item, or an application that breaks the truthfulness constraints
+   (progress must reflect real completed work; loss and anchor claims must be
+   true).
+
+Classify blocking UX findings by the levels below, like any other finding.
+Every other UX observation is a non-blocking recommendation at P3, however
+strongly the reviewer holds it.
+
+The gate is performable by the reviewing agent alone: both blocking clauses are
+checked against the work item and the diff, and both describe defects an
+implementing agent can fix and re-verify. Passing it never requires a human
+pause, approval, or sign-off.
 
 ## Findings contract
 
