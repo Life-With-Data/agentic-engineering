@@ -49,6 +49,11 @@ bug); rollout/migration/monitoring/rollback/security/data considerations when
 applicable; unresolved decisions and named blockers. Tasks are independently
 reviewable and small enough to verify.
 
+Structure the parent body and every sub-issue body per
+[ticket format](ticket-format.md): symbols and contracts over file paths,
+explicit reviewer focus, documentation impact (internal and customer-facing,
+"none" recorded as a decision), and ticket-specific handover.
+
 Before persisting, dispatch the `scope-skeptic` agent against the concrete
 units to argue which ones earn their place; the orchestrator owns every scope
 decision and tracker write. Skip the dispatch when the item already carries a
