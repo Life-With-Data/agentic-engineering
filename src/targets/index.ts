@@ -7,6 +7,7 @@ import { convertClaudeToPi } from "../converters/claude-to-pi"
 import { convertClaudeToCopilot } from "../converters/claude-to-copilot"
 import { convertClaudeToGemini } from "../converters/claude-to-gemini"
 import { convertClaudeToKiro } from "../converters/claude-to-kiro"
+import { convertClaudeToHermes } from "../converters/claude-to-hermes"
 import { writeOpenCodeBundle } from "./opencode"
 import { writeClaudeBundle } from "./claude"
 import { writeCodexBundle } from "./codex"
@@ -16,6 +17,7 @@ import { writePiBundle } from "./pi"
 import { writeCopilotBundle } from "./copilot"
 import { writeGeminiBundle } from "./gemini"
 import { writeKiroBundle } from "./kiro"
+import { writeHermesBundle } from "./hermes"
 
 export type TargetHandler = {
   name: string
@@ -36,4 +38,5 @@ export const targets: Record<string, TargetHandler> = {
   copilot: { name: "copilot", convert: convertClaudeToCopilot, write: writeCopilotBundle },
   gemini: { name: "gemini", convert: convertClaudeToGemini, write: writeGeminiBundle },
   kiro: { name: "kiro", convert: convertClaudeToKiro, write: writeKiroBundle },
+  hermes: { name: "hermes", convert: convertClaudeToHermes, write: writeHermesBundle },
 }

@@ -143,6 +143,7 @@ bundled worktree manager — see [Worktree cleanup](#worktree-cleanup)).
 | `gemini` | `.gemini/` | skills (from agents) pass through; MCP as `settings.json` |
 | `copilot` | `.github/` | agents get Copilot frontmatter; MCP env vars prefixed `COPILOT_MCP_` |
 | `kiro` | `.kiro/` | stdio MCP servers only (HTTP skipped) |
+| `hermes` | `~/.hermes/` | skills (incl. commands/agents as skills); MCP as `mcp_servers` YAML snippet |
 
 Non-native convert targets are **experimental** and may change as the formats evolve.
 
@@ -177,6 +178,7 @@ bun run src/index.ts install ./plugins/agentic-engineering --to opencode
 - **Gemini** — skills (from agents), any commands (`.toml`), and `settings.json` (MCP) under `.gemini/`. For a command-bearing plugin, namespaced commands create directories (e.g. `foo:bar` → `commands/foo/bar.toml`); this plugin ships skills only.
 - **Copilot** — agents (`.agent.md`), skills (`SKILL.md`), and `copilot-mcp-config.json` under `.github/`. Agents get `description`, `tools: ["*"]`, `infer: true`.
 - **Kiro** — custom agents (`.json` + prompt `.md`), skills, steering files (from CLAUDE.md), and `mcp.json` under `.kiro/`. Agents get `includeMcpJson: true`; only stdio MCP servers supported.
+- **Hermes** — skills under `~/.hermes/skills/` (bundled skills copied; commands and agents emitted as generated skills, loadable with `/skill <name>`), plus a ready-to-merge `mcp_servers` snippet at `agentic-engineering/mcp-servers.yaml`. `--hermes-home` overrides the root. See [docs/specs/hermes.md](docs/specs/hermes.md).
 
 </details>
 

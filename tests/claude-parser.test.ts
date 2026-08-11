@@ -22,6 +22,31 @@ const invalidMcpPathRoot = path.join(
 );
 
 describe("loadClaudePlugin", () => {
+  test("accepts an inline manifest hooks field that IS the event map", async () => {
+    // Claude Code's plugin.json schema puts events at the top level of the
+    // inline `hooks` object (no `hooks` wrapper key, unlike hooks/hooks.json).
+    // Regression: this crashed mergeHooks with an Object.entries TypeError.
+    const { promises: fs } = await import("fs");
+    const os = await import("os");
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "inline-hooks-"));
+    await fs.mkdir(path.join(root, ".claude-plugin"), { recursive: true });
+    await fs.writeFile(
+      path.join(root, ".claude-plugin", "plugin.json"),
+      JSON.stringify({
+        name: "inline-hooks",
+        version: "1.0.0",
+        hooks: {
+          SessionStart: [
+            { hooks: [{ type: "command", command: "echo hi" }] },
+          ],
+        },
+      })
+    );
+
+    const plugin = await loadClaudePlugin(root);
+    expect(plugin.hooks?.hooks.SessionStart?.length).toBe(1);
+  });
+
   test("loads manifest, agents, commands, skills, hooks", async () => {
     const plugin = await loadClaudePlugin(fixtureRoot);
 
