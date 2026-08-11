@@ -19,7 +19,7 @@ const sharedArgs = {
     type: "string",
     default: "opencode",
     description:
-      "Target format (claude | opencode | codex | droid | cursor | pi | copilot | gemini | kiro)",
+      "Target format (claude | opencode | codex | droid | cursor | pi | copilot | gemini | kiro | hermes)",
   },
   output: {
     type: "string",
@@ -35,6 +35,11 @@ const sharedArgs = {
     type: "string",
     alias: "pi-home",
     description: "Write Pi output to this Pi root (ex: ~/.pi/agent or ./.pi)",
+  },
+  hermesHome: {
+    type: "string",
+    alias: "hermes-home",
+    description: "Write Hermes output to this Hermes root (ex: ~/.hermes or ./.hermes)",
   },
   also: {
     type: "string",
@@ -122,6 +127,7 @@ async function runConversion(args: Record<string, unknown>, mode: Mode): Promise
     const outputRoot = resolveOutputRoot(args.output, mode)
     const codexHome = resolveTargetHome(args.codexHome, path.join(os.homedir(), ".codex"))
     const piHome = resolveTargetHome(args.piHome, path.join(os.homedir(), ".pi", "agent"))
+    const hermesHome = resolveTargetHome(args.hermesHome, path.join(os.homedir(), ".hermes"))
 
     const options: ConvertOptions = {
       agentMode: String(args.agentMode) === "primary" ? "primary" : "subagent",
@@ -147,6 +153,7 @@ async function runConversion(args: Record<string, unknown>, mode: Mode): Promise
       projectBase: mode === "install" ? installBase : outputRoot,
       codexHome,
       piHome,
+      hermesHome,
     })
     const bundle = target.convert(plugin, options)
     await target.write(primaryOutputRoot, bundle)
@@ -165,6 +172,7 @@ async function runConversion(args: Record<string, unknown>, mode: Mode): Promise
         projectBase: mode === "install" ? installBase : extraOutputRoot,
         codexHome,
         piHome,
+        hermesHome,
       })
       const extraBundle = handler.convert(plugin, options)
       await handler.write(extraRoot, extraBundle)
@@ -209,13 +217,15 @@ function resolveOutputRoot(value: unknown, mode: Mode): string {
 function resolveTargetOutputRoot(
   targetName: string,
   outputRoot: string,
-  roots: { projectBase: string; codexHome: string; piHome: string },
+  roots: { projectBase: string; codexHome: string; piHome: string; hermesHome: string },
 ): string {
   switch (targetName) {
     case "codex":
       return roots.codexHome
     case "pi":
       return roots.piHome
+    case "hermes":
+      return roots.hermesHome
     case "droid":
       return path.join(os.homedir(), ".factory")
     case "cursor":

@@ -102,11 +102,11 @@ describe("frozen hook surface", () => {
     expect([...referencing].sort()).toEqual([...HOOK_REFERENCING].sort())
   })
 
-  test("claude, codex, droid, pi mention hooks in no form at all", () => {
+  test("claude, codex, droid, pi, hermes mention hooks in no form at all", () => {
     // Stronger than a `plugin.hooks`-only check: any mention of "hook" (a
     // destructure `const { hooks } = plugin`, a helper import, a comment) in a
     // converter that is supposed to be hook-free trips this.
-    for (const t of ["claude", "codex", "droid", "pi"]) {
+    for (const t of ["claude", "codex", "droid", "pi", "hermes"]) {
       // claude has no converter file: the registry passes the plugin straight
       // through (src/targets/index.ts), which trivially has no hook handling.
       // If a claude-to-claude.ts ever reappears, it gets scanned again here.

@@ -591,6 +591,62 @@ describe("CLI", () => {
     ).toBe(true);
   });
 
+  test("convert supports --hermes-home for hermes output", async () => {
+    const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "cli-hermes-home-"));
+    const hermesRoot = path.join(tempRoot, ".hermes");
+    const fixtureRoot = path.join(import.meta.dir, "fixtures", "sample-plugin");
+
+    const proc = Bun.spawn(
+      [
+        "bun",
+        "run",
+        "src/index.ts",
+        "convert",
+        fixtureRoot,
+        "--to",
+        "hermes",
+        "--hermes-home",
+        hermesRoot,
+      ],
+      {
+        cwd: path.join(import.meta.dir, ".."),
+        stdout: "pipe",
+        stderr: "pipe",
+      }
+    );
+
+    const exitCode = await proc.exited;
+    const stdout = await new Response(proc.stdout).text();
+    const stderr = await new Response(proc.stderr).text();
+
+    if (exitCode !== 0) {
+      throw new Error(
+        `CLI failed (exit ${exitCode}).\nstdout: ${stdout}\nstderr: ${stderr}`
+      );
+    }
+
+    expect(stdout).toContain("Converted agentic-engineering");
+    expect(stdout).toContain(hermesRoot);
+    expect(
+      existsSync(
+        path.join(hermesRoot, "skills", "workflows-review", "SKILL.md")
+      )
+    ).toBe(true);
+    expect(
+      existsSync(
+        path.join(hermesRoot, "skills", "repo-research-analyst", "SKILL.md")
+      )
+    ).toBe(true);
+    expect(
+      existsSync(path.join(hermesRoot, "skills", "skill-one", "SKILL.md"))
+    ).toBe(true);
+    expect(
+      existsSync(
+        path.join(hermesRoot, "agentic-engineering", "mcp-servers.yaml")
+      )
+    ).toBe(true);
+  });
+
   test("install supports --also with pi output", async () => {
     const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "cli-also-pi-"));
     const fixtureRoot = path.join(import.meta.dir, "fixtures", "sample-plugin");

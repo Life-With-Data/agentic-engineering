@@ -3,8 +3,8 @@
 How this marketplace decides *which* Claude plugin assets the converter CLI
 (`src/`) may transpile into other agent platforms, and how faithfully. The repo
 ships one converter per target — `src/converters/claude-to-{claude,codex,copilot,
-cursor,droid,gemini,kiro,opencode,pi}.ts` — and "we support 9 agents" hides that
-support means radically different things per asset.
+cursor,droid,gemini,hermes,kiro,opencode,pi}.ts` — and "we support 10 agents"
+hides that support means radically different things per asset.
 
 Enforced by `tests/conversion-policy.test.ts` (mechanical invariants over
 converter/target source text). This document is the human-readable rationale;
@@ -48,8 +48,8 @@ abstraction leaks under maintenance.
 
 The current converters already vote this way, de facto: four converters
 (`claude-to-{cursor,copilot,gemini,kiro}.ts`) read `plugin.hooks` only to
-`console.warn` and **drop** them; four more (`claude-to-{claude,codex,droid,
-pi}.ts`) never read `plugin.hooks` at all. The policy freezes that reality so the
+`console.warn` and **drop** them; five more (`claude-to-{claude,codex,droid,
+hermes,pi}.ts`) never read `plugin.hooks` at all. The policy freezes that reality so the
 next contributor cannot quietly "add hook support" to another target and
 re-introduce the leaky, unsafe surface this decision rejects.
 
@@ -94,7 +94,7 @@ references" checks give false confidence.
 1. **Frozen hook surface.** Among `src/converters/claude-to-*.ts`, the converters
    that read the plugin hooks field (`plugin.hooks`, `plugin?.hooks`, or
    `plugin["hooks"]`) are **exactly** `{cursor, copilot, gemini, kiro, opencode}`;
-   `{claude, codex, droid, pi}` mention hooks **in no form at all** (not via
+   `{claude, codex, droid, hermes, pi}` mention hooks **in no form at all** (not via
    destructuring, a helper import, or even a comment).
 2. **Warn-droppers drop.** Each of `{cursor, copilot, gemini, kiro}` contains a
    hooks-related `console.warn` **and** emits no hook-named artifact.

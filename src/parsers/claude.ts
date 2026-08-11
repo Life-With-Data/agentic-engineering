@@ -4,6 +4,7 @@ import { readJson, readText, pathExists, walkFiles } from "../utils/files"
 import type {
   ClaudeAgent,
   ClaudeCommand,
+  ClaudeHookMatcher,
   ClaudeHooks,
   ClaudeManifest,
   ClaudeMcpServer,
@@ -213,7 +214,10 @@ async function collectFiles(dirs: string[]): Promise<string[]> {
 function mergeHooks(hooksList: ClaudeHooks[]): ClaudeHooks {
   const merged: ClaudeHooks = { hooks: {} }
   for (const hooks of hooksList) {
-    for (const [event, matchers] of Object.entries(hooks.hooks)) {
+    // hooks/hooks.json wraps the event map in a `hooks` key; an inline
+    // manifest `hooks` field IS the event map (Claude Code plugin schema).
+    const events = (hooks.hooks ?? hooks) as Record<string, ClaudeHookMatcher[]>
+    for (const [event, matchers] of Object.entries(events)) {
       if (!merged.hooks[event]) {
         merged.hooks[event] = []
       }
