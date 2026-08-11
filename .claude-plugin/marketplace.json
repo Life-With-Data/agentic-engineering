@@ -12,7 +12,7 @@
     {
       "name": "agentic-engineering",
       "description": "AI-powered development tools that get smarter with every use. Make each unit of engineering work easier than the last. Includes 25 specialized agents and 9 workflow skills.",
-      "version": "9.1.0",
+      "version": "9.2.0",
       "author": {
         "name": "Anthony Agnone",
         "url": "https://github.com/aagnone3"
