@@ -5,6 +5,18 @@ All notable changes to the agentic-engineering plugin will be documented in this
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [9.2.0](https://github.com/Life-With-Data/agentic-engineering/compare/agentic-engineering-v9.1.0...agentic-engineering-v9.2.0) (2026-08-11)
+
+
+### Features
+
+* **grooming:** add UX-psychology reference with conditional review gate ([#429](https://github.com/Life-With-Data/agentic-engineering/issues/429)) ([2c3619a](https://github.com/Life-With-Data/agentic-engineering/commit/2c3619a76fd87dec9ba36cffab8ae3aa983cea6f)), closes [#428](https://github.com/Life-With-Data/agentic-engineering/issues/428)
+
+
+### Documentation
+
+* **grooming:** add ticket format reference for groomed issue bodies ([#426](https://github.com/Life-With-Data/agentic-engineering/issues/426)) ([4b15968](https://github.com/Life-With-Data/agentic-engineering/commit/4b15968d89cbb00055b503d7a339f23c7fcefe06))
+
 ## [9.1.0](https://github.com/Life-With-Data/agentic-engineering/compare/agentic-engineering-v9.0.0...agentic-engineering-v9.1.0) (2026-08-10)
 
 
