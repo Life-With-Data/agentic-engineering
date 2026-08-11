@@ -42,6 +42,7 @@ Production or integration failures also require `observability`. A bug remains u
 - Reproduce reported behavior before grooming a bug: read [reproduce bug](references/reproduce-bug.md).
 - Create or improve the bug report: read [report bug](references/report-bug.md).
 - Produce the implementation plan and issue decomposition: read [workflow plan](references/workflows-plan.md).
+- Compose or review a groomed issue body: read [ticket format](references/ticket-format.md).
 - Strengthen an existing plan: read [deepen plan](references/deepen-plan.md).
 - Sort an intake queue: read [triage](references/triage.md).
 
