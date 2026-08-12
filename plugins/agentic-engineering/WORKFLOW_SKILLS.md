@@ -19,44 +19,24 @@ first, that guidance supplies mechanics only and points back to workflow policy
 for sequencing. If it opens workflow policy first, capability validation routes
 it to the repository mechanics it needs.
 
-## Vertical delegation
+## Routing and delegation
 
-Delegation is vertical, never horizontal. `wf-orchestrate` sits at the top:
-it is the default entry point for any work item, resolves the item's current
-lifecycle stage from tracker evidence, reads delivery posture, and dispatches
-the owning stage skill at each boundary. Stage skills are workers: each owns
-exactly its stage, applies its own gates, reports completion evidence, and
-returns control to the orchestrator. A stage skill never routes laterally to
-a sibling stage, never decides what runs next in the pipeline, and never
-inlines another stage's procedure.
+`wf-orchestrate` is the default end-to-end entry point. It resolves current
+state and uses only the specialist workflows the request and risk require.
+Stage skills can also be invoked directly, and small stage transitions may run
+inline instead of creating handoffs.
 
-`wf-auto` is a separate top-level entry point, not a route inside the
-orchestrator. It selects the ticket when the caller names none, holds the
-run's own approvals, removes every structural gate, and dispatches
-`wf-orchestrate` for stage work. It is the one path where the agent is the
-approver — invoking it *is* the authorization, which is why it stays visibly
-distinct from `wf-orchestrate` rather than hiding inside it as a flag.
+`wf-auto` is the explicit unattended entry point. It selects ready work when
+needed, suppresses routine check-ins, and delegates routing to
+`wf-orchestrate`. It is the only route that may explicitly force the
+`ready_for_work` approval stamp after grooming. It does not weaken repository
+checks or grant authority for credentials, destructive scope expansion,
+force-pushes, or admin overrides.
 
-Two consequences:
-
-- **Invoke `wf-orchestrate` by default.** A request that spans stages — "fix
-  this bug", "build this feature", "drain the ready queue" — enters through
-  the orchestrator. Invoke a stage skill directly only for a genuinely
-  single-stage request, and it then reports its own completion instead of
-  continuing the pipeline.
-- **Cross-cutting policy lives at the top.** The escalation contract,
-  sub-agent delegation policy, and delivery-posture resolution are
-  `wf-orchestrate` references. Stage skills link up to them; they never
-  restate them.
-
-Within any stage, the session's default agent is the **orchestrator and
-validator**, not the worker: it dispatches focused sub-agents for stage work,
-verifies each result independently, sets each sub-agent's model explicitly at
-dispatch, and owns every tracker or board write. Sub-agents never mutate
-shared tracker, board, or PR state. The canonical policy is
-`wf-orchestrate`'s sub-agent delegation reference; each router carries only
-its stage-specific posture. Hosts without a sub-agent mechanism run the same
-sequences inline — delegation is an execution model, never a gate.
+Sub-agents are optional. Use them for independent parallel units or a valuable
+independent risk check; keep small or tightly coupled changes inline. The
+coordinating agent retains shared tracker, board, and PR writes and verifies
+delegated results.
 
 ## Standard workflow set
 
@@ -65,13 +45,9 @@ Routes may require more capabilities. Production diagnosis requires
 `observability`; deployments require `infrastructure-operations` and
 `security-and-access`.
 
-Bug handling crosses stages under the orchestrator instead of becoming a
-separate top-level skill:
-
-1. `wf-grooming` owns report completeness and verified reproduction.
-2. `wf-development` owns localization, root cause, and the fix.
-3. `wf-testing` owns regression protection and the original reproduction rerun.
-4. `wf-review` evaluates the fix and its risks.
+For bugs, reproduce when practical, then localize, fix, and verify the affected
+behavior. Use a separate testing or review pass when risk or missing evidence
+justifies it; do not require four handoffs for every bug.
 
 ## Granular capability references
 

@@ -16,12 +16,12 @@ improves evidence and sequencing without turning planning into implementation.
    `lifecycle_board.py --gate orchestrate --issue <N>`. If implementation has
    started (`in_progress`, `in_review`, or `done`), do not rewrite scope or
    regress Status; stop and route the proposed change through the owning
-   development/delivery workflow. If the item is at `ready_for_work`, a human
-   has already approved it: regressing it discards that approval stamp, so stop
-   and surface the proposed change to the approver rather than rewriting scope
-   unilaterally — a re-approval is required before work may start again.
+   development/delivery workflow. `ready_for_work` means a human already
+   approved the plan; a material scope change returns it to `brainstormed` for
+   re-grooming and requires a new approval.
 2. Classify the proposed edits. Evidence and wording improvements may retain
-   `planned`; any material scope, acceptance, validation, dependency, security,
+   the current `planned` or `ready_for_work` state; any material scope,
+   acceptance, validation, dependency, security,
    or provenance change invalidates the existing readiness attestation. Before
    making such a change, set Status back to `brainstormed` through the lifecycle
    engine and leave it there while decisions remain unresolved.

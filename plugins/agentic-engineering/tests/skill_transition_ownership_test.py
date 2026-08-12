@@ -42,20 +42,19 @@ OWNED_TRANSITIONS: dict[str, tuple[str, ...]] = {
     # development -> in_review: claim moves work in-progress, --set-status hands it
     # to `in_review` for the review gate.
     "wf-development": ("--claim", "--set-status", "in_review"),
-    # delivery -> merged/closed: reconcile the board and delete the work packet.
-    "wf-delivery": ("--reconcile", "--delete-packet"),
+    # delivery -> merged/closed: reconcile and read back the done state.
+    "wf-delivery": ("--reconcile", "Status = done"),
 }
 
 # Head-bound review gate (issue #405): a `ready` wf-review verdict binds to the
 # reviewed head SHA, and any later commit invalidates it. wf-review states the
-# binding, wf-orchestrate defines review-ready in those terms, and wf-delivery
-# treats a moved head as a stale verdict. Tokens are category-level (head/SHA
+# binding and wf-delivery treats a moved head as a stale verdict when an
+# independent review is required. Tokens are category-level (head/SHA
 # binding + invalidation wording), matched anywhere in the skill's concatenated
 # text — never a frozen sentence or line position, per this module's guardrail
 # policy (see the docstring above).
 HEAD_BOUND_REVIEW_GATE: dict[str, tuple[str, ...]] = {
     "wf-review": ("head SHA", "invalidates"),
-    "wf-orchestrate": ("current head", "invalidates", "single-lens"),
     "wf-delivery": ("reviewed SHA", "stale"),
 }
 

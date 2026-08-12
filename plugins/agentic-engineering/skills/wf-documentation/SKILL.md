@@ -31,16 +31,11 @@ Stop on contract failure; read primary targets first, supporting targets only as
 - Turn a debugging lesson into maintained guidance: read [reflect for skill updates](references/reflect-for-skill-updates.md).
 - Ship documentation changes: read [land docs](references/land-docs.md); require `delivery` when publication is requested. Publication mechanics come from the repository's mapped `delivery` capability.
 
-## Sub-agent delegation
-
-Delegate per-unit stage work to focused sub-agents; the orchestrator retains
-verification and every tracker, board, and PR write. Roles, dispatch, model
-selection, and the inline fallback:
-[sub-agent delegation](../wf-orchestrate/references/subagent-delegation.md).
-
 ## Completion boundary
 
-Documentation is complete when it is accurate against the current source, placed where the repository says readers will find it, linked from the appropriate index, reviewed for its intended audience, and validated through repository documentation tooling. Report the disposition and evidence to the caller (`wf-orchestrate` or the delivery gate that invoked it).
+Documentation is complete when it is accurate, discoverable where readers
+already look, and passes repository documentation checks. Do not create a
+document merely to prove the workflow considered documentation.
 
 ## Wrong-layer recovery
 

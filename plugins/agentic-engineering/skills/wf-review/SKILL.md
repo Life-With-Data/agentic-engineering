@@ -1,13 +1,13 @@
 ---
 name: wf-review
-description: Workflow policy for reviewing code, architecture, security, plans, documents, and pull-request feedback. Use when evaluating a proposed or implemented change and deciding whether findings block progress. This skill owns review gates and triage; repository conventions come from repository capability targets.
+description: Workflow policy to review code, architecture, security, plans, documents, or pull-request feedback in proportion to risk. Use for an explicit review or when an independent check would materially reduce delivery risk.
 ---
 
 # Review workflow
 
 Layer: Workflow policy
 
-Owns: reviewer selection.
+Owns: review scope and finding severity.
 
 Requires repository capabilities: `repository-overview`, `test-execution`.
 
@@ -33,22 +33,18 @@ Stop on contract failure; read primary targets first, supporting targets only as
 
 Document-specific review policy lives in `wf-documentation`; testing sufficiency lives in `wf-testing`.
 
-## Sub-agent delegation
-
-Delegate per-unit stage work to focused sub-agents; the orchestrator retains
-verification and every tracker, board, and PR write. Roles, dispatch, model
-selection, and the inline fallback:
-[sub-agent delegation](../wf-orchestrate/references/subagent-delegation.md).
-
 ## Review contract
 
 1. Identify the intended behavior and affected system boundaries.
 2. Read the full diff and relevant repository guidance.
-3. Select only reviewers relevant to the risk surface.
+3. Select only review lenses relevant to the risk surface; use an independent
+   reviewer for high-risk or broad changes, not by default.
 4. Require reproducible evidence for findings.
 5. Deduplicate and classify findings by impact.
 6. Require re-verification evidence for any fixes made during review.
-7. Produce a clear ready/not-ready decision and return it with its findings to the caller (`wf-orchestrate` in the standard pipeline). A not-ready verdict names the blocking findings for the development stage; a ready verdict records the reviewed head SHA so downstream stages can check freshness.
+7. Produce a clear ready/not-ready decision. Only correctness, security, data
+   loss, or explicit repository-policy findings block delivery; polish and
+   preference findings do not.
 
 ## Wrong-layer recovery
 

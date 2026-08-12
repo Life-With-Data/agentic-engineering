@@ -1,111 +1,82 @@
 # Workflow flows
 
-Visual reference for the nine public `wf-*` skills and their repository-context handoffs. The detailed procedures shown in parentheses are internal references selected by a router; they are not independently invocable skills.
+The nine public `wf-*` skills are a toolkit, not a mandatory pipeline.
 
-## The two orthogonal layers
+## Workflow and repository context
 
 ```mermaid
 flowchart LR
     request([Engineering request]) --> WF["wf-* workflow policy"]
-    WF -->|"required capability names"| C["Root AGENTS.md contract"]
-    C -->|"ordered repo-relative pointers"| R["repository operational assets"]
-    R -->|"commands, access, and evidence"| WF
-    WF --> result([Gated workflow result])
+    WF -->|"capability names"| C["Root AGENTS.md contract"]
+    C -->|"repo-owned guidance"| R["commands, access, and evidence"]
+    R --> WF
+    WF --> result([Verified outcome])
 ```
 
-See [WORKFLOW_SKILLS.md](WORKFLOW_SKILLS.md) for the layer model and the complete contract.
-
-## Public workflow map
-
-Delegation is vertical — [WORKFLOW_SKILLS.md](WORKFLOW_SKILLS.md) owns the model.
+## Routing
 
 ```mermaid
 flowchart TD
     req([Engineering request]) --> O["wf-orchestrate"]
-    auto["wf-auto (fully autonomous:<br/>selects the ticket,<br/>stamps its own approval)"] -->|"dispatches, agent-approved"| O
-    O <-->|"dispatch / return"| G["wf-grooming"]
-    O -->|"human approval stamp"| approve{"ready_for_work?"}
-    approve --> O
-    O <-->|"dispatch / return"| D["wf-development"]
-    O <-->|"dispatch / return"| T["wf-testing"]
-    O <-->|"dispatch / return"| R["wf-review"]
-    O <-->|"dispatch / return"| L["wf-delivery"]
-    O <-->|"dispatch / return"| K["wf-documentation"]
+    auto["wf-auto: unattended run"] --> O
+    O --> G["wf-grooming<br/>only when scope is unclear"]
+    O --> D["wf-development<br/>implement and verify"]
+    O --> T["wf-testing<br/>extra evidence when needed"]
+    O --> R["wf-review<br/>risk-based independent review"]
+    O --> L["wf-delivery<br/>CI, PR, merge, release"]
+    O --> K["wf-documentation<br/>requested docs or reusable lesson"]
     O --> done([Complete])
     S["wf-setup"] -. "adopts and configures" .-> O
 ```
 
-The stage order is grooming → approval → development → testing → review → delivery, with the knowledge-disposition check before merge. A not-ready review verdict returns through the orchestrator to development. Ownership never collapses: each stage router owns its own gates and repository-capability requirements, and a stage skill invoked directly for a single-stage request reports its own completion instead of continuing the pipeline.
-
-## Grooming and implementation split
-
-```mermaid
-flowchart TD
-    request([Idea, request, bug report, or issue]) --> G["wf-grooming"]
-    G --> intent["confirm intent and scope<br/>(interview / brainstorm route)"]
-    intent --> plan["produce acceptance criteria,<br/>validation, plan, and decomposition"]
-    plan --> ready([Ready for development])
-    ready --> D["wf-development"]
-    D --> T["wf-testing"]
-    T --> R["wf-review"]
-    R --> L["wf-delivery"]
-    L --> K["wf-documentation"]
-```
-
-The hard boundary is deliberate: `wf-grooming` never claims work or edits product code, and `wf-development` refuses to invent missing grooming context — the orchestrator routes an ungroomed item back to `wf-grooming`.
+Small, clear work can move from development directly to delivery after required
+repository checks pass. Testing, review, and documentation remain available
+when risk or the request justifies them; they are not ceremonial stops.
 
 ## Bug flow
 
 ```mermaid
 flowchart TD
-    report([Unexpected behavior]) --> G["wf-grooming"]
-    G --> contract{"bug-reproduction capability valid?"}
-    contract -->|no| stop([Stop with contract errors])
-    contract -->|yes| evidence["record expected, actual,<br/>environment, and evidence"]
-    evidence --> reproduce["reproduce using repo guidance"]
-    reproduce --> groom{"report complete and work item ready?"}
-    groom -->|no| G
-    groom -->|yes| D["wf-development"]
-    D --> root["localize, establish root cause,<br/>and implement the fix"]
-    root --> T["wf-testing: regression + original reproduction"]
-    T --> R["wf-review"]
+    report([Unexpected behavior]) --> evidence["reproduce when practical"]
+    evidence --> D["localize and fix"]
+    D --> verify["regression and affected-boundary checks"]
+    verify --> risk{"high risk or broad?"}
+    risk -->|yes| R["independent review"]
+    risk -->|no| L["delivery"]
+    R --> L
 ```
 
-A failed reproduction blocks grooming; it is evidence to report, not permission to plan a speculative fix. Production or integration failures additionally require the `observability` capability.
+If reproduction is unavailable, record the uncertainty and prefer a diagnostic
+or narrow evidence-backed change over a speculative broad fix.
 
 ## Delivery flow
 
 ```mermaid
 flowchart TD
-    implemented([Implemented change]) --> T["wf-testing"]
-    T --> R["wf-review"]
-    R --> ready{"ready?"}
-    ready -->|no| D["wf-development"]
-    D --> T
-    ready -->|yes| L["wf-delivery"]
-    L --> ci["repair CI"]
-    ci --> K["wf-documentation: final compounding disposition"]
-    K --> merge{"current head passes every merge gate?"}
-    merge -->|no| ci
-    merge -->|yes| done([Done])
-    done --> deploy["deployment/release handoff*"]
+    change([Verified change]) --> ci["required CI"]
+    ci --> ready{"mergeable, no blockers,<br/>merge authority?"}
+    ready -->|no| fix["fix or surface concrete blocker"]
+    fix --> ci
+    ready -->|yes| merge([Merge])
+    merge --> verify["read back PR and tracked state"]
 ```
 
-`*` Deployment requires `infrastructure-operations` and `security-and-access` in addition to the base `delivery` capability.
+Independent review is required only by risk, repository policy, or user request.
+Durable documentation is added when there is an actual reusable lesson.
 
-## Lifecycle state machine
+## Lifecycle state
 
-In `github-project` mode, workflow routes write a closed set of lifecycle transitions through `scripts/lifecycle_board.py`.
+In `github-project` mode, `scripts/lifecycle_board.py` owns board transitions.
 
 ```mermaid
 stateDiagram-v2
     [*] --> stub
-    stub --> brainstormed: wf-grooming brainstorm route
-    stub --> planned: wf-grooming plan route
-    brainstormed --> planned: wf-grooming plan route
-    planned --> ready_for_work: human approval stamp
-    ready_for_work --> in_progress: wf-development claim
-    in_progress --> in_review: wf-development opens PR
+    stub --> brainstormed
+    stub --> planned
+    brainstormed --> planned
+    planned --> ready_for_work: human approval
+    ready_for_work --> in_progress: claim
+    in_progress --> in_review: PR open
     in_review --> done: merge automation
 
     stub --> abandoned
@@ -114,24 +85,11 @@ stateDiagram-v2
     ready_for_work --> abandoned
     in_progress --> abandoned
     in_review --> abandoned
-    done --> abandoned
 ```
 
-Entry gates, writer contracts, claims, agent write scope, and the closed repair set are defined in the [lifecycle reference](skills/wf-setup/references/lifecycle.md).
+`planned` means grooming is complete. A human moves the item to
+`ready_for_work` before ordinary development may claim it. `wf-auto` is the
+explicit unattended exception and records its forced approval transition.
 
-## Setup flow
-
-```mermaid
-flowchart TD
-    start(["wf-setup"]) --> validate["run repository contract validator"]
-    validate --> valid{"contract valid?"}
-    valid -->|no| inventory["inventory existing instructions,<br/>docs, skills, CI, and runbooks"]
-    inventory --> draft["draft reusable, ordered mappings"]
-    draft --> interview["interview only for gaps,<br/>ambiguity, access, and safety"]
-    interview --> validate
-    valid -->|yes| configure["configure plugin, lifecycle, and hooks"]
-    configure --> doctor["run readiness diagnostics"]
-    doctor --> done([Setup complete])
-```
-
-`wf-setup` is the only router allowed to continue temporarily after contract validation fails, and only to construct, migrate, or repair the contract. It maps suitable existing assets directly, never creates wrappers merely for naming or metadata, never guesses operational guidance, and cannot finish until strict validation succeeds.
+See [WORKFLOW_SKILLS.md](WORKFLOW_SKILLS.md) for the layer model and the
+[lifecycle reference](skills/wf-setup/references/lifecycle.md) for mechanics.

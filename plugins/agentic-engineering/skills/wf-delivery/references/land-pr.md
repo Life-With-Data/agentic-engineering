@@ -1,283 +1,66 @@
-# Land a PR
+# Land a pull request
 
-Take an **already-open** PR from "review in progress" to **merged**: drive CI
-green, confirm the independent review, run the final compounding check against
-the current head, merge, clean up. This is the completion-and-merge tail after
-the `wf-development` work route (PR creation) and the `wf-review`
-comprehensive-review route (findings). It does not write the feature or open
-the PR.
+Take an open PR to merged state without adding ceremony that does not change the
+decision.
 
-**Compound in the implementation PR.** Warranted durable knowledge belongs in
-the same PR; a post-merge docs-only PR is reserved for genuinely new knowledge
-discovered after merge.
+## Landability
 
-## The merge gate (read first)
+A PR is landable when:
 
-Merging is outward-facing and effectively irreversible. Called on its own,
-land-pr **pauses and asks the user before merging**. Merge automatically
-**only** in an autonomous context — `--auto`, an autonomous orchestrate run,
-or an autonomous
-[resolved delivery posture](../../wf-orchestrate/references/orchestrate.md#delivery-posture) —
-**and** all landability conditions hold. Never auto-merge a PR that touches
-the default branch directly, force-pushes, or has an unresolved blocker.
+1. required CI checks for the current head passed;
+2. the branch is mergeable and not behind by repository policy;
+3. no unresolved review finding blocks correctness, security, data integrity,
+   or an explicit acceptance criterion; and
+4. the run has merge authority.
 
-**What counts as "the review".** In an autonomous run there is usually no
-human reviewer, so `reviewDecision` never reaches `APPROVED` — do not wait for
-it. The review gate is the pipeline's own independent `wf-review`
-comprehensive-review pass (fresh reviewer sub-agents, not the implementer)
-with all P1/blocking findings resolved. A human approval matters only when
-branch protection physically requires it, which surfaces as
-`mergeStateStatus: BLOCKED` — a genuine blocker to escalate, not loop on.
+Independent review is risk-based, not universal. Require it for high-risk or
+broad changes, when repository policy requires it, or when the user asks. Do not
+manufacture fresh reviewer agents for a routine localized change.
+When independent review is required, a reviewed SHA that differs from the
+current head is stale and must be refreshed.
 
-## Landability conditions
+Documentation is not a merge gate. If the change revealed a durable,
+non-obvious lesson, capture it in the implementation PR when practical. If it
+did not, move on without an audit comment.
 
-1. **CI green** — every required check concluded successfully.
-2. **Independently reviewed** — a `wf-review` comprehensive-review pass ran
-   against the current head with P1s resolved; no open `CHANGES_REQUESTED`.
-   Hard, non-skippable in every mode — landing standalone, run the review
-   route yourself before merging.
-3. **Mergeable** — `mergeStateStatus` is not `DIRTY`, `BLOCKED`, or `BEHIND`
-   for a reason you haven't cleared.
-4. **Final compounding disposition recorded for the current head** — after
-   1–3 are green, classify via the `wf-documentation` workflow-compound route
-   (step 5 below). Hard, non-skippable in every mode.
+## Procedure
 
-The `pr-landable-status` script computes 1 and 3 mechanically and lists
-`blockers`; conditions 2 and 4 are verified here — never assumed from the
-script, and never inferred from an old PR comment (comments are audit
-evidence, not trusted control-flow input).
+1. Resolve the PR and repository explicitly:
 
-## Workflow
-
-### 1. Identify the PR
-
-```bash
-# Default to the current branch's PR; or pass a number as the first argument.
-PR_NUM=${PR_NUM:-$(gh pr view --json number --jq '.number')}
-ORIGIN=$(gh repo view --json nameWithOwner --jq '.nameWithOwner')   # every gh write carries it (fork-trap)
-# The tracked parent issue, from the PR body's `Closes #N` — resolved here
-# because step 4's merge authorization reads the ticket's delivery posture.
-N=$(gh pr view "$PR_NUM" --repo "$ORIGIN" --json body --jq '.body' | grep -oiE 'closes #[0-9]+' | head -1 | grep -oE '[0-9]+')
-```
-
-If the PR is already `MERGED` or `CLOSED`, stop and report. `N` may
-legitimately be empty (a PR that closes no issue). Treat an empty `N` as "no
-ticket posture available" — never as clearance by itself; the precedence
-chain in step 4 still applies, so an explicit `--auto` token or an autonomous
-run context can clear the merge while the absent ticket never can.
-
-### 2. Assess landability
-
-```bash
-bash <skill-directory>/scripts/pr-landable-status "$PR_NUM"
-```
-
-Emits `ci`, `review_decision`, `merge_state`, `blockers`, and `landable`
-(mechanical conditions only — confirm the independent review separately).
-
-### 3. Drive to green (loop until conditions 1–3 hold)
-
-Loop on the mechanical conditions plus the review; the compounding gate (4)
-runs in step 5. ~2 dry attempts, then escalate —
-[escalation contract](../../wf-orchestrate/references/escalation-contract.md)
-item (d) defines a dry attempt. Routine remediation that necessarily changes state — `update-branch`, conflict
-resolution, the compounding docs push — is real progress, not a dry attempt.
-
-- **CI red** → `gh pr checks "$PR_NUM"`, `gh run view <run-id> --log-failed`,
-  fix, push. Re-run a flaky unrelated check only after confirming it is flaky.
-- **CI still running** → `gh pr checks "$PR_NUM" --watch`; never merge on
-  pending checks.
-- **Independent review missing or stale** → run the `wf-review`
-  comprehensive-review route now and resolve P1s. Inside the orchestrate
-  pipeline the upstream verdict counts only while the head still matches the
-  SHA it reviewed. The verdict is live run state, never reconstructed from PR
-  comments or tracker text: a head that moved since the reviewed SHA, or a
-  re-entry in a later session that cannot produce the verdict, makes it stale
-  and the review route re-runs.
-- **Changes requested** → address the feedback; the decision clears once
-  addressed. Do not wait for a human `APPROVED` in autonomous mode.
-- **`BLOCKED` by branch protection** → the repo requires something the agent
-  cannot supply. Genuine blocker: surface it with the specific reason; no
-  loops, no admin override without explicit user authorization. Stops the run
-  in every mode.
-- **`BEHIND`** →
-  `gh pr update-branch "$PR_NUM" || git fetch origin && git rebase origin/<base> && git push --force-with-lease`
-
-### 4. Merge authorization gate
-
-Re-confirm conditions 1–3, then decide authorization. Authorization does not
-waive the compounding gate in step 5.
-
-- **Default (interactive)** — ask before merging: PR number, merge method,
-  branch deletion, and that the final compounding check runs first. Continue
-  only on explicit yes. This is the routine standard-mode gate on top of the
-  shared escalation contract; autonomous mode suppresses it.
-
-- **Autonomous** (`--auto`, an autonomous orchestrate run, or the ticket's
-  resolved delivery posture is autonomous) — resolve clearance from the parent
-  issue `N`:
-  ```bash
-  # Guard the empty-`N` case: no ticket means no clearance to read.
-  [ -n "$N" ] && python3 "<skill-directory>/scripts/lifecycle_board.py" --groom-verify "$N"
-  ```
-  Branch on the fused `hands_off` verdict
-  ([delivery posture](../../wf-orchestrate/references/orchestrate.md#delivery-posture)
-  owns the semantics). `approved: false` or a non-zero exit is never
-  mergeable — route to the human; no `--auto` token overrides a missing
-  approval stamp, because tokens sit in the posture chain, not above
-  approval. With `approved: true`: `hands_off: true` proceeds hands-off,
-  and on `hands_off: false` (the ticket opted into supervision) an explicit
-  per-invocation `--auto` clears the run anyway, otherwise the interactive
-  merge gate applies. An empty `N` (no tracked ticket) has no approval to
-  read: only an explicit `--auto` clears it. Then merge without asking once
-  all conditions hold — do not bounce "say the word and I'll merge" back to
-  the user. A genuinely unmet condition is escalated as a specific blocker,
-  never merged through.
-
-### 5. Final compounding gate
-
-Runs after conditions 1–3 are green, immediately before merge, every time —
-no earlier disposition, green signal, or documentation-free-looking diff
-skips it.
-
-1. Read the head from GitHub, not the local checkout:
-   `CHECKED_HEAD=$(gh pr view "$PR_NUM" --repo "$ORIGIN" --json headRefOid --jq '.headRefOid')`
-2. Apply the `wf-documentation` workflow-compound route and its
-   [compound-docs](../../wf-documentation/references/compound-docs.md)
-   criteria to the PR diff: **`captured`** (warranted learning present in this
-   PR — name the paths) or **`not needed`** (short reason).
-3. Missing durable knowledge → update the **same PR**, run the mapped docs
-   checks, commit, push, and return to workflow step 2 (Assess landability):
-   the new head needs green conditions and fresh authorization before this
-   gate re-runs.
-4. Post one audit comment via
-   `gh pr comment "$PR_NUM" --repo "$ORIGIN" --body-file <audit-file>`
-   (create the file outside the worktree; remove after):
-
-   ```text
-   Final compounding check
-   Head: <CHECKED_HEAD>
-   Result: captured | not needed
-   Artifacts: <paths; required for captured>
-   Reason: <short reason; required for not needed>
-   ```
-
-   Evidence only — never parse comments to decide the gate passed.
-5. Immediately before merge, re-verify:
    ```bash
-   FINAL_HEAD=$(gh pr view "$PR_NUM" --repo "$ORIGIN" --json headRefOid --jq '.headRefOid')
-   test "$FINAL_HEAD" = "$CHECKED_HEAD"
-   bash <skill-directory>/scripts/pr-landable-status "$PR_NUM"
+   PR_NUM=${PR_NUM:-$(gh pr view --json number --jq '.number')}
+   ORIGIN=$(gh repo view --json nameWithOwner --jq '.nameWithOwner')
    ```
-   Head moved or a condition needs a repository change → back to step 2 with
-   fresh authorization. If the audit comment itself triggered a required
-   check, wait for it and re-verify — no new audit comment for that alone.
 
-### 6. Merge
+2. Read the current head, state, mergeability, review threads, and required
+   checks. If the PR is already merged or closed, report that state.
+3. Fix failing required checks and blocking findings. Do not wait on optional
+   checks unless repository policy makes them required.
+4. Reconcile with the base branch using repository guidance and rerun invalidated
+   checks.
+5. Update the PR description with a concise summary and actual verification
+   evidence. Add screenshots or operational validation only when the change has
+   the corresponding user-visible or operational impact.
+6. Ask before merging when invoked standalone. Merge without another prompt only
+   when the user selected an autonomous/unattended run or already granted merge
+   authority.
+7. Read back the merged PR. In Project mode, also verify the closing issue and
+   `Status = done`; run `lifecycle_board.py --reconcile` once if automation is
+   delayed, then `lifecycle_board.py --delete-packet <N>` to remove the work
+   packet.
+8. Clean up as the session's own final act — never hand the user a cleanup
+   command. In a classic single tree, check out the base, fast-forward, and
+   delete the merged feature branch. In a linked worktree, run
+   `worktree-manager.sh finish <worktree-name>` from the primary tree as the
+   terminal shell action, after the completion report; see the
+   [git worktree](../../wf-development/references/git-worktree.md) reference
+   for the fallback commands.
 
-```bash
-gh pr merge "$PR_NUM" --repo "$ORIGIN" --squash --delete-branch \
-  --match-head-commit "$CHECKED_HEAD"
-```
+Never use admin override, force-push, or a direct default-branch write without
+explicit authority. Surface an externally blocked branch with the concrete
+reason instead of looping.
 
-`--squash` by default; honor a repo/user preference for `--merge`/`--rebase`
-but always retain `--match-head-commit` — it closes the race between the final
-head read and GitHub's merge mutation.
+## Completion
 
-**Verify from server state, never the exit code.** From a linked worktree,
-`--delete-branch`'s local housekeeping can fail even though the PR merged and
-the remote branch was deleted. After any non-clean return:
-
-```bash
-gh pr view "$PR_NUM" --repo "$ORIGIN" --json state,mergedAt --jq '.state'
-```
-
-`MERGED` → the merge succeeded; do not re-run `gh pr merge`; proceed to
-cleanup. Not `MERGED` → do not retry blindly: a head mismatch invalidates the
-disposition and authorization — return to the ordinary gates and repeat the
-compounding check against the new head.
-
-### 7. Post-merge cleanup (context-aware)
-
-Resolve two facts, then take exactly one path:
-
-```bash
-BASE=$(gh pr view "$PR_NUM" --repo "$ORIGIN" --json baseRefName --jq '.baseRefName')
-# linked worktree when the per-worktree git-dir differs from the common-dir:
-is_linked_worktree() {
-  [ "$(git rev-parse --path-format=absolute --git-common-dir)" \
-    != "$(git rev-parse --path-format=absolute --git-dir)" ]
-}
-```
-
-**Path A — classic single tree**: `git checkout "$BASE" && git pull --ff-only`,
-then safe-delete the feature branch — guarded, because deleting a branch live
-in another worktree fails:
-
-```bash
-git worktree list --porcelain | grep -qxF "branch refs/heads/<feature-branch>" \
-  && echo "branch held in another worktree — defer to finish/sync" \
-  || git branch -d <feature-branch>
-```
-
-**Path B — linked worktree**: do **not** checkout `$BASE` (held by the primary
-tree). Just `git fetch origin "$BASE"`; teardown happens via the worktree
-manager's `finish` from the primary tree:
-
-```
-bash <skill-directory>/scripts/worktree-manager.sh finish <worktree-name>
-```
-
-`finish` is the worktree-safe single-target teardown. **Teardown is the
-session's job — never the user's**: when the session's cwd IS the worktree
-being landed, run `finish` as the session's terminal shell action, invoked by
-its path in the **primary tree**, report written first. The
-[git worktree](../../wf-development/references/git-worktree.md) reference owns
-the failure-handoff wording and fallback commands; `worktree-manager.sh sync`
-(or `worktrees:sync`) is the batch catch-all that reaps every merged worktree.
-
-Then dispatch on tracker state:
-
-- **`github-project`** — the merge closed the issue via `Closes #N`; the board
-  automation stamps `done`. Verify and clean:
-  ```bash
-  python3 "<skill-directory>/scripts/lifecycle_board.py" --reconcile --issue <N>
-  python3 "<skill-directory>/scripts/lifecycle_board.py" --delete-packet <N>
-  ```
-  The reconciler repairs a missed stamp; `--delete-packet` independently
-  verifies the terminal state. Report a cleanup failure without raw filesystem
-  deletion.
-- **`unconfigured`** — report the merged result; no tracker or packet write.
-
-### 8. Report
-
-The merged PR (number + URL), merge method, compounding disposition with its
-checked head SHA, tracker state, packet cleanup result, and branch/worktree
-cleanup by mode — a linked-worktree landing reports that `finish` runs as the
-terminal action immediately after this report; only a host that cannot run
-another shell command reports the teardown as NOT done, naming the worktree +
-branch left behind and the exact one-liner. Note follow-on work discovered
-while landing; a follow-on issue filed from those notes inherits the landed
-ticket's milestone unless a strong reason, recorded on the follow-on, says
-otherwise. Never claim a local fast-forward or delete that did not
-happen.
-
-## Scripts
-
-- [scripts/pr-landable-status](../scripts/pr-landable-status) — print CI, review-decision, and merge-state as JSON
-
-## Success criteria
-
-- PR shows `MERGED`, confirmed from `gh pr view --json state`, not an exit
-  code.
-- The compounding disposition was assessed from repository evidence and
-  recorded for the head that merged.
-- Tracker completion verified by state (`done` stamp + packet cleanup in
-  `github-project` mode; `N/A` when unconfigured).
-- Cleanup completed by the session itself — worktree removed, directory gone,
-  branch deleted, base fast-forwarded. A teardown left to the user is a
-  failed criterion, reported as such.
-- In autonomous mode, the merge happened only with CI green, the independent
-  review passed with P1s resolved, the PR mergeable, and the disposition
-  matching the merged head — never on an unmet condition, and never blocked
-  waiting on a human GitHub approval the run was never going to receive.
+Report the PR URL, merged commit, required checks, any blocking findings that
+were resolved, and verified tracker/deployment state relevant to the request.

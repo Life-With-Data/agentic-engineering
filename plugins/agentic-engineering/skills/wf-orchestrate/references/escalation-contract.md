@@ -103,9 +103,5 @@ escalation survive a session ending, a machine rebooting, or a different agent
 picking the item up later — the state lives on the issue, not in a
 conversation.
 
-A chat channel — Slack, email, or any other transport — may **carry** the
-question to a human, but it is transport only. No chat integration may become
-a second writer of lifecycle state: the tracker comment and the blocker edge
-remain the sole source of truth regardless of which channel a human answers
-through. (`wf-auto` posts its end-of-run retrospective to a chat channel, which
-is exactly this: transport for findings, never a writer of lifecycle state.)
+A chat channel may carry the question, but it is transport only. The tracker
+comment and blocker edge remain the source of truth.
