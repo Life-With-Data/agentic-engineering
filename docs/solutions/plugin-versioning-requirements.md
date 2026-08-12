@@ -25,10 +25,10 @@ release-please composes its standing release PR. Contributors must:
 
 1. **Use a Conventional Commit type prefix in the PR title** (`feat:`, `fix:`,
    `docs:`, `refactor:`, `chore:`, `perf:`) — enforced in CI by
-   `.github/workflows/pr-title.yml`. This is what drives MINOR (`feat`) vs.
-   PATCH (`fix`, `perf`, `docs`) vs. no-release (`chore`, `refactor`, `test`,
-   `ci`) — `docs` releases because these plugins ship markdown as their payload;
-   see "Forcing a release" below.
+   `.github/workflows/pr-title.yml`. This drives MINOR (`feat`) vs. PATCH
+   (everything else). No type is hidden: every conventional type is a visible
+   `changelog-sections` entry, so every merged PR releases. See "Always
+   release" below.
 2. **NOT hand-edit** `plugin.json`'s version, any of its mirrors, or
    `CHANGELOG.md` — those are release-please's outputs. A manual edit causes
    version drift: `.github/.release-please-manifest.json` (the last-released
@@ -41,14 +41,26 @@ release-please composes its standing release PR. Contributors must:
    tables must match the filesystem — `tests/plugin-consistency.test.ts`
    enforces this regardless of how the version itself gets bumped.
 
-## Forcing a release for an under-typed commit
+## Always release (2026-08-12)
 
-Release-please only opens a release PR when a package has **user-facing**
-commits — commits whose type maps to a non-hidden `changelog-sections` entry.
-Both packages here ship markdown as their payload, so `docs` is configured
-visible (`Documentation`) and a docs-only change to a skill releases as a patch.
-`chore`, `refactor`, `test`, `build`, `ci`, and `style` stay hidden and never
-release on their own.
+Release-please skips a package when it sees no **user-facing** commits — commits
+whose type maps to a non-hidden `changelog-sections` entry, on a path inside the
+package. Both gates produced false negatives: a `refactor:`/`chore:` PR shipped
+nothing, and a converter change entirely under `src/` shipped nothing because
+the plugin package was path-scoped to `plugins/agentic-engineering` (#434).
+
+Both gates are now removed for the `agentic-engineering` package:
+
+- **No hidden types.** Every conventional type (`refactor`, `chore`, `test`,
+  `build`, `ci`, `style` included) is a visible changelog section, so any merged
+  PR is user-facing and cuts at least a patch.
+- **Package path is the repo root** (`"."` in the config and manifest), so
+  commits anywhere — `src/`, `docs/`, `tests/`, `plugins/` — count. The
+  changelog and version files are still the plugin's, via `changelog-path` and
+  root-relative `extra-files`.
+
+`plugins/marketing` keeps its own path scope (it is a separate plugin) but also
+has no hidden types.
 
 Two mechanics that look like they force a release but do not:
 
@@ -60,11 +72,6 @@ Two mechanics that look like they force a release but do not:
 - **A `Release-As:` commit footer** is attributed to a package by file path. In
   this multi-package manifest a footer on a commit touching nothing under
   `plugins/<package>/` is dropped.
-
-So the way to ship a change that landed under a hidden type is to land a
-user-facing commit under that package's path — or, as with `docs` here, make the
-type user-facing in `changelog-sections`, which reclassifies the already-merged
-commits on the next run.
 
 Worked example — 9.1.0 (2026-08-10). #419 landed workflow policy under `docs:`
 and never shipped. `release-as: 9.1.0` alone did nothing (`No user facing
