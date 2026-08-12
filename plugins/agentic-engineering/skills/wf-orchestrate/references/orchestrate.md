@@ -22,7 +22,9 @@ arguments override that preference for the current run.
 
 Use the request, repository state, and tracker state. In Project mode,
 `lifecycle_board.py --groom-verify <N>` reports whether the item is groomed and
-approved, plus its posture. A `planned` item routes to a human for the
+approved, plus its posture. For unattended execution, branch on its single
+fused `hands_off` field — the engine owns that conjunction; never reassemble
+it from the component fields or raw labels. A `planned` item routes to a human for the
 `ready_for_work` stamp; only an approved item is ready to claim. Posture and
 explicit invocation arguments affect interaction style, not this approval
 boundary. `wf-auto` owns the explicit unattended exception.

@@ -46,7 +46,15 @@ did not, move on without an audit comment.
    authority.
 7. Read back the merged PR. In Project mode, also verify the closing issue and
    `Status = done`; run `lifecycle_board.py --reconcile` once if automation is
-   delayed.
+   delayed, then `lifecycle_board.py --delete-packet <N>` to remove the work
+   packet.
+8. Clean up as the session's own final act — never hand the user a cleanup
+   command. In a classic single tree, check out the base, fast-forward, and
+   delete the merged feature branch. In a linked worktree, run
+   `worktree-manager.sh finish <worktree-name>` from the primary tree as the
+   terminal shell action, after the completion report; see the
+   [git worktree](../../wf-development/references/git-worktree.md) reference
+   for the fallback commands.
 
 Never use admin override, force-push, or a direct default-branch write without
 explicit authority. Surface an externally blocked branch with the concrete
