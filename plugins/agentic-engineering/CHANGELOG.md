@@ -5,6 +5,18 @@ All notable changes to the agentic-engineering plugin will be documented in this
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [9.3.1](https://github.com/Life-With-Data/agentic-engineering/compare/agentic-engineering-v9.3.0...agentic-engineering-v9.3.1) (2026-08-12)
+
+
+### Code Refactoring
+
+* streamline workflow skills ([#435](https://github.com/Life-With-Data/agentic-engineering/issues/435)) ([665006c](https://github.com/Life-With-Data/agentic-engineering/commit/665006cac77b1e58fa1103dbf554b6309b096435))
+
+
+### Miscellaneous Chores
+
+* **release:** always cut a release for merged commits ([#436](https://github.com/Life-With-Data/agentic-engineering/issues/436)) ([611d201](https://github.com/Life-With-Data/agentic-engineering/commit/611d201b20b58a2fee50b06b657fa9292a219e95))
+
 ## [9.3.0](https://github.com/Life-With-Data/agentic-engineering/compare/agentic-engineering-v9.2.0...agentic-engineering-v9.3.0) (2026-08-11)
 
 
