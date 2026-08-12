@@ -33,13 +33,6 @@ Stop on contract failure; read primary targets first, supporting targets only as
 Load only the references needed for the affected interfaces.
 Platform-specific device and build mechanics come from repository capability targets.
 
-## Sub-agent delegation
-
-Delegate per-unit stage work to focused sub-agents; the orchestrator retains
-verification and every tracker, board, and PR write. Roles, dispatch, model
-selection, and the inline fallback:
-[sub-agent delegation](../wf-orchestrate/references/subagent-delegation.md).
-
 ## Evidence ladder
 
 Prefer the cheapest test that can falsify the claim, then add broader evidence in proportion to risk:
@@ -47,13 +40,15 @@ Prefer the cheapest test that can falsify the claim, then add broader evidence i
 1. Focused unit or contract checks.
 2. Cross-layer integration checks.
 3. User-visible browser, device, or API behavior.
-4. Full repository-required verification.
+4. Full repository-required verification before delivery.
 
 Report commands, outcomes, skipped checks, and remaining uncertainty. Compilation alone is not behavioral proof.
 
-For every bug fix, add regression protection and rerun the original reproduction from grooming after the change. A passing replacement test without the original reproduction is insufficient evidence.
+For a bug fix, add regression protection when it materially prevents recurrence
+and rerun the original reproduction when available.
 
-Testing ends with a ready/not-ready verdict and its evidence, returned to the caller (`wf-orchestrate` in the standard pipeline). It never dispatches review or delivery itself.
+Testing ends with a ready/not-ready verdict and concise evidence. It may run
+inside development; a separate testing handoff is not required.
 
 ## Wrong-layer recovery
 

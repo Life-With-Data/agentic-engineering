@@ -19,7 +19,14 @@ Before committing ANY changes:
 
 The plugin has exactly nine public workflow-policy skills, all using the `wf-` prefix.
 
-Treat that set as closed. Do not add another public skill for a narrower procedure. (`wf-auto` is top-level on purpose rather than a route inside `wf-orchestrate`: it is the one entry point where the agent holds every approval, and that authority should be visible in the skill list, not buried in a flag.) Add it as a progressive-disclosure reference under the owning router. Cross-stage policy (routing, delivery posture, escalation, sub-agent delegation) belongs to `wf-orchestrate` references; stage-internal procedure belongs to the stage router. Repository-specific operational knowledge is not part of this plugin: consumer repositories provide it through the fixed root `AGENTS.md` capability contract and existing repository-owned skills or documentation. See [WORKFLOW_SKILLS.md](WORKFLOW_SKILLS.md).
+Treat that set as closed. Do not add another public skill for a narrower
+procedure. `wf-auto` stays top-level because unattended execution should be an
+explicit choice and is the sole exception to the human `ready_for_work`
+approval boundary. Add narrower procedures as progressive-disclosure references
+under the owning router. Cross-stage routing and escalation belong to
+`wf-orchestrate`; stage-internal procedure belongs to the stage router.
+Repository-specific mechanics come from the consumer repository's root
+`AGENTS.md` capability contract. See [WORKFLOW_SKILLS.md](WORKFLOW_SKILLS.md).
 
 ## Skill Compliance Checklist
 

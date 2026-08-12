@@ -89,14 +89,7 @@ Then run the full local validation suite to catch any regressions:
 
 ```bash
 git add <affected files>
-git commit -m "fix: resolve CI failure in <check-name>
-
-- [describe what failed and why]
-- [describe the fix]
-
-🤖 Generated with [Claude Code](https://claude.com/claude-code)
-
-Co-Authored-By: Claude <noreply@anthropic.com>"
+git commit -m "fix: resolve CI failure in <check-name>"
 
 git push
 ```
@@ -159,5 +152,5 @@ If it fails again with the same error, it is not flaky — proceed with the fix 
 
 ## Next Step
 
-Once all checks pass, return to the `wf-delivery` landing route to drive the PR
-through the independent review, the final compounding check, and merge.
+Once all required checks pass, return to the `wf-delivery` landing route to
+resolve any remaining blocking findings and merge when authorized.

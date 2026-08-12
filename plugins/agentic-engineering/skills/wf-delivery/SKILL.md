@@ -7,7 +7,7 @@ description: Workflow policy for CI repair, release preparation, pull requests, 
 
 Layer: Workflow policy
 
-Owns: preflight and the final pre-merge compounding gate.
+Owns: preflight, pull-request state, and merge execution.
 
 Requires repository capabilities: `test-execution`, `delivery`.
 
@@ -32,27 +32,21 @@ Require `infrastructure-operations` and `security-and-access` before any deploym
 Documentation-only delivery is routed through `wf-documentation`.
 Artifact transports and release-media tooling come from repository capability targets.
 
-## Sub-agent delegation
-
-Delegate per-unit stage work to focused sub-agents; the orchestrator retains
-verification and every tracker, board, and PR write. Roles, dispatch, model
-selection, and the inline fallback:
-[sub-agent delegation](../wf-orchestrate/references/subagent-delegation.md).
-
 ## Delivery gates
 
-1. Confirm testing and review evidence exists for the current head; absent evidence is a blocker returned to the caller, never a gate this stage runs itself.
+1. Confirm repository-required checks exist for the current head; run missing
+   local checks when practical instead of bouncing the work to another stage.
 2. Reconcile the branch with its target using repository guidance.
 3. Run the repository's delivery checks.
-4. Resolve CI and review threads.
+4. Resolve failing required CI and blocking review findings.
 5. Create or update the PR with accurate evidence.
-6. Immediately before merge, perform the final compounding disposition against
-   the current PR head and record its audit evidence. This gate is mandatory
-   even when every CI and review signal is already green.
-7. Merge only when policy and repository gates pass.
-8. Deploy or verify production only through declared capabilities.
+6. Merge only when policy and repository gates pass and the run has merge
+   authority.
+7. Deploy or verify production only through declared capabilities.
 
-Delivery is complete only when the issue is closed and the board reads `Status = done`, verified by read-back — not when the merge command returns. The [land route](references/land-pr.md) owns that mechanics.
+In Project mode, verify issue/board completion after merge. Otherwise, verify the
+PR or release state relevant to the request. The [land route](references/land-pr.md)
+owns the mechanics.
 
 ## Wrong-layer recovery
 

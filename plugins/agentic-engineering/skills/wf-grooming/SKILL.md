@@ -31,7 +31,9 @@ python3 <skill-directory>/scripts/repository-context.py \
   --require bug-reproduction
 ```
 
-Production or integration failures also require `observability`. A bug remains un-groomed until the reported behavior is reproduced through repository guidance. Inability to reproduce is a blocker to record, not permission to plan a speculative fix.
+Production or integration failures also require `observability`. Reproduce bugs
+when practical; if reproduction is unavailable, record the uncertainty and plan
+the smallest diagnostic or evidence-backed change.
 
 ## Route the request
 
@@ -48,23 +50,16 @@ Production or integration failures also require `observability`. A bug remains u
 
 Load only the references needed for the active route.
 
-## Sub-agent delegation
-
-Delegate per-unit stage work to focused sub-agents; the orchestrator retains
-verification and every tracker, board, and PR write. Roles, dispatch, model
-selection, and the inline fallback:
-[sub-agent delegation](../wf-orchestrate/references/subagent-delegation.md).
-
 ## Completion boundary
 
-Grooming is complete only when the request is unambiguous, acceptance and validation criteria are explicit, repository capabilities have been consulted, and the work item is ready for development. For bugs, the reproduction evidence is mandatory. Grooming never claims implementation work, edits product code, or dispatches the next stage — it reports completion and returns control to its caller (`wf-orchestrate` in the standard pipeline).
+Grooming is complete when the next implementation step is clear, success can be
+checked, and material unknowns are visible. Match detail to risk: a small change
+does not need an enterprise-style plan or issue decomposition.
 
-In Project mode, grooming is complete only when `--groom-verify <N>` passes,
-where the `--decompose` write is the attestation, not the prose judgment; the
-[plan route](references/workflows-plan.md) owns that mechanics. In an
-unconfigured repository (`no_board`), make no tracker claim.
-
-Groomed is not claimable. `planned` is grooming's ceiling, not `wf-development`'s floor: the groomed PARENT becomes claimable only once a human stamps `ready_for_work` — an approval no agent path performs, detailed in the `wf-setup` [lifecycle reference](../wf-setup/references/lifecycle.md#agent-write-scope-and-the-approval-seam). End a grooming run at `planned` by reporting that the item awaits that stamp, never by claiming it is ready for development. Its sub-issues are task units and must never be described individually as ready for development, and a sub-issue's board Status is never a readiness signal.
+In Project mode, `--groom-verify <N>` confirms the tracked plan. Grooming stops
+at `planned`; a human moves the item to `ready_for_work` before development may
+claim it. Grooming never writes that approval stamp. In an unconfigured
+repository (`no_board`), make no tracker claim.
 
 ## Wrong-layer recovery
 

@@ -1,6 +1,6 @@
 ---
 name: wf-development
-description: Workflow policy for implementing planned engineering changes, diagnosing root causes, fixing reproduced bugs, refactoring, and building APIs and interfaces. Use when code or configuration must change after grooming. This skill owns implementation sequencing and completion evidence; cross-stage routing belongs to wf-orchestrate and repository mechanics to repository capability targets.
+description: Workflow policy to implement, diagnose, refactor, and verify engineering changes. Use when code or configuration must change. Start from a clear request or groomed item; do not require a separate planning ceremony for small, well-scoped work.
 ---
 
 # Development workflow
@@ -24,7 +24,9 @@ python3 <skill-directory>/scripts/repository-context.py \
 
 Stop on contract failure; read primary targets first, supporting targets only as needed.
 
-This skill implements one approved work item. It starts only after grooming produced the plan and the item was stamped approved — by a human on every path but `wf-auto`, which holds that approval itself; it never routes tickets, decides delivery posture, or drives other stages — `wf-orchestrate` owns all of that.
+Implement one clear work item. In Project mode, claim only a human-approved
+`ready_for_work` item; route `planned` items back for approval. Ask only when
+scope or an expensive product decision is genuinely unresolved.
 
 ## Route the request
 
@@ -39,20 +41,20 @@ Load only the selected reference. Framework, language, vendor, and tool-specific
 implementation techniques must come from mapped repository assets or separately
 installed capabilities; this workflow does not prescribe them.
 
-## Sub-agent delegation
-
-Delegate per-unit stage work to focused sub-agents; the orchestrator retains
-verification and every tracker, board, and PR write. Roles, dispatch, model
-selection, and the inline fallback:
-[sub-agent delegation](../wf-orchestrate/references/subagent-delegation.md).
+Use sub-agents only for independent parallel units or a valuable independent
+check. Small or tightly coupled changes stay inline.
 
 ## Completion contract
 
-Development ends when the change is implemented, repository gates pass, and the implementation evidence is reported. It never declares the work item done: testing, review, and delivery are separate stages that `wf-orchestrate` dispatches after this one returns. When invoked standalone, report completion and name `wf-testing` as the next stage without executing it.
+Development ends when the change is implemented and proportionate verification
+passes. Run focused tests while iterating and the repository-required gate before
+delivery. A separate testing or review stage is optional unless risk or the user
+calls for it.
 
 In Project mode, development owns exactly two board transitions, each real only as an observable postcondition: the claim holds only when `--claim <N>` returns proceed (`Status = in_progress` on the board), and development's exit is `--set-status <N> in_review` succeeding at PR open. Sub-issue progress is the `status:*` label track, not board Status; the [work route](references/workflows-work.md) owns that mechanics.
 
-A bug fix enters here only with reproduction evidence from `wf-grooming`. Development owns localization, root cause, and the fix; it must not edit a speculative fix before root cause is established.
+For a bug, reproduce when practical. If reproduction is unavailable, say what is
+unknown and prefer instrumentation or a narrow, evidence-backed fix over guessing.
 
 ## Wrong-layer recovery
 

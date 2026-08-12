@@ -25,13 +25,10 @@ lifecycle field or synchronization process.
 
 1. `stub` — an issue exists but is not groomed.
 2. `brainstormed` — requirements explored, product questions resolved.
-3. `planned` — a trusted Project writer attests implementation-ready scope,
-   acceptance and validation criteria, dependencies, and security/provenance
-   handling. Grooming's ceiling: *groomed*, not yet *claimable*.
-4. `ready_for_work` — the groomed issue is approved for work; the work-entry
-   floor. A human stamps it on every path but `wf-auto`, which holds the
-   approval itself (see
-   [the approval seam](#agent-write-scope-and-the-approval-seam)).
+3. `planned` — the issue has implementation-ready scope and a way to verify it.
+   This is grooming's ceiling, not permission to start.
+4. `ready_for_work` — a human approved the groomed plan. This is the ordinary
+   work-entry floor.
 5. `in_progress` — the issue is claimed. A human principal claims by becoming
    its sole assignee; a GitHub App cannot be assigned, so its claim is carried
    by this stage alone and leaves no assignee.
@@ -39,15 +36,14 @@ lifecycle field or synchronization process.
 7. `done` — the work merged and the parent issue closed.
 8. `abandoned` — closed as not planned; an off-ramp, not a forward stage.
 
-`planned` is grooming's sole readiness attestation, never work-entry
-authority — `ready_for_work` is. A material scope or acceptance change after
-planning voids the attestation: a human (or a deliberate operator move) runs
+`planned` is grooming's readiness attestation; `ready_for_work` is the separate
+human approval. A material scope or acceptance change after approval voids
+both: an operator runs
 `--set-status <N> brainstormed` and the item is re-groomed before it can be
-approved again.
+worked again.
 
-Deployment is tracked by its native release evidence, and compounding is a
-pre-merge disposition owned by the documentation and delivery workflows —
-neither is a Status value.
+Deployment is tracked by its native release evidence. Optional compounding is
+owned by the documentation workflow. Neither is a Status value.
 
 ## One writer per transition
 
@@ -59,7 +55,7 @@ hand-assemble Project mutations.
 | -> `stub` | `wf-grooming` triage, repository maintenance, humans | Create issue, add to Project, `--set-status stub` |
 | -> `brainstormed` | `wf-grooming` brainstorm route; humans for post-planning regression | Complete the brainstorm / deliberate `--set-status brainstormed` |
 | -> `planned` | `wf-grooming` planning route | `--decompose` (attests via `Status = planned`) |
-| -> `ready_for_work` | A human, on every path but one; `wf-auto` is the sanctioned exception | Drag the card in the Projects UI, or `--set-status <N> ready_for_work --force` |
+| -> `ready_for_work` | Humans; `wf-auto` as the explicit unattended exception | Project UI drag / deliberate `--set-status ready_for_work --force` |
 | -> `in_progress` | `wf-development` work route | `--claim` |
 | -> `in_review` | `wf-development` work route | Open a closing PR, then `--set-status in_review` |
 | -> `done` | Built-in "Item closed" automation | Merge closes the issue through `Closes #N` |
@@ -77,27 +73,16 @@ The reconciler's repair set (`merged_close_missed`, `not_planned_close`,
 audit comment; report-only flags surface unsafe state without fighting a
 human's deliberate Project edit.
 
-## Agent write scope and the approval seam
+## Agent write scope
 
-Projects v2 access is project-level only — an identity that can set `Status`
-at all can set every option. "An agent may write `in_progress` but not
-`ready_for_work`" is not an expressible GitHub permission, so agents hold
-Projects **Write** and the *engine* withholds the seam: `--set-status`
-refuses agent-driven `ready_for_work` writes (`approval_required`) and
-refuses `in_review` while sub-issues are open (`open_sub_issues`); `--claim`
-refuses below the `ready_for_work` floor. `--force` makes a deliberate bypass
-a visible, logged act.
-
-Do not oversell this: a credential-holding agent that bypasses the engine with
-raw `gh project item-edit` can still write the field. The seam is a convention
-the engine enforces on every sanctioned path, not a permission boundary.
-
-There is exactly one approver role for `ready_for_work`, and on every path but
-one it is not an agent. The exception is deliberate and singular: `wf-auto`,
-the maximally autonomous entry point, holds the approval itself and forces the
-stamp, because invoking it *is* the human's authorization for that run. The
-seam still does its job there — `--force` is what makes the bypass an explicit
-act rather than a silent one, and no other route may take it.
+Projects v2 access is project-level only: an identity that can set `Status` can
+set every option. The engine still refuses `in_review` while sub-issues are open
+(`open_sub_issues`) so a parent cannot bury unfinished tracked work. It also
+refuses agent-driven `ready_for_work` writes (`approval_required`) and refuses
+`--claim` below that floor. Humans approve in the Project UI; `wf-auto` may use
+`--force` because unattended invocation explicitly grants that one exception.
+Otherwise `--force` is reserved for deliberate operator moves and
+reconciliation.
 
 ## Entry-gate pattern
 
@@ -112,13 +97,7 @@ is a pure state read). The result carries structured issue/Status state plus
 `verdict`, `route`, and `provenance`. Branch on the closed verdict set —
 `proceed`, `already_done`, `route_to_plan`, `repair_needed`, `sub_issue`,
 `no_board` — and follow the engine's `route`/`reason` rather than re-deriving
-stage. Two asymmetries are policy, not accident:
-
-- `--gate plan` on a `planned` item returns `already_done` with route
-  `approval`: planning is finished and the one remaining action — the human
-  `ready_for_work` stamp — belongs to no engine route. This is what keeps
-  `plan` and `work` from routing a `planned` item back and forth.
-- `claim_conflict` and `blocked` come only from `--claim`, never the gate.
+stage. `claim_conflict` and `blocked` come only from `--claim`, never the gate.
 
 Universal rules:
 
@@ -144,8 +123,10 @@ blocked-by checks, `in_progress` write) and refuses OPEN sub-issues
 cannot be assigned, the assignment step is skipped and the claim is confirmed
 on the Status write instead; every refusal is unchanged, but the claim is not
 visible to a concurrent claimer (see the ceiling recorded at `verb_claim`).
-`--set-status` owns item resolution and adds the item when absent. Branch and
-PR naming are secondary signals, never ownership authority.
+It also refuses every stage below `ready_for_work` with `approval_required`.
+`--set-status` owns item resolution and adds the item when absent, but refuses
+`ready_for_work` unless `--force` is supplied. Branch and PR naming are
+secondary signals, never ownership authority.
 
 ## Sub-issue status
 

@@ -151,8 +151,6 @@ class GateTest(unittest.TestCase):
     def test_work_on_planned_names_the_missing_approval(self) -> None:
         g = lb.evaluate_gate("work", "planned", True, "docs/plans/x.md", None)
         self.assertEqual(g.verdict, "route_to_plan")
-        # The message must be actionable: a groomed item needs approval, NOT
-        # another grooming pass.
         self.assertIn("approv", g.reason)
         self.assertNotIn("groom first", g.reason)
 
@@ -942,9 +940,7 @@ class SetStatusGateTest(unittest.TestCase):
 
 
 class SetStatusReadyForWorkGateTest(unittest.TestCase):
-    """#321: the ready_for_work seam gate — verb_set_status refuses to stamp
-    the human approval stage from an agent-driven path, unless force=True.
-    Mirrors SetStatusGateTest's in_review coverage exactly."""
+    """The ready_for_work seam requires a human or an explicit force."""
 
     def setUp(self) -> None:
         import tempfile
@@ -977,7 +973,6 @@ class SetStatusReadyForWorkGateTest(unittest.TestCase):
         with self.assertRaises(lb.BoardError) as caught:
             lb.verb_set_status(5, "ready_for_work", self.ctx, runner)
         self.assertEqual(caught.exception.code, "approval_required")
-        # Refused BEFORE any board write (no item-edit call).
         self.assertFalse(any(c[:2] == ["project", "item-edit"] for c in runner.calls))
 
     def test_force_bypasses_the_gate(self) -> None:
@@ -992,7 +987,6 @@ class SetStatusReadyForWorkGateTest(unittest.TestCase):
         self.assertEqual(result["stage"], "ready_for_work")
 
     def test_error_code_distinct_from_open_sub_issues_gate(self) -> None:
-        # The two seam gates must stay independently branchable by callers.
         runner = self._runner_through_fetch()
         with self.assertRaises(lb.BoardError) as caught:
             lb.verb_set_status(5, "ready_for_work", self.ctx, runner)
@@ -1186,11 +1180,6 @@ class ClaimVerbTest(_ClaimVerbFixture):
         self.assertFalse(any(c[:2] == ["project", "item-edit"] for c in runner.calls))
 
     def test_refuses_every_stage_below_ready_for_work_without_writing(self) -> None:
-        """The work-entry floor. Refusing the `ready_for_work` WRITE while leaving
-        the verb that ENTERS work unguarded would let --decompose -> planned ->
-        --claim reach in_progress with no human and no --force — the exact
-        self-approval loop the stage exists to close. Asserted by category over
-        every below-floor stage, and asserted to refuse BEFORE any write."""
         for stage in ("stub", "brainstormed", "planned"):
             with self.subTest(stage=stage):
                 runner = FakeRunner([
@@ -1201,7 +1190,7 @@ class ClaimVerbTest(_ClaimVerbFixture):
                 with self.assertRaises(lb.BoardError) as caught:
                     lb.verb_claim(5, self.ctx, runner)
                 self.assertEqual(caught.exception.code, "approval_required")
-                # Never touch an unapproved issue: no assignment, no board write.
+                # Never touch an unapproved issue: no assignment or board write.
                 self.assertFalse(any("--add-assignee" in c for c in runner.calls))
                 self.assertFalse(any(c[:2] == ["project", "item-edit"] for c in runner.calls))
 
@@ -1356,9 +1345,7 @@ class ReadyWorkVerbTest(unittest.TestCase):
         return _ok(json.dumps(_schema_fields_payload(stages)))
 
     def test_queries_the_ready_for_work_leg_not_planned(self) -> None:
-        """The query string IS the behavior: it is what makes --ready-work honor the
-        approval gate. Pin the exact --query value, or a silent revert to
-        `status:planned` reintroduces the unapproved queue with every test green."""
+        """The query string is the approval boundary for the ready queue."""
         items = [{"content": {"type": "Issue", "number": 7, "repository": "acme/widget",
                               "title": "i7"}}]
         runner = FakeRunner([
@@ -1370,7 +1357,6 @@ class ReadyWorkVerbTest(unittest.TestCase):
         ])
         result = lb.verb_ready_work(self.ctx, runner)
         self.assertEqual([r["number"] for r in result["items"]], [7])
-        # Non-empty proves the option exists: no schema read, 2-call budget intact.
         self.assertEqual(len(runner.calls), 2)
 
     def test_empty_result_on_an_unmigrated_board_raises_option_missing(self) -> None:
@@ -4703,9 +4689,6 @@ class GroomVerifyVerbTest(unittest.TestCase):
             self.assertEqual(out["warnings"], [])
 
     def test_approved_false_on_a_freshly_decomposed_item(self) -> None:
-        # #321: a groomed-but-not-yet-approved item (fresh --decompose, still
-        # at `planned`) is the normal, expected state — exit 0 with
-        # approved: false, not a verify failure.
         with tempfile.TemporaryDirectory() as d:
             out = self._run(Path(d), "planned", [])
             self.assertTrue(out["groomed"])
@@ -4725,11 +4708,6 @@ class GroomVerifyVerbTest(unittest.TestCase):
                     self.assertTrue(out["approved"])
 
     def test_approved_and_cleared_are_independent_fields(self) -> None:
-        # #321: `approved` (work-entry authority) and `cleared` (unattended-
-        # execution authority) are orthogonal — pin that a ticket can be
-        # approved without being cleared (a supervision label) and cleared
-        # without being approved (attested, unlabeled), asserting by the
-        # posture category, not a frozen literal.
         with tempfile.TemporaryDirectory() as d:
             approved_not_cleared = self._run(Path(d), "ready_for_work", [],
                                              labels=["posture:standard"])
@@ -4762,10 +4740,6 @@ class GroomVerifyVerbTest(unittest.TestCase):
                                      out["groomed"] and out["posture"] == "autonomous")
 
     def test_hands_off_requires_all_three_legs(self) -> None:
-        # #401: the fused dispatch verdict. True exactly when approved AND
-        # groomed AND posture resolves autonomous; each single missing leg
-        # yields false. The engine owns the conjunction so no consumer ever
-        # reassembles it from parts.
         with tempfile.TemporaryDirectory() as d:
             all_legs = self._run(Path(d), "ready_for_work", [])
             self.assertTrue(all_legs["hands_off"])
