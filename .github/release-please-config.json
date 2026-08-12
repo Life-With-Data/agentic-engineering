@@ -3,29 +3,29 @@
   "bootstrap-sha": "d099581c06fe80d47028bcd94a09d8b9321225e9",
   "include-component-in-tag": true,
   "packages": {
-    "plugins/agentic-engineering": {
+    ".": {
       "release-type": "simple",
       "package-name": "agentic-engineering",
-      "changelog-path": "CHANGELOG.md",
+      "changelog-path": "plugins/agentic-engineering/CHANGELOG.md",
       "extra-files": [
         {
           "type": "json",
-          "path": ".claude-plugin/plugin.json",
+          "path": "plugins/agentic-engineering/.claude-plugin/plugin.json",
           "jsonpath": "$.version"
         },
         {
           "type": "json",
-          "path": ".cursor-plugin/plugin.json",
+          "path": "plugins/agentic-engineering/.cursor-plugin/plugin.json",
           "jsonpath": "$.version"
         },
         {
           "type": "json",
-          "path": ".codex-plugin/plugin.json",
+          "path": "plugins/agentic-engineering/.codex-plugin/plugin.json",
           "jsonpath": "$.version"
         },
         {
           "type": "json",
-          "path": "/.claude-plugin/marketplace.json",
+          "path": ".claude-plugin/marketplace.json",
           "jsonpath": "$.plugins[0].version"
         }
       ],
@@ -56,33 +56,27 @@
         },
         {
           "type": "refactor",
-          "section": "Code Refactoring",
-          "hidden": true
+          "section": "Code Refactoring"
         },
         {
           "type": "style",
-          "section": "Styles",
-          "hidden": true
+          "section": "Styles"
         },
         {
           "type": "chore",
-          "section": "Miscellaneous Chores",
-          "hidden": true
+          "section": "Miscellaneous Chores"
         },
         {
           "type": "test",
-          "section": "Tests",
-          "hidden": true
+          "section": "Tests"
         },
         {
           "type": "build",
-          "section": "Build System",
-          "hidden": true
+          "section": "Build System"
         },
         {
           "type": "ci",
-          "section": "Continuous Integration",
-          "hidden": true
+          "section": "Continuous Integration"
         }
       ]
     },
@@ -129,33 +123,27 @@
         },
         {
           "type": "refactor",
-          "section": "Code Refactoring",
-          "hidden": true
+          "section": "Code Refactoring"
         },
         {
           "type": "style",
-          "section": "Styles",
-          "hidden": true
+          "section": "Styles"
         },
         {
           "type": "chore",
-          "section": "Miscellaneous Chores",
-          "hidden": true
+          "section": "Miscellaneous Chores"
         },
         {
           "type": "test",
-          "section": "Tests",
-          "hidden": true
+          "section": "Tests"
         },
         {
           "type": "build",
-          "section": "Build System",
-          "hidden": true
+          "section": "Build System"
         },
         {
           "type": "ci",
-          "section": "Continuous Integration",
-          "hidden": true
+          "section": "Continuous Integration"
         }
       ]
     }
