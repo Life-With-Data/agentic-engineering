@@ -69,9 +69,9 @@ Then, in Project mode:
 python3 "<skill-directory>/scripts/lifecycle_board.py" --set-status <N> in_review
 ```
 
-Development may continue directly into delivery for routine changes. Invoke a
-separate `wf-testing` or independent `wf-review` pass when risk, repository
-policy, or the user warrants it.
+Development always hands off to `wf-review` next; review scales its depth and
+lens selection to risk rather than being skipped. Invoke a separate `wf-testing`
+pass when risk, repository policy, or the user warrants it.
 
 ## Blockers
 

@@ -42,9 +42,10 @@ small stages inline instead of manufacturing handoffs.
 ## Completion
 
 The run is complete when the requested outcome is delivered, required repository
-checks pass for the shipped head, blocking findings are resolved, and external
-state changed by the run is verified. Use independent review and durable
-documentation when risk or a real reusable lesson warrants them.
+checks pass for the shipped head, `wf-review` has run with its blocking
+findings resolved, and external state changed by the run is verified. Add an
+independent reviewer for high risk and durable documentation when a real
+reusable lesson warrants it.
 
 ## Wrong-layer recovery
 

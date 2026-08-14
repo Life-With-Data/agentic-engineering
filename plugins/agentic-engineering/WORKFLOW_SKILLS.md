@@ -22,9 +22,10 @@ it to the repository mechanics it needs.
 ## Routing and delegation
 
 `wf-orchestrate` is the default end-to-end entry point. It resolves current
-state and uses only the specialist workflows the request and risk require.
-Stage skills can also be invoked directly, and small stage transitions may run
-inline instead of creating handoffs.
+state and uses only the specialist workflows the request and risk require,
+always routing through `wf-review` between development and delivery. Stage
+skills can also be invoked directly, and small stage transitions may run inline
+instead of creating handoffs.
 
 `wf-auto` is the explicit unattended entry point. It selects ready work when
 needed, suppresses routine check-ins, and delegates routing to
@@ -46,8 +47,9 @@ Routes may require more capabilities. Production diagnosis requires
 `security-and-access`.
 
 For bugs, reproduce when practical, then localize, fix, and verify the affected
-behavior. Use a separate testing or review pass when risk or missing evidence
-justifies it; do not require four handoffs for every bug.
+behavior. `wf-review` always follows before delivery, scaling its depth to risk;
+use a separate testing pass when risk or missing evidence justifies it. Do not
+require four handoffs for every bug.
 
 ## Granular capability references
 

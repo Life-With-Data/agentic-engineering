@@ -1,6 +1,7 @@
 # Workflow flows
 
-The nine public `wf-*` skills are a toolkit, not a mandatory pipeline.
+The nine public `wf-*` skills are a toolkit, not a mandatory pipeline, except
+that `wf-review` always runs between development and delivery.
 
 ## Workflow and repository context
 
@@ -21,17 +22,18 @@ flowchart TD
     auto["wf-auto: unattended run"] --> O
     O --> G["wf-grooming<br/>only when scope is unclear"]
     O --> D["wf-development<br/>implement and verify"]
+    D --> R["wf-review<br/>always runs; depth scales with risk"]
     O --> T["wf-testing<br/>extra evidence when needed"]
-    O --> R["wf-review<br/>risk-based independent review"]
-    O --> L["wf-delivery<br/>CI, PR, merge, release"]
+    R --> L["wf-delivery<br/>CI, PR, merge, release"]
     O --> K["wf-documentation<br/>requested docs or reusable lesson"]
     O --> done([Complete])
     S["wf-setup"] -. "adopts and configures" .-> O
 ```
 
-Small, clear work can move from development directly to delivery after required
-repository checks pass. Testing, review, and documentation remain available
-when risk or the request justifies them; they are not ceremonial stops.
+Small, clear work still moves from development through `wf-review` before
+delivery once required repository checks pass; review scales its depth to risk
+rather than being skipped. Testing and documentation remain available when risk
+or the request justifies them; they are not ceremonial stops.
 
 ## Bug flow
 
@@ -40,10 +42,8 @@ flowchart TD
     report([Unexpected behavior]) --> evidence["reproduce when practical"]
     evidence --> D["localize and fix"]
     D --> verify["regression and affected-boundary checks"]
-    verify --> risk{"high risk or broad?"}
-    risk -->|yes| R["independent review"]
-    risk -->|no| L["delivery"]
-    R --> L
+    verify --> R["wf-review<br/>depth scales with risk"]
+    R --> L["delivery"]
 ```
 
 If reproduction is unavailable, record the uncertainty and prefer a diagnostic
@@ -61,8 +61,9 @@ flowchart TD
     merge --> verify["read back PR and tracked state"]
 ```
 
-Independent review is required only by risk, repository policy, or user request.
-Durable documentation is added when there is an actual reusable lesson.
+`wf-review` always runs before delivery; an independent reviewer is added only
+for high-risk, security-sensitive, or broad changes. Durable documentation is
+added when there is an actual reusable lesson.
 
 ## Lifecycle state
 

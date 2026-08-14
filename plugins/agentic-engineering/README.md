@@ -11,7 +11,8 @@ Agents are organized into categories — Review, Research, Design, Workflow. The
 ## Workflow skills
 
 **`wf-orchestrate` is the default end-to-end path.** It selects only the
-specialist workflows the work needs; small transitions may stay inline.
+specialist workflows the work needs, always routing through `wf-review`
+between development and delivery; small transitions may stay inline.
 
 `wf-auto` is the unattended entry point: it selects ready work when none is
 named, explicitly self-stamps `ready_for_work` when grooming a named item,

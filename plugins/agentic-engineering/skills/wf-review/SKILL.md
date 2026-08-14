@@ -1,6 +1,6 @@
 ---
 name: wf-review
-description: Workflow policy to review code, architecture, security, plans, documents, or pull-request feedback in proportion to risk. Use for an explicit review or when an independent check would materially reduce delivery risk.
+description: Workflow policy to review code, architecture, security, plans, documents, or pull-request feedback in proportion to risk. This is the required post-development hop before delivery; it always runs, scaling scope and depth to risk rather than being skipped.
 ---
 
 # Review workflow
@@ -37,8 +37,9 @@ Document-specific review policy lives in `wf-documentation`; testing sufficiency
 
 1. Identify the intended behavior and affected system boundaries.
 2. Read the full diff and relevant repository guidance.
-3. Select only review lenses relevant to the risk surface; use an independent
-   reviewer for high-risk or broad changes, not by default.
+3. This review always runs. Select only review lenses relevant to the risk
+   surface, and add an independent reviewer for high-risk or broad changes,
+   not by default.
 4. Require reproducible evidence for findings.
 5. Deduplicate and classify findings by impact.
 6. Require re-verification evidence for any fixes made during review.
