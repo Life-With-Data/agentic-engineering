@@ -2,7 +2,8 @@
 
 Move a request from its current state to the requested outcome. Workflow skills
 are tools, not mandatory departments: use only the ones the work needs and keep
-small transitions inline.
+small transitions inline. The one exception is `wf-review`, which always runs
+between development and delivery.
 
 ## Default posture
 
@@ -32,14 +33,15 @@ boundary. `wf-auto` owns the explicit unattended exception.
 - Unclear request or materially under-specified bug: use `wf-grooming`.
 - Clear work that needs code or configuration changes: use `wf-development`.
 - Change needing extra behavioral evidence: use `wf-testing`.
-- High-risk, broad, or explicitly requested independent review: use `wf-review`.
+- A verified change awaiting delivery: use `wf-review`. It always runs next,
+  before delivery, and scales its own depth to risk.
 - Ready PR, CI repair, release, or deployment: use `wf-delivery`.
 - Durable documentation requested or justified by a real reusable lesson: use
   `wf-documentation`.
 
-Do not force an implemented change through separate testing, review, and
-documentation handoffs when development already produced credible evidence and
-the risk does not justify them.
+Do not force an implemented change through separate testing and documentation
+handoffs when development already produced credible evidence and the risk does
+not justify them; `wf-review` still runs regardless.
 
 ## Execute
 
@@ -58,7 +60,8 @@ the risk does not justify them.
 
 ## Review and documentation thresholds
 
-Independent review is expected for security-sensitive, data-destructive,
+`wf-review` always runs after development and before delivery; it is never
+skipped. Independent review is expected for security-sensitive, data-destructive,
 cross-cutting, or otherwise high-blast-radius changes. A concise self-review is
 enough for routine localized changes unless repository policy says otherwise.
 

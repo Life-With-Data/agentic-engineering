@@ -34,8 +34,8 @@ The engine owns ordering. An empty list means there is no ready work.
 
    Remove every label in the `posture:` namespace, whatever its spelling.
 4. Invoke `wf-orchestrate` with autonomous posture and continue through
-   delivery. Make reversible decisions from evidence, fix blocking failures,
-   and do not ask between stages.
+   delivery, including the required `wf-review` hop. Make reversible decisions
+   from evidence, fix blocking failures, and do not ask between stages.
 5. Keep repository-required checks and external safety constraints. Unattended
    mode does not authorize credentials, admin overrides, force-pushes, direct
    default-branch writes, destructive scope expansion, or unrelated work.

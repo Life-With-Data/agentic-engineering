@@ -48,7 +48,8 @@ check. Small or tightly coupled changes stay inline.
 
 Development ends when the change is implemented and proportionate verification
 passes. Run focused tests while iterating and the repository-required gate before
-delivery. A separate testing or review stage is optional unless risk or the user
+delivery. `wf-review` always runs next, before delivery; it scales its own
+depth to risk. A separate testing stage is optional unless risk or the user
 calls for it.
 
 In Project mode, development owns exactly two board transitions, each real only as an observable postcondition: the claim holds only when `--claim <N>` returns proceed (`Status = in_progress` on the board), and development's exit is `--set-status <N> in_review` succeeding at PR open. Sub-issue progress is the `status:*` label track, not board Status; the [work route](references/workflows-work.md) owns that mechanics.

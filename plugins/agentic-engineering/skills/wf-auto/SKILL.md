@@ -42,7 +42,8 @@ standard posture here.
 
 Correctness is not a gate in this sense and never relaxes: P1 findings route
 back to development and repository gates must pass. Fixing them is the run's
-job, not a reason to stop.
+job, not a reason to stop. `wf-review` still runs like every other run;
+unattended mode suppresses check-ins, not the stage itself.
 
 **Reaching out is a judgment call, not a checklist.** The agent decides when a
 question is genuinely worth waking someone for and records everything else.
