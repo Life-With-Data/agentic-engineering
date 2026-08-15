@@ -136,12 +136,23 @@ CLOSED_WORKFLOW = "Item closed"
 # Auto-add scaffold (issue #63). When the forward binding is `auto-add`, write a
 # GitHub Actions workflow using the official actions/add-to-project so new issues
 # reach the board (the built-in auto-add has no create API). Pinned to a full
-# commit SHA (supply-chain: a moving @v2 tag runs with ADD_TO_PROJECT_PAT in
+# commit SHA (supply-chain: a moving @v2 tag runs with the board credential in
 # scope) — resolved live at scaffold time, falling back to this known-good SHA.
 ADD_TO_PROJECT_REPO = "actions/add-to-project"
 ADD_TO_PROJECT_PINNED_SHA = "5afcf98fcd03f1c2f92c3c83f58ae24323cc57fd"  # v2.0.0
 ADD_TO_PROJECT_PINNED_REF = "v2.0.0"
-ADD_TO_PROJECT_SECRET = "ADD_TO_PROJECT_PAT"
+
+# The credential is a GitHub App installation token minted per run (issue #441),
+# not a personal-account PAT: a PAT shares one 5,000/hr REST bucket with every
+# agent session in the account, and a drained bucket fails the auto-add silently.
+# The credential *names* are hardcoded the way the PAT name was — a name is a
+# convention the adopting repo configures values under, not a credential.
+APP_TOKEN_REPO = "actions/create-github-app-token"
+APP_TOKEN_PINNED_SHA = "bcd2ba49218906704ab6c1aa796996da409d3eb1"  # v3
+APP_TOKEN_PINNED_REF = "v3"
+APP_TOKEN_STEP_ID = "app-token"
+APP_CLIENT_ID_VAR = "LWD_APP_CLIENT_ID"          # v3 deprecated `app-id`
+APP_PRIVATE_KEY_SECRET = "LWD_APP_PRIVATE_KEY"
 WORKFLOW_FILENAME = ".github/workflows/add-to-project.yml"
 DEPENDABOT_FILENAME = ".github/dependabot.yml"
 
@@ -703,37 +714,46 @@ def _resolve_owner_url_segment(owner: str, runner: GhRunner) -> "tuple[str, Opti
         "segment to `orgs`")
 
 
-def _resolve_action_ref(runner: GhRunner) -> "tuple[str, str]":
-    """(sha, human_ref) for the pinned action. Resolve the v2 tag to its commit
-    SHA live so scaffolds stay current across plugin releases; fall back to the
+def _resolve_action_ref(runner: GhRunner, repo: str, tag: str,
+                        fallback_sha: str, fallback_ref: str) -> "tuple[str, str]":
+    """(sha, human_ref) for a pinned action. Resolve the tag to its commit SHA
+    live so scaffolds stay current across plugin releases; fall back to the
     known-good constant when the call fails (offline/CI). Always a full SHA — a
-    moving tag would run with ADD_TO_PROJECT_PAT in scope."""
-    result = runner(["api", f"repos/{ADD_TO_PROJECT_REPO}/commits/v2", "--jq", ".sha"])
+    moving tag would run with the board credential in scope."""
+    result = runner(["api", f"repos/{repo}/commits/{tag}", "--jq", ".sha"])
     sha = result.stdout.strip() if result.returncode == 0 else ""
     if re.fullmatch(r"[0-9a-f]{40}", sha):
-        return sha, "v2"
-    return ADD_TO_PROJECT_PINNED_SHA, ADD_TO_PROJECT_PINNED_REF
+        return sha, tag
+    return fallback_sha, fallback_ref
 
 
-def render_add_to_project_workflow(project_url: str, action_sha: str, action_ref: str) -> str:
-    """The hardened workflow YAML: permissions:{} at both levels (the PAT does
-    the write, GITHUB_TOKEN needs nothing), SHA-pinned action, and an inline
-    guardrail forbidding future run: steps that interpolate issue content.
+def render_add_to_project_workflow(project_url: str, action_sha: str, action_ref: str,
+                                   owner: str, app_sha: str, app_ref: str) -> str:
+    """The hardened workflow YAML: permissions:{} at both levels (the App token
+    does the write, GITHUB_TOKEN needs nothing), SHA-pinned actions, and an
+    inline guardrail forbidding future run: steps that interpolate issue content.
 
-    Validate the interpolated action pin at this boundary so the safety does not
-    depend on caller discipline: the SHA must be a full 40-hex commit (never a
-    moving tag), and the human ref must be a single tame token (it lands in a
-    YAML comment — a newline would inject a line)."""
-    if not re.fullmatch(r"[0-9a-f]{40}", action_sha):
-        raise ValueError(f"action_sha must be a full 40-hex commit SHA, got {action_sha!r}")
-    if not re.fullmatch(r"[\w.\-/() ]+", action_ref):
-        raise ValueError(f"action_ref has unsafe characters for a YAML comment: {action_ref!r}")
+    Validate the interpolated pins at this boundary so the safety does not
+    depend on caller discipline: each SHA must be a full 40-hex commit (never a
+    moving tag), and each human ref must be a single tame token (it lands in a
+    YAML comment — a newline would inject a line). `owner` lands in a YAML
+    scalar and comes from `git remote`, so hold it to the same tame shape."""
+    for name, sha in (("action_sha", action_sha), ("app_sha", app_sha)):
+        if not re.fullmatch(r"[0-9a-f]{40}", sha):
+            raise ValueError(f"{name} must be a full 40-hex commit SHA, got {sha!r}")
+    for name, ref in (("action_ref", action_ref), ("app_ref", app_ref)):
+        if not re.fullmatch(r"[\w.\-/() ]+", ref):
+            raise ValueError(f"{name} has unsafe characters for a YAML comment: {ref!r}")
+    if not re.fullmatch(r"[\w.-]+", owner):
+        raise ValueError(f"owner has unsafe characters for a YAML scalar: {owner!r}")
     return f"""\
 # Auto-adds newly opened issues to the lifecycle Projects v2 board.
 # Scaffolded by agentic-engineering bootstrap (forward binding = auto-add).
 # Forward-only: fires on issue `opened`; it does not re-add reopened or
 # transferred issues (use `lifecycle_board.py --backfill` for existing issues).
-# One manual step: add a repo secret {ADD_TO_PROJECT_SECRET} (see the setup skill).
+# Two manual steps: a repository variable {APP_CLIENT_ID_VAR} and a repository
+# secret {APP_PRIVATE_KEY_SECRET} for a GitHub App installed on {owner}
+# with Projects: Read and write (see the setup skill).
 # SECURITY: do NOT add `run:` steps that interpolate ${{{{ github.event.issue.* }}}}
 # — that reintroduces script injection. This job runs no untrusted code.
 name: Add issues to project
@@ -741,17 +761,26 @@ on:
   issues:
     types: [opened]
 
-permissions: {{}}   # the PAT does the Projects write; GITHUB_TOKEN needs nothing
+permissions: {{}}   # the App token does the Projects write; GITHUB_TOKEN needs nothing
 
 jobs:
   add-to-project:
     runs-on: ubuntu-latest
     permissions: {{}}
     steps:
+      - uses: {APP_TOKEN_REPO}@{app_sha}  # {app_ref}
+        id: {APP_TOKEN_STEP_ID}
+        with:
+          client-id: ${{{{ vars.{APP_CLIENT_ID_VAR} }}}}
+          private-key: ${{{{ secrets.{APP_PRIVATE_KEY_SECRET} }}}}
+          owner: {owner}
+          # `repositories:` deliberately unset — the token must span the whole
+          # owner. The board is shared across repos; narrowing to this one repo
+          # looks like least privilege but breaks cross-repo board visibility.
       - uses: {ADD_TO_PROJECT_REPO}@{action_sha}  # {action_ref}
         with:
           project-url: {project_url}
-          github-token: ${{{{ secrets.{ADD_TO_PROJECT_SECRET} }}}}
+          github-token: ${{{{ steps.{APP_TOKEN_STEP_ID}.outputs.token }}}}
           # Optional filter: labeled: bug,needs-triage / label-operator: OR|AND|NOT
 """
 
@@ -815,21 +844,27 @@ def scaffold_add_to_project_workflow(project: Project, ctx: "lb.RepoContext",
     owner = _project_owner(project, ctx)
     segment, segment_warning = _resolve_owner_url_segment(owner, runner)
     project_url = f"https://github.com/{segment}/{owner}/projects/{project.number}"
-    action_sha, action_ref = _resolve_action_ref(runner)
+    action_sha, action_ref = _resolve_action_ref(
+        runner, ADD_TO_PROJECT_REPO, "v2", ADD_TO_PROJECT_PINNED_SHA, ADD_TO_PROJECT_PINNED_REF)
+    app_sha, app_ref = _resolve_action_ref(
+        runner, APP_TOKEN_REPO, "v3", APP_TOKEN_PINNED_SHA, APP_TOKEN_PINNED_REF)
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(render_add_to_project_workflow(project_url, action_sha, action_ref),
+        path.write_text(render_add_to_project_workflow(project_url, action_sha, action_ref,
+                                                       owner, app_sha, app_ref),
                         encoding="utf-8")
     except OSError as exc:
         return {"scaffolded": False, "already_exists": False, "path": str(path),
                 "dependabot": {"created": False, "already_covers_actions": None, "warning": None},
                 "warning": (f"could not scaffold {WORKFLOW_FILENAME}: {exc} — add it by hand "
-                            f"(actions/add-to-project) and set the {ADD_TO_PROJECT_SECRET} secret")}
+                            f"(actions/add-to-project) and set the {APP_CLIENT_ID_VAR} variable "
+                            f"and {APP_PRIVATE_KEY_SECRET} secret")}
     dependabot = _ensure_dependabot(ctx)
     return {"scaffolded": True, "already_exists": False, "path": str(path),
             "project_url": project_url, "action_ref": f"{action_sha} ({action_ref})",
-            "secret_name": ADD_TO_PROJECT_SECRET, "dependabot": dependabot,
-            "warning": segment_warning}
+            "app_token_ref": f"{app_sha} ({app_ref})",
+            "client_id_var": APP_CLIENT_ID_VAR, "secret_name": APP_PRIVATE_KEY_SECRET,
+            "dependabot": dependabot, "warning": segment_warning}
 
 
 # --------------------------------------------------------------------------
@@ -902,7 +937,8 @@ def run_probe(project: Project, ctx: "lb.RepoContext", runner: GhRunner,
                 return {"result": "FAIL", "issue": issue_number,
                         "reason": f"auto-add did not add the issue within {PROBE_POLL_SECONDS}s",
                         "detail": "verify the merged issues/opened workflow and "
-                                  f"{ADD_TO_PROJECT_SECRET} secret",
+                                  f"{APP_CLIENT_ID_VAR} variable / "
+                                  f"{APP_PRIVATE_KEY_SECRET} secret",
                         "forward_binding": {"result": "FAIL", "binding": binding}}
             forward_evidence = {"result": "PASS", "binding": binding,
                                 "detail": "workflow membership observed before lifecycle write"}

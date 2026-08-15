@@ -84,29 +84,34 @@ put a token value in configuration, a workflow, an issue, or a fixture.
 ## 4. Provision auto-add credentials
 
 Skip unless the binding is `auto-add`. `GITHUB_TOKEN` cannot write a user- or
-org-owned Project. Provision `ADD_TO_PROJECT_PAT` as an Actions secret, via
-the secret UI or:
+org-owned Project. The scaffolded workflow mints a GitHub App installation
+token per run, so provision an App rather than a personal-account token: a PAT
+shares one 5,000/hr REST bucket with every agent session in that account, and
+a drained bucket fails the auto-add silently, with no retry and no alert.
+
+Create (or reuse) a GitHub App owned by the board owner, granting it
+**Projects: Read and write** plus repository **Issues: Read**, and install it
+on the board owner. Record its two credentials on the consumer repository — a
+**variable** for the client ID (v3 of the action deprecated `app-id` and warns
+on every run) and a **secret** for the private key:
 
 ```bash
-gh secret set ADD_TO_PROJECT_PAT --repo <owner>/<repo>
+gh variable set LWD_APP_CLIENT_ID --repo <owner>/<repo>
+gh secret set LWD_APP_PRIVATE_KEY --repo <owner>/<repo> < <app>.private-key.pem
 ```
 
-Least-privileged options, in order:
+The generated step sets `owner:` and deliberately leaves `repositories:`
+unset, so the token spans the whole owner. Narrowing it to the one repository
+looks like least privilege but breaks board visibility the moment a second
+repository shares the board.
 
-1. Org-owned Project: fine-grained PAT — org **Projects: Read and write**,
-   repository access restricted to the consumer repo with Issues/PRs
-   read-only. Wait for org approval where required.
-2. Hardened org option: a GitHub App installation token, limited to selected
-   repositories with the equivalent permissions.
-3. User-owned Project: the official action's classic PAT path (`project`,
-   plus `repo` for private repositories); also the fallback for restrictive
-   orgs. Prefer a machine account; authorize for SSO where SAML applies.
+Rotate the private key on the App's own schedule; a rotated or revoked key
+shows as a red `add-to-project` run — replace the secret and re-run the
+workflow rather than changing Project state by hand. Repositories bootstrapped
+from an earlier plugin version keep their `ADD_TO_PROJECT_PAT` workflow; the
+doctor accepts it, so migrate on the rate-limit symptom, not on schedule.
 
-Set an expiry and rotation owner (~90 days). An expired credential shows as a
-red `add-to-project` run — rotate the secret and re-run the workflow rather
-than changing Project state by hand.
-
-After the scaffold merges and the secret exists, doctor `--live` creates one
+After the scaffold merges and the credentials exist, doctor `--live` creates one
 disposable issue, verifies the workflow adds it to the Project without a
 direct `item-add`, closes it, observes `done`, and removes and verifies the
 item. Permanent issue deletion is not attempted (admin-reserved); the closed

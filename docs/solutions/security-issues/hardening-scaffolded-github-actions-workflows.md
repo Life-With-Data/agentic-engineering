@@ -26,11 +26,23 @@ jobs:
     runs-on: ubuntu-latest
     permissions: {}          # (1) again at job level
     steps:
+      - uses: actions/create-github-app-token@<40-hex-sha>  # (2) SHA-pin
+        id: app-token
+        with:
+          client-id: ${{ vars.LWD_APP_CLIENT_ID }}
+          private-key: ${{ secrets.LWD_APP_PRIVATE_KEY }}   # (3) never echoed
+          owner: <owner>                                    # repositories: unset
       - uses: actions/add-to-project@<40-hex-sha>  # (2) SHA-pin, tag in comment
         with:
           project-url: https://github.com/users/<owner>/projects/<n>
-          github-token: ${{ secrets.ADD_TO_PROJECT_PAT }}   # (3) PAT, never echoed
+          github-token: ${{ steps.app-token.outputs.token }}
 ```
+
+> The credential started as `ADD_TO_PROJECT_PAT` and became an App
+> installation token in issue #441 — a personal-account PAT shares one
+> 5,000/hr REST bucket with everything else that account does, so a drained
+> bucket failed the auto-add silently. Everything below still applies; read
+> "the PAT" as "the write-scoped board credential."
 
 ### (1) `permissions: {}` — not `contents: read`
 The write is done by the **PAT** (see below), so `GITHUB_TOKEN` does no work → give it *zero* scopes. `permissions: {}` sets every scope to `none` (GitHub: "any permission absent from the list is set to `none`"). An explicit empty block also **overrides a permissive org default** (many orgs still default the token to read/write). `contents: read` would over-grant. Put it at **top and job level**.
