@@ -2,7 +2,12 @@
 # Scaffolded by agentic-engineering bootstrap (forward binding = auto-add).
 # Forward-only: fires on issue `opened`; it does not re-add reopened or
 # transferred issues (use `lifecycle_board.py --backfill` for existing issues).
-# One manual step: add a repo secret ADD_TO_PROJECT_PAT (see the setup skill).
+# Auth is the lifewithdata-dev GitHub App, not a PAT: an installation token draws
+# on the installation's own rate-limit bucket, so agent sessions running as a human
+# user can no longer starve this job (bluestar-intel#493 failed with "API rate limit
+# already exceeded for user ID 10716867" and silently left the issue off the board).
+# The App needs *organization* Projects: Read and write — the repo-level Projects
+# permission does not cover an org board.
 # SECURITY: do NOT add `run:` steps that interpolate ${{ github.event.issue.* }}
 # — that reintroduces script injection. This job runs no untrusted code.
 name: Add issues to project
@@ -10,15 +15,25 @@ on:
   issues:
     types: [opened]
 
-permissions: {}   # the PAT does the Projects write; GITHUB_TOKEN needs nothing
+permissions: {}   # the App token does the Projects write; GITHUB_TOKEN needs nothing
 
 jobs:
   add-to-project:
     runs-on: ubuntu-latest
     permissions: {}
     steps:
+      - uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1  # v3
+        id: app-token
+        with:
+          client-id: ${{ vars.LWD_APP_CLIENT_ID }}
+          private-key: ${{ secrets.LWD_APP_PRIVATE_KEY }}
+          # Org-scoped token — required to reach an org project. `repositories:` is
+          # deliberately left unset so the token spans every repo in the org: the
+          # board is shared across bluestar-intel, agent-leverage, agentic-engineering
+          # and lifewithdata, and cross-org visibility is the point. Do not narrow it.
+          owner: Life-With-Data
       - uses: actions/add-to-project@5afcf98fcd03f1c2f92c3c83f58ae24323cc57fd  # v2
         with:
           project-url: https://github.com/orgs/Life-With-Data/projects/1
-          github-token: ${{ secrets.ADD_TO_PROJECT_PAT }}
+          github-token: ${{ steps.app-token.outputs.token }}
           # Optional filter: labeled: bug,needs-triage / label-operator: OR|AND|NOT
