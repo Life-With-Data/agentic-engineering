@@ -1018,6 +1018,17 @@ class ScaffoldAutoAddTest(unittest.TestCase):
         # Cross-consistency: the doctor's detector must find what bootstrap wrote.
         self.assertEqual(lb._auto_add_candidates(ctx)[0][0], bs.WORKFLOW_FILENAME)
 
+    def test_shared_workflow_contract_is_aliased_not_redeclared(self) -> None:
+        """The generator emits the workflow shape and the doctor asserts it, so
+        every name both modules touch has exactly one definition. Identity, not
+        equality: two equal literals pass an equality check right up until
+        someone edits one of them. Redeclaring here is the drift this guards —
+        it would ship a doctor that reddens on its own scaffold."""
+        for name in ("ADD_TO_PROJECT_REPO", "APP_TOKEN_REPO", "APP_CLIENT_ID_VAR",
+                     "APP_PRIVATE_KEY_SECRET", "WORKFLOW_FILENAME"):
+            with self.subTest(name=name):
+                self.assertIs(getattr(bs, name), getattr(lb, name))
+
     def test_scaffolded_workflow_passes_the_doctor(self) -> None:
         """The round trip, not a substring: whatever bootstrap emits must satisfy
         the doctor that validates it. The two agree only by convention — the

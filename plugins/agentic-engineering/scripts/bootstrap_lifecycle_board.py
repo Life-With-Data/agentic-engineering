@@ -75,6 +75,15 @@ COMMITTED_CONFIG = lb.COMMITTED_CONFIG
 MIN_GH_VERSION = lb.MIN_GH_VERSION
 GhRunner = lb.GhRunner
 
+# The scaffolded-workflow contract is owned by lifecycle_board (the module that
+# validates it); this module only emits it. Alias, never redeclare — two copies
+# of a credential name drift into a doctor that reddens on its own scaffold.
+ADD_TO_PROJECT_REPO = lb.ADD_TO_PROJECT_REPO
+APP_TOKEN_REPO = lb.APP_TOKEN_REPO
+APP_CLIENT_ID_VAR = lb.APP_CLIENT_ID_VAR
+APP_PRIVATE_KEY_SECRET = lb.APP_PRIVATE_KEY_SECRET
+WORKFLOW_FILENAME = lb.WORKFLOW_FILENAME
+
 
 # --------------------------------------------------------------------------
 # Canonical option shape: name -> (color, description). Order is the STAGES
@@ -134,26 +143,21 @@ REOPENED_WORKFLOW = "Item reopened"
 CLOSED_WORKFLOW = "Item closed"
 
 # Auto-add scaffold (issue #63). When the forward binding is `auto-add`, write a
-# GitHub Actions workflow using the official actions/add-to-project so new issues
-# reach the board (the built-in auto-add has no create API). Pinned to a full
-# commit SHA (supply-chain: a moving @v2 tag runs with the board credential in
-# scope) — resolved live at scaffold time, falling back to this known-good SHA.
-ADD_TO_PROJECT_REPO = "actions/add-to-project"
+# GitHub Actions workflow so new issues reach the board (the built-in auto-add
+# has no create API). The action names, credential names, and file path are the
+# shared contract aliased above; what follows is scaffold-only.
+#
+# Both actions are pinned to a full commit SHA — a moving tag runs with the
+# board credential in scope — resolved live at scaffold time, falling back to
+# these known-good constants. The doctor accepts any 40-hex pin, so it never
+# reads them; bumping one here does not red out already-scaffolded repos.
 ADD_TO_PROJECT_PINNED_SHA = "5afcf98fcd03f1c2f92c3c83f58ae24323cc57fd"  # v2.0.0
 ADD_TO_PROJECT_PINNED_REF = "v2.0.0"
-
-# The credential is a GitHub App installation token minted per run (issue #441),
-# not a personal-account PAT: a PAT shares one 5,000/hr REST bucket with every
-# agent session in the account, and a drained bucket fails the auto-add silently.
-# The credential *names* are hardcoded the way the PAT name was — a name is a
-# convention the adopting repo configures values under, not a credential.
-APP_TOKEN_REPO = "actions/create-github-app-token"
 APP_TOKEN_PINNED_SHA = "bcd2ba49218906704ab6c1aa796996da409d3eb1"  # v3
 APP_TOKEN_PINNED_REF = "v3"
+# The step id is this module's choice: the doctor resolves whatever id the
+# github-token reference names, so it needs no matching constant.
 APP_TOKEN_STEP_ID = "app-token"
-APP_CLIENT_ID_VAR = "LWD_APP_CLIENT_ID"          # v3 deprecated `app-id`
-APP_PRIVATE_KEY_SECRET = "LWD_APP_PRIVATE_KEY"
-WORKFLOW_FILENAME = ".github/workflows/add-to-project.yml"
 DEPENDABOT_FILENAME = ".github/dependabot.yml"
 
 PROBE_TITLE = "[lifecycle-bootstrap probe]"

@@ -3291,12 +3291,36 @@ def project_workflows(owner: str, number: int, runner: GhRunner) -> "Optional[di
 # of printing an uncheckable "verify by hand" line.
 # --------------------------------------------------------------------------
 
+# --------------------------------------------------------------------------
+# The scaffolded-workflow contract: every fact the generator and the doctor
+# must agree on. The generator (bootstrap_lifecycle_board) emits this shape and
+# aliases these names; the doctor below asserts it. They are defined here, once,
+# because a disagreement is invisible until a downstream repo's doctor reddens
+# against a workflow that the same plugin release wrote.
+#
+# Facts only the generator needs — the pinned SHAs, the step id it chooses —
+# stay in that module: nothing here reads them (the doctor accepts any 40-hex
+# pin and any step id the github-token reference resolves to).
+# --------------------------------------------------------------------------
+
+ADD_TO_PROJECT_REPO = "actions/add-to-project"
+WORKFLOW_DIR = ".github/workflows"
+WORKFLOW_FILENAME = f"{WORKFLOW_DIR}/add-to-project.yml"
+
 # Two credential generations are accepted. The App installation token is what
-# bootstrap scaffolds now (issue #441); the legacy personal-account PAT stays
-# valid because repos bootstrapped from older plugin versions still work, and
-# the doctor must not force an App setup on a repo that never needed one.
+# bootstrap scaffolds now (issue #441): a personal-account PAT shares one
+# 5,000/hr REST bucket with everything else that account does, and a bucket
+# drained by unrelated work failed the auto-add with no retry and no alert, so
+# issues silently never reached the board. The legacy PAT stays valid because
+# repos bootstrapped from older plugin versions still work, and the doctor must
+# not force an App setup on a repo that never needed one.
+#
+# These are credential *names* — a convention the adopting repo configures
+# values under, not credentials. Configurable names were considered and cut as
+# speculative generality: one App exists, and configurability would force the
+# doctor to read config to know what to assert.
 APP_TOKEN_REPO = "actions/create-github-app-token"
-APP_CLIENT_ID_VAR = "LWD_APP_CLIENT_ID"
+APP_CLIENT_ID_VAR = "LWD_APP_CLIENT_ID"      # a variable: v3 deprecated `app-id`
 APP_PRIVATE_KEY_SECRET = "LWD_APP_PRIVATE_KEY"
 LEGACY_ADD_TO_PROJECT_SECRET = "ADD_TO_PROJECT_PAT"
 
@@ -3332,7 +3356,7 @@ def _workflow_step_body(text: str, match: "re.Match") -> str:
 
 def _auto_add_candidates(ctx: RepoContext) -> "list[tuple[str, str]]":
     """Return workflow files with a real (non-comment) add-to-project use."""
-    wf_dir = pathlib.Path(ctx.root) / ".github" / "workflows"
+    wf_dir = pathlib.Path(ctx.root) / WORKFLOW_DIR
     if not wf_dir.is_dir():
         return []
     paths = sorted({p for pat in ("*.yml", "*.yaml") for p in wf_dir.glob(pat)})
@@ -3344,8 +3368,8 @@ def _auto_add_candidates(ctx: RepoContext) -> "list[tuple[str, str]]":
             continue
         live = "\n".join(line for line in text.splitlines()
                          if not line.lstrip().startswith("#"))
-        if re.search(r"(?m)^[ \t]*-?[ \t]*uses:[ \t]*actions/add-to-project@\S+"
-                     r"[ \t]*(?:#.*)?$", live):
+        if re.search(r"(?m)^[ \t]*-?[ \t]*uses:[ \t]*" + re.escape(ADD_TO_PROJECT_REPO)
+                     + r"@\S+[ \t]*(?:#.*)?$", live):
             found.append((str(path.relative_to(ctx.root)), text))
     return found
 
@@ -3361,8 +3385,8 @@ def inspect_auto_add_workflow(ctx: RepoContext,
     candidates = _auto_add_candidates(ctx)
     if not candidates:
         return AutoAddWorkflowInspection(
-            None, False, "no actions/add-to-project workflow is present",
-            "Scaffold .github/workflows/add-to-project.yml and configure its credentials")
+            None, False, f"no {ADD_TO_PROJECT_REPO} workflow is present",
+            f"Scaffold {WORKFLOW_FILENAME} and configure its credentials")
     if len(candidates) != 1:
         paths = ", ".join(path for path, _text in candidates)
         return AutoAddWorkflowInspection(
@@ -3392,8 +3416,8 @@ def inspect_auto_add_workflow(ctx: RepoContext,
         errors.append("trigger must be exactly issues/opened")
 
     action_matches = list(re.finditer(
-        r"(?m)^(?P<indent>[ \t]*)-[ \t]*uses:[ \t]*actions/add-to-project@"
-        r"(?P<ref>[^\s#]+)[ \t]*(?:#.*)?$",
+        r"(?m)^(?P<indent>[ \t]*)-[ \t]*uses:[ \t]*" + re.escape(ADD_TO_PROJECT_REPO)
+        + r"@(?P<ref>[^\s#]+)[ \t]*(?:#.*)?$",
         text))
     # Count EVERY `uses:` key, not just the dash-led one. A step may spell its
     # keys in any order (`- name:` first, then `uses:` on a later line) or quote
@@ -3403,9 +3427,9 @@ def inspect_auto_add_workflow(ctx: RepoContext,
     all_uses = re.findall(_STEP_KEY_RE.format(key="uses"), text)
     action = action_matches[0] if len(action_matches) == 1 else None
     if len(action_matches) != 1:
-        errors.append("workflow must contain exactly one actions/add-to-project step")
+        errors.append(f"workflow must contain exactly one {ADD_TO_PROJECT_REPO} step")
     elif not re.fullmatch(r"[0-9a-fA-F]{40}", action.group("ref")):
-        errors.append("actions/add-to-project must be pinned to a full 40-character commit SHA")
+        errors.append(f"{ADD_TO_PROJECT_REPO} must be pinned to a full 40-character commit SHA")
 
     step_text = _workflow_step_body(text, action) if action is not None else ""
     with_text = ""
@@ -3455,7 +3479,7 @@ def inspect_auto_add_workflow(ctx: RepoContext,
     elif step_ref:
         if len(app_matches) != 1 or len(all_uses) != 2:
             errors.append(f"App-token workflow must contain exactly one {APP_TOKEN_REPO} "
-                          "step and one actions/add-to-project step, and no other uses step")
+                          f"step and one {ADD_TO_PROJECT_REPO} step, and no other uses step")
         elif not re.fullmatch(r"[0-9a-fA-F]{40}", app_matches[0].group("ref")):
             errors.append(f"{APP_TOKEN_REPO} must be pinned to a full 40-character commit SHA")
         else:
