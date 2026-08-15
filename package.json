@@ -16,7 +16,8 @@
     "test": "bun test",
     "typecheck": "tsc --noEmit",
     "worktrees:sync": "bash plugins/agentic-engineering/skills/wf-development/scripts/worktree-manager.sh sync",
-    "worktrees:finish": "bash plugins/agentic-engineering/skills/wf-development/scripts/worktree-manager.sh finish"
+    "worktrees:finish": "bash plugins/agentic-engineering/skills/wf-development/scripts/worktree-manager.sh finish",
+    "work:ready": "python3 plugins/agentic-engineering/scripts/lifecycle_board.py --next --status ready_for_work"
   },
   "dependencies": {
     "citty": "^0.1.6",

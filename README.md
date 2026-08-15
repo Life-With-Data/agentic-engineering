@@ -42,6 +42,21 @@ Or run a single stage directly, split at the `planned` boundary:
 
 The only supported tracker today is a GitHub Projects v2 lifecycle board (`github-project`); the workflows auto-detect whether the board is configured, and an unconfigured repo still works until the `wf-setup` lifecycle bootstrap configures one.
 
+### What should I work on next?
+
+```bash
+bun run work:ready                              # the single highest-ranked ready item
+bun run work:ready -- --repo owner/name         # narrow to one repo on a shared board
+bun run work:ready -- --status planned          # peek at another lifecycle stage
+```
+
+Reads the bound Projects v2 board — the whole board, every repository sharing
+it — and prints one JSON winner: `Status = ready_for_work`, ranked by Priority
+(`p1` before `p2` before `p3`, unset last) and tie-broken to the oldest issue.
+Archived items, closed issues, and pull requests never qualify. Read-only: it
+changes no Status, Priority, or body. When nothing qualifies it emits
+`{"ok": true, "issue": null}` and exits 0.
+
 ### Worktree cleanup
 
 Parallel sessions leave worktrees and branches behind — under `.worktrees/` (manager-created) and `.claude/worktrees/` (harness-created). Every worktree-manager subcommand operates on both roots — including `list`, `switch`, `cleanup`, and the unattended `gc` — while `create` only ever creates under `.worktrees/`. Two plain scripts clean them up systematically; no agent needed:

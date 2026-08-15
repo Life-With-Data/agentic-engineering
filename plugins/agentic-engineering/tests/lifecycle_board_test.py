@@ -1377,6 +1377,112 @@ class ReadyWorkVerbTest(unittest.TestCase):
         self.assertEqual(lb.verb_ready_work(self.ctx, runner)["items"], [])
 
 
+def _next_item(number, repo="acme/widget", priority=None, title=None, type_="Issue"):
+    return {"id": f"PVTI_{number}", "priority": priority,
+            "content": {"type": type_, "number": number, "repository": repo,
+                        "title": title or f"i{number}",
+                        "url": f"https://github.com/{repo}/issues/{number}"}}
+
+
+class RankNextTest(unittest.TestCase):
+    """The pure ranking core of --next: Priority major, createdAt tie-break."""
+
+    def test_p1_beats_p2(self) -> None:
+        cands = lb.next_candidates([_next_item(2, priority="p2"), _next_item(1, priority="p1")])
+        ranked = lb.rank_next(cands, {"acme/widget#1": "2026-05-01T00:00:00Z",
+                                      "acme/widget#2": "2020-01-01T00:00:00Z"})
+        self.assertEqual([r["issue"] for r in ranked], [1, 2])
+
+    def test_equal_priority_breaks_to_the_older_created_at(self) -> None:
+        cands = lb.next_candidates([_next_item(9, priority="p2"), _next_item(40, priority="p2")])
+        ranked = lb.rank_next(cands, {"acme/widget#9": "2026-03-01T00:00:00Z",
+                                      "acme/widget#40": "2026-01-01T00:00:00Z"})
+        self.assertEqual([r["issue"] for r in ranked], [40, 9])
+        self.assertEqual(ranked[0]["created_at"], "2026-01-01T00:00:00Z")
+
+    def test_empty_priority_loses_to_p3(self) -> None:
+        cands = lb.next_candidates([_next_item(1), _next_item(2, priority="p3")])
+        ranked = lb.rank_next(cands, {"acme/widget#1": "2019-01-01T00:00:00Z",
+                                      "acme/widget#2": "2026-06-01T00:00:00Z"})
+        self.assertEqual([r["issue"] for r in ranked], [2, 1])
+        self.assertIsNone(ranked[1]["priority"])
+
+    def test_unknown_created_at_loses_its_tie(self) -> None:
+        cands = lb.next_candidates([_next_item(1, priority="p1"), _next_item(2, priority="p1")])
+        ranked = lb.rank_next(cands, {"acme/widget#2": "2026-01-01T00:00:00Z"})
+        self.assertEqual([r["issue"] for r in ranked], [2, 1])
+        self.assertIsNone(ranked[1]["created_at"])
+
+    def test_candidates_drop_prs_and_narrow_by_repo(self) -> None:
+        items = [_next_item(1, type_="PullRequest"), {"id": "x", "content": None},
+                 _next_item(2, repo="acme/other"), _next_item(3)]
+        self.assertEqual([c["issue"] for c in lb.next_candidates(items)], [2, 3])
+        self.assertEqual([c["issue"] for c in lb.next_candidates(items, repo="acme/other")], [2])
+
+
+class NextVerbTest(unittest.TestCase):
+    """--next is a whole-board, cross-repo, read-only 2-call query."""
+
+    def setUp(self) -> None:
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        root = self._tmp.name
+        (Path(root) / "agentic-engineering.md").write_text(
+            "---\ngithub_project_owner: acme\ngithub_project_number: 1\n---\n", encoding="utf-8")
+        self.ctx = lb.RepoContext(root=root, main_root=root, origin_owner="acme",
+                                  origin_repo="widget", default_branch="main")
+
+    def test_winner_is_the_oldest_of_the_best_priority_tier(self) -> None:
+        items = [_next_item(5, priority="p2"), _next_item(7, repo="acme/other", priority="p1"),
+                 _next_item(3, priority="p1")]
+        runner = FakeRunner([
+            (["project", "item-list", "1", "--owner", "acme", "--format", "json",
+              "--limit", str(lb.NEXT_LIMIT), "--query",
+              "status:ready_for_work is:issue is:open"],
+             _ok(json.dumps({"items": items}))),
+            (["api", "graphql"], _ok(json.dumps({"data": {
+                "r0": {"i7": {"createdAt": "2026-02-01T00:00:00Z"}},
+                "r1": {"i3": {"createdAt": "2026-04-01T00:00:00Z"}}}}))),
+        ])
+        result = lb.verb_next(self.ctx, runner)
+        self.assertEqual(len(runner.calls), 2)
+        self.assertEqual(result["issue"], 7)
+        self.assertEqual(result["repo"], "acme/other")
+        self.assertEqual(result["priority"], "p1")
+        self.assertEqual(result["created_at"], "2026-02-01T00:00:00Z")
+        self.assertEqual(result["item_id"], "PVTI_7")
+        self.assertEqual(result["url"], "https://github.com/acme/other/issues/7")
+        self.assertEqual(result["status"], "ready_for_work")
+        # Read-only: no item-edit, no issue write.
+        self.assertNotIn("item-edit", [c[1] for c in runner.calls if len(c) > 1])
+
+    def test_status_is_overridable_for_a_later_groom_queue(self) -> None:
+        runner = FakeRunner([
+            (["project", "item-list", "1", "--owner", "acme", "--format", "json",
+              "--limit", str(lb.NEXT_LIMIT), "--query", "status:stub is:issue is:open"],
+             _ok(json.dumps({"items": [_next_item(4)]}))),
+            (["api", "graphql"], _ok(json.dumps({"data": {
+                "r0": {"i4": {"createdAt": "2026-01-01T00:00:00Z"}}}}))),
+        ])
+        self.assertEqual(lb.verb_next(self.ctx, runner, status="stub")["issue"], 4)
+
+    def test_no_ready_item_is_ok_with_a_null_issue(self) -> None:
+        runner = FakeRunner([
+            (["project", "item-list", "1", "--owner", "acme"], _ok(json.dumps({"items": []}))),
+            (["project", "field-list", "1", "--owner", "acme"],
+             _ok(json.dumps(_schema_fields_payload(lb.STAGES)))),
+        ])
+        result = lb.verb_next(self.ctx, runner)
+        self.assertIsNone(result["issue"])
+        self.assertEqual(result["status"], "ready_for_work")
+
+    def test_unknown_status_never_reaches_the_board(self) -> None:
+        runner = FakeRunner([])
+        with self.assertRaises(lb.BoardError) as caught:
+            lb.verb_next(self.ctx, runner, status="nope")
+        self.assertEqual(caught.exception.code, "invalid_status")
+
+
 class SubStatusVerbTest(unittest.TestCase):
     """verb_sub_status drives the mutually-exclusive `status:*` labels board-free.
     Every gh call carries an explicit --repo (in-script gh discipline)."""

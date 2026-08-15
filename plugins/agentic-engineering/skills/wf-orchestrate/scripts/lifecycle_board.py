@@ -26,6 +26,11 @@ CLI verbs (used by workflow commands; humans/CI may call them directly):
                                  operator primitive for deliberate moves)
   --ready-work                   ready_for_work ∧ unassigned ∧ unblocked, Priority-
                                  sorted, <= 2 API calls at any board size
+  --next [--status S] [--repo O/N]  the single highest-ranked item on the WHOLE
+                                 bound board (every repo sharing it) at Status S
+                                 (default ready_for_work): Priority p1<p2<p3<unset,
+                                 ties to the oldest createdAt. Read-only; emits
+                                 `issue: null` and exits 0 when nothing qualifies
   --reconcile [--issue N] [--force]  scoped drift repair (TTL-cached)
   --doctor                       all A/B-class checks, report-everything mode
   --backfill                     one-time idempotent add of every open repo
@@ -222,6 +227,10 @@ POSTURE_LABEL_META = {
 }
 
 READY_WORK_LIMIT = 50
+# --next enumerates the WHOLE bound board (every repo sharing it), so it cannot
+# reuse the 50-item ready-work UX bound: a board past that cap would hide the
+# true queue head. Truncation is flagged, never silent.
+NEXT_LIMIT = 1000
 # Blocker reads deliberately inspect bounded node states instead of totalCount:
 # closed blockers must not keep work blocked. A full result is conservative
 # because GitHub may have additional, unseen blockers after it.
@@ -1639,8 +1648,65 @@ def merge_ready_legs(board_items: "list[dict]", blocked_counts: "dict[int, int]"
                                priority=(item.get("priority") or None), repo=origin_slug))
     # Ties break to the oldest issue (ascending number), so the queue head is
     # deterministic — an unattended run picks the same ticket every time.
-    ready.sort(key=lambda r: (PRIORITY_ORDER.get((r.priority or "").lower(), 99), r.number))
+    ready.sort(key=lambda r: (priority_rank(r.priority), r.number))
     return ready, truncated
+
+
+def priority_rank(priority: Optional[str]) -> int:
+    """p1 < p2 < p3 < unset. Unset sorts LAST, never first."""
+    return PRIORITY_ORDER.get((priority or "").lower(), 99)
+
+
+def next_candidates(board_items: "list[dict]",
+                    repo: Optional[str] = None) -> "list[dict]":
+    """Pure: whole-board item-list rows -> queue candidates.
+
+    Unlike `merge_ready_legs` this is deliberately NOT origin-repo-scoped: one
+    board is shared by several repositories and `--next` answers for all of
+    them, so every row carries its own `repo`. `repo` narrows to one slug.
+    Non-Issue rows (PRs), null content, and rows without a number are dropped —
+    the server-side `is:issue is:open` filter is belt, this is braces."""
+    out: "list[dict]" = []
+    for item in board_items:
+        content = item.get("content") or {}
+        if content.get("type") != "Issue":
+            continue
+        number = content.get("number")
+        slug = content.get("repository")
+        if not isinstance(number, int) or not isinstance(slug, str) or not slug:
+            continue
+        if repo is not None and slug != repo:
+            continue
+        out.append({"issue": number, "repo": slug,
+                    "title": content.get("title") or item.get("title") or "",
+                    "priority": item.get("priority") or None,
+                    "url": content.get("url") or "",
+                    "item_id": item.get("id") or ""})
+    return out
+
+
+# Sorts after every real ISO-8601 timestamp, so a candidate whose createdAt could
+# not be read loses its tie instead of silently winning the queue head.
+_UNKNOWN_CREATED_AT = "9999"
+
+
+def created_at_key(candidate: dict) -> str:
+    return f"{candidate['repo']}#{candidate['issue']}"
+
+
+def rank_next(candidates: "list[dict]",
+              created_at: "dict[str, str]") -> "list[dict]":
+    """Pure ranking: Priority ascending (p1, p2, p3, unset last), then issue
+    createdAt ascending (oldest first), then issue number. `created_at` maps
+    `owner/repo#N` -> ISO-8601; a missing entry sorts last within its tier.
+
+    Returns candidates with `created_at` attached (None when unknown)."""
+    ranked = sorted(
+        candidates,
+        key=lambda c: (priority_rank(c["priority"]),
+                       created_at.get(created_at_key(c)) or _UNKNOWN_CREATED_AT,
+                       c["issue"]))
+    return [dict(c, created_at=created_at.get(created_at_key(c))) for c in ranked]
 
 
 # --------------------------------------------------------------------------
@@ -2858,6 +2924,78 @@ def verb_ready_work(ctx: RepoContext, runner: GhRunner) -> dict:
     return out
 
 
+_REPO_SLUG = re.compile(r"^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$")
+
+
+def _batched_created_at(candidates: "list[dict]", runner: GhRunner) -> "dict[str, str]":
+    """One aliased GraphQL query for every candidate's issue createdAt, across
+    every repository on the shared board — never N+1 `gh issue view`.
+
+    Slugs come off the board (foreign data), so they are interpolated into the
+    query only after matching `_REPO_SLUG`; anything else is dropped and simply
+    ranks with an unknown createdAt."""
+    by_repo: "dict[str, list[int]]" = {}
+    for c in candidates:
+        slug = c["repo"]
+        if _REPO_SLUG.match(slug):
+            by_repo.setdefault(slug, []).append(c["issue"])
+    if not by_repo:
+        return {}
+    groups = [(slug, sorted(set(nums))) for slug, nums in sorted(by_repo.items())]
+    parts = []
+    for idx, (slug, numbers) in enumerate(groups):
+        owner, _, name = slug.partition("/")
+        body = "".join(f"    i{n}: issue(number: {n}) {{ createdAt }}\n" for n in numbers)
+        parts.append(f'  r{idx}: repository(owner: "{owner}", name: "{name}") {{\n{body}  }}\n')
+    result = _run_gh_retry(runner, ["api", "graphql",
+                                    "-f", "query=query {\n" + "".join(parts) + "}"])
+    if result.returncode != 0:
+        raise BoardError("next_failed",
+                         f"createdAt batch query failed: {result.stderr.strip()[:200]}",
+                         "Retry; if persistent, check GraphQL availability — "
+                         "never rank the queue on a failed timestamp read")
+    data = json.loads(result.stdout or "{}").get("data") or {}
+    out: "dict[str, str]" = {}
+    for idx, (slug, numbers) in enumerate(groups):
+        repo_data = data.get(f"r{idx}") or {}
+        for n in numbers:
+            stamp = (repo_data.get(f"i{n}") or {}).get("createdAt")
+            if isinstance(stamp, str):
+                out[f"{slug}#{n}"] = stamp
+    return out
+
+
+def verb_next(ctx: RepoContext, runner: GhRunner, status: str = "ready_for_work",
+              repo: Optional[str] = None) -> dict:
+    """The single highest-ranked board item at `status`, read-only.
+
+    Whole-board (every repo bound to it), 2 gh calls: the server-filtered
+    item-list, then one batched createdAt read. Only the BEST priority tier can
+    win, so timestamps are fetched for that tier alone — the tie-break is still
+    exact and the query stays small on a large board."""
+    if status not in STAGES:
+        raise BoardError("invalid_status", f"{status!r} is not a lifecycle stage",
+                         f"Use one of: {', '.join(STAGES)}")
+    board = _require_board(ctx)
+    query = f"status:{status} is:issue is:open"
+    items = _item_list(board, runner, query, limit=NEXT_LIMIT)
+    out: dict = {"status": status, "issue": None, "truncated": len(items) >= NEXT_LIMIT}
+    if not items:
+        # Same ambiguity as --ready-work: item-list returns an empty page (exit 0)
+        # for a status token this board has no column for, which would read as
+        # "nothing is queued". Prove the option exists before reporting empty.
+        resolve_schema(board, ctx, runner, {})
+        return out
+    candidates = next_candidates(items, repo)
+    if not candidates:
+        return out
+    best = min(priority_rank(c["priority"]) for c in candidates)
+    tier = [c for c in candidates if priority_rank(c["priority"]) == best]
+    winner = rank_next(tier, _batched_created_at(tier, runner))[0]
+    out.update(winner)
+    return out
+
+
 def verb_reconcile(ctx: RepoContext, runner: GhRunner, issue: Optional[int] = None,
                    force: bool = False, now: Optional[float] = None) -> dict:
     board = _require_board(ctx)
@@ -3646,6 +3784,7 @@ def main(argv: "list[str]") -> int:
     group.add_argument("--set-status", nargs=2, metavar=("N", "STAGE"))
     group.add_argument("--sub-status", nargs=2, metavar=("N", "STATUS"))
     group.add_argument("--ready-work", action="store_true")
+    group.add_argument("--next", action="store_true")
     group.add_argument("--reconcile", action="store_true")
     group.add_argument("--doctor", action="store_true")
     group.add_argument("--backfill", action="store_true")
@@ -3655,6 +3794,10 @@ def main(argv: "list[str]") -> int:
     group.add_argument("--materialize-packet", type=int, metavar="N")
     group.add_argument("--delete-packet", type=int, metavar="N")
     parser.add_argument("--issue", type=int, default=None)
+    parser.add_argument("--status", default="ready_for_work",
+                        help="lifecycle stage --next reads (default: ready_for_work)")
+    parser.add_argument("--repo", metavar="OWNER/NAME", default=None,
+                        help="narrow --next to one repository on the shared board")
     parser.add_argument("--spec", metavar="FILE", default=None)
     parser.add_argument("--force", action="store_true")
     args = parser.parse_args(argv)
@@ -3673,6 +3816,8 @@ def main(argv: "list[str]") -> int:
             return _emit(verb_sub_status(int(number), status, ctx, run_gh))
         if args.ready_work:
             return _emit(verb_ready_work(ctx, run_gh))
+        if args.next:
+            return _emit(verb_next(ctx, run_gh, status=args.status, repo=args.repo))
         if args.reconcile:
             return _emit(verb_reconcile(ctx, run_gh, issue=args.issue, force=args.force))
         if args.doctor:
