@@ -370,7 +370,8 @@ describe("workflow skill architecture", () => {
     }
     expect(bootstrap).toContain("gh auth refresh --hostname github.com --scopes project");
     expect(bootstrap).toContain("git config agentic.trustedBoardOwners");
-    expect(bootstrap).toContain("ADD_TO_PROJECT_PAT");
+    expect(bootstrap).toContain("LWD_APP_CLIENT_ID");
+    expect(bootstrap).toContain("LWD_APP_PRIVATE_KEY");
     expect(bootstrap).toContain("Projects: Read and write");
     expect(bootstrap).toContain("--backfill");
     expect(bootstrap).toContain("--doctor");

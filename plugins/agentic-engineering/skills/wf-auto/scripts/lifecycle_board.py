@@ -3291,6 +3291,48 @@ def project_workflows(owner: str, number: int, runner: GhRunner) -> "Optional[di
 # of printing an uncheckable "verify by hand" line.
 # --------------------------------------------------------------------------
 
+# --------------------------------------------------------------------------
+# The scaffolded-workflow contract: every fact the generator and the doctor
+# must agree on. The generator (bootstrap_lifecycle_board) emits this shape and
+# aliases these names; the doctor below asserts it. They are defined here, once,
+# because a disagreement is invisible until a downstream repo's doctor reddens
+# against a workflow that the same plugin release wrote.
+#
+# Facts only the generator needs — the pinned SHAs, the step id it chooses —
+# stay in that module: nothing here reads them (the doctor accepts any 40-hex
+# pin and any step id the github-token reference resolves to).
+# --------------------------------------------------------------------------
+
+ADD_TO_PROJECT_REPO = "actions/add-to-project"
+WORKFLOW_DIR = ".github/workflows"
+WORKFLOW_FILENAME = f"{WORKFLOW_DIR}/add-to-project.yml"
+
+# Two credential generations are accepted. The App installation token is what
+# bootstrap scaffolds now (issue #441): a personal-account PAT shares one
+# 5,000/hr REST bucket with everything else that account does, and a bucket
+# drained by unrelated work failed the auto-add with no retry and no alert, so
+# issues silently never reached the board. The legacy PAT stays valid because
+# repos bootstrapped from older plugin versions still work, and the doctor must
+# not force an App setup on a repo that never needed one.
+#
+# These are credential *names* — a convention the adopting repo configures
+# values under, not credentials. Configurable names were considered and cut as
+# speculative generality: one App exists, and configurability would force the
+# doctor to read config to know what to assert.
+APP_TOKEN_REPO = "actions/create-github-app-token"
+APP_CLIENT_ID_VAR = "LWD_APP_CLIENT_ID"      # a variable: v3 deprecated `app-id`
+APP_PRIVATE_KEY_SECRET = "LWD_APP_PRIVATE_KEY"
+LEGACY_ADD_TO_PROJECT_SECRET = "ADD_TO_PROJECT_PAT"
+
+# A step key in the spellings YAML allows: dash-led or not (key order inside a
+# step is free), quoted or bare. The doctor recognizes only what bootstrap
+# emits, so it counts every spelling rather than trusting the canonical one.
+_STEP_KEY_RE = r"""(?m)^[ \t]*(?:-[ \t]*)?['"]?{key}['"]?[ \t]*:"""
+# Flow style (`- {{uses: evil/action@v1}}`) hides an entire step on one line,
+# past every block-style anchor above. Fail closed instead of parsing it.
+_FLOW_STEP_RE = r"(?m)^[ \t]*-[ \t]*[\{\[]"
+
+
 @dataclass(frozen=True)
 class AutoAddWorkflowInspection:
     path: Optional[str]
@@ -3299,9 +3341,22 @@ class AutoAddWorkflowInspection:
     fix: str
 
 
+def _workflow_step_body(text: str, match: "re.Match") -> str:
+    """The lines of one YAML step: its `- uses:` line plus every following line
+    indented deeper than the dash. `match` must expose an `indent` group."""
+    lines = text[match.start():].splitlines()
+    indent = len(match.group("indent"))
+    kept = [lines[0]]
+    for line in lines[1:]:
+        if line.strip() and len(line) - len(line.lstrip()) <= indent:
+            break
+        kept.append(line)
+    return "\n".join(kept)
+
+
 def _auto_add_candidates(ctx: RepoContext) -> "list[tuple[str, str]]":
     """Return workflow files with a real (non-comment) add-to-project use."""
-    wf_dir = pathlib.Path(ctx.root) / ".github" / "workflows"
+    wf_dir = pathlib.Path(ctx.root) / WORKFLOW_DIR
     if not wf_dir.is_dir():
         return []
     paths = sorted({p for pat in ("*.yml", "*.yaml") for p in wf_dir.glob(pat)})
@@ -3313,8 +3368,8 @@ def _auto_add_candidates(ctx: RepoContext) -> "list[tuple[str, str]]":
             continue
         live = "\n".join(line for line in text.splitlines()
                          if not line.lstrip().startswith("#"))
-        if re.search(r"(?m)^[ \t]*-?[ \t]*uses:[ \t]*actions/add-to-project@\S+"
-                     r"[ \t]*(?:#.*)?$", live):
+        if re.search(r"(?m)^[ \t]*-?[ \t]*uses:[ \t]*" + re.escape(ADD_TO_PROJECT_REPO)
+                     + r"@\S+[ \t]*(?:#.*)?$", live):
             found.append((str(path.relative_to(ctx.root)), text))
     return found
 
@@ -3330,8 +3385,8 @@ def inspect_auto_add_workflow(ctx: RepoContext,
     candidates = _auto_add_candidates(ctx)
     if not candidates:
         return AutoAddWorkflowInspection(
-            None, False, "no actions/add-to-project workflow is present",
-            "Scaffold .github/workflows/add-to-project.yml and configure its secret")
+            None, False, f"no {ADD_TO_PROJECT_REPO} workflow is present",
+            f"Scaffold {WORKFLOW_FILENAME} and configure its credentials")
     if len(candidates) != 1:
         paths = ", ".join(path for path, _text in candidates)
         return AutoAddWorkflowInspection(
@@ -3361,28 +3416,22 @@ def inspect_auto_add_workflow(ctx: RepoContext,
         errors.append("trigger must be exactly issues/opened")
 
     action_matches = list(re.finditer(
-        r"(?m)^(?P<indent>[ \t]*)-[ \t]*uses:[ \t]*actions/add-to-project@"
-        r"(?P<ref>[^\s#]+)[ \t]*(?:#.*)?$",
+        r"(?m)^(?P<indent>[ \t]*)-[ \t]*uses:[ \t]*" + re.escape(ADD_TO_PROJECT_REPO)
+        + r"@(?P<ref>[^\s#]+)[ \t]*(?:#.*)?$",
         text))
-    all_uses = re.findall(r"(?m)^[ \t]*-[ \t]*uses:[ \t]*[^\s#]+", text)
+    # Count EVERY `uses:` key, not just the dash-led one. A step may spell its
+    # keys in any order (`- name:` first, then `uses:` on a later line) or quote
+    # them, and both spellings run inside the credential-bearing job — so a
+    # dash-anchored count would let an unpinned action slip past the step budget
+    # below with the board credential in scope.
+    all_uses = re.findall(_STEP_KEY_RE.format(key="uses"), text)
     action = action_matches[0] if len(action_matches) == 1 else None
     if len(action_matches) != 1:
-        errors.append("workflow must contain exactly one actions/add-to-project step")
+        errors.append(f"workflow must contain exactly one {ADD_TO_PROJECT_REPO} step")
     elif not re.fullmatch(r"[0-9a-fA-F]{40}", action.group("ref")):
-        errors.append("actions/add-to-project must be pinned to a full 40-character commit SHA")
-    if len(all_uses) != 1:
-        errors.append("credential-bearing workflow must contain exactly one executable uses step")
+        errors.append(f"{ADD_TO_PROJECT_REPO} must be pinned to a full 40-character commit SHA")
 
-    step_text = ""
-    if action is not None:
-        lines = text[action.start():].splitlines()
-        indent = len(action.group("indent"))
-        kept = [lines[0]]
-        for line in lines[1:]:
-            if line.strip() and len(line) - len(line.lstrip()) <= indent:
-                break
-            kept.append(line)
-        step_text = "\n".join(kept)
+    step_text = _workflow_step_body(text, action) if action is not None else ""
     with_text = ""
     if action is not None:
         with_indent = len(action.group("indent")) + 2
@@ -3408,26 +3457,63 @@ def inspect_auto_add_workflow(ctx: RepoContext,
     elif project_url != expected_project_url:
         errors.append(f"project-url must be exactly {expected_project_url}")
 
-    secrets = re.findall(
+    # Credential wiring. Either generation is accepted, but each one pins the
+    # whole step list: the PAT shape is a single uses step, the App shape is
+    # exactly the token-minting step plus the add-to-project step. Anything else
+    # in the job would run with the credential in scope.
+    tokens = re.findall(
         rf"(?m)^{' ' * input_indent}github-token:[ \t]*(.*?)[ \t]*(?:#.*)?$",
         with_text)
-    expected_secret = "${{ secrets.ADD_TO_PROJECT_PAT }}"
-    if len(secrets) != 1 or secrets[0].strip() != expected_secret:
-        errors.append(f"github-token must reference {expected_secret}")
-    if text.count(expected_secret) != 1:
-        errors.append("ADD_TO_PROJECT_PAT must appear exactly once, only in the action step")
+    token = tokens[0].strip() if len(tokens) == 1 else ""
+    legacy_secret = f"${{{{ secrets.{LEGACY_ADD_TO_PROJECT_SECRET} }}}}"
+    step_ref = re.fullmatch(r"\$\{\{[ \t]*steps\.([\w-]+)\.outputs\.token[ \t]*\}\}", token)
+    app_matches = list(re.finditer(
+        r"(?m)^(?P<indent>[ \t]*)-[ \t]*uses:[ \t]*" + re.escape(APP_TOKEN_REPO)
+        + r"@(?P<ref>[^\s#]+)[ \t]*(?:#.*)?$", text))
+    if token == legacy_secret:
+        if len(all_uses) != 1:
+            errors.append("credential-bearing workflow must contain exactly one executable uses step")
+        if text.count(legacy_secret) != 1:
+            errors.append(f"{LEGACY_ADD_TO_PROJECT_SECRET} must appear exactly once, "
+                          "only in the action step")
+    elif step_ref:
+        if len(app_matches) != 1 or len(all_uses) != 2:
+            errors.append(f"App-token workflow must contain exactly one {APP_TOKEN_REPO} "
+                          f"step and one {ADD_TO_PROJECT_REPO} step, and no other uses step")
+        elif not re.fullmatch(r"[0-9a-fA-F]{40}", app_matches[0].group("ref")):
+            errors.append(f"{APP_TOKEN_REPO} must be pinned to a full 40-character commit SHA")
+        else:
+            app_body = _workflow_step_body(text, app_matches[0])
+            id_indent = len(app_matches[0].group("indent")) + 2
+            ids = re.findall(
+                rf"(?m)^{' ' * id_indent}id:[ \t]*([^\s#]+)[ \t]*(?:#.*)?$", app_body)
+            if ids != [step_ref.group(1)]:
+                errors.append(f"github-token must reference the id of the {APP_TOKEN_REPO} step")
+        # Parity with the PAT branch: the credential may be named exactly where
+        # it is consumed. A second reference (a job-level `env:`, an input to
+        # another step) is a copy of the token outside the action that earned it.
+        if text.count(token) != 1:
+            errors.append("the App token output must appear exactly once, "
+                          "only in the action step")
+    else:
+        errors.append(f"github-token must reference {legacy_secret} or the token output of "
+                      f"a {APP_TOKEN_REPO} step")
     if expected_project_url is not None and text.count(expected_project_url) != 1:
         errors.append("the exact project URL must appear once, only under the action's with mapping")
-    if re.search(r"(?m)^[ \t]*-?[ \t]*run[ \t]*:", text):
+    if re.search(_STEP_KEY_RE.format(key="run"), text):
         errors.append("run steps are forbidden in the credential-bearing auto-add workflow")
+    if re.search(_FLOW_STEP_RE, text):
+        errors.append("flow-style steps are not recognized; use block style so every "
+                      "step is inspectable")
 
     if errors:
         return AutoAddWorkflowInspection(
             path, False, f"{path} is invalid: " + "; ".join(errors),
-            "Re-run lifecycle bootstrap to regenerate the workflow, then configure "
-            "the ADD_TO_PROJECT_PAT repository secret")
+            "Re-run lifecycle bootstrap to regenerate the workflow, then configure the "
+            f"{APP_CLIENT_ID_VAR} repository variable and {APP_PRIVATE_KEY_SECRET} secret")
     return AutoAddWorkflowInspection(
-        path, True, f"validated {path}: issues/opened, SHA pin, exact project URL, and secret", "")
+        path, True, f"validated {path}: issues/opened, SHA pin, exact project URL, "
+        "and credential wiring", "")
 
 
 def evaluate_forward_binding_check(binding: BindingConfig,

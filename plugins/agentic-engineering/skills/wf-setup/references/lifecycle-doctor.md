@@ -106,13 +106,16 @@ To change a flag, run the `wf-setup` configuration route — this section is rea
 - After running or re-running [lifecycle bootstrap](lifecycle-bootstrap.md)
 - After changing GitHub authentication or Project credentials
 - After changing Project fields, workflows, links, or the forward binding
-- After rotating `ADD_TO_PROJECT_PAT`, or when the auto-add workflow is red
+- After rotating the auto-add credential (`LWD_APP_PRIVATE_KEY`, or a legacy
+  `ADD_TO_PROJECT_PAT`), or when the auto-add workflow is red
 - Before picking up the first real work item on a newly configured repo (this is the runbook's step 0)
 
 `board_forward_binding` validates the recorded binding choice: `workflow-only`
 requires no orphaned auto-add workflow; `auto-add` structurally validates the
-trigger, Project URL, pinned action, and `ADD_TO_PROJECT_PAT` reference (a
-write-only secret can only be proven by the live probe); `none` records the
+trigger, Project URL, pinned actions, and credential wiring — either a
+SHA-pinned `create-github-app-token` step whose token output feeds
+`add-to-project`, or a legacy `ADD_TO_PROJECT_PAT` reference (a write-only
+credential can only be proven by the live probe); `none` records the
 deliberate manual workflow. An unrecognized value blocks readiness. The
 ready-work saved view has no creation API and remains a manual verification in
 [lifecycle bootstrap](lifecycle-bootstrap.md); backfill is a one-time action —

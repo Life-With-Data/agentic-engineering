@@ -900,6 +900,8 @@ class ForwardBindingBootstrapTest(unittest.TestCase):
             (["api", "users/acme", "--jq", ".type"], _ok("User")),
             (["api", "repos/actions/add-to-project/commits/v2", "--jq", ".sha"],
              _ok("5afcf98fcd03f1c2f92c3c83f58ae24323cc57fd")),
+            (["api", "repos/actions/create-github-app-token/commits/v3", "--jq", ".sha"],
+             _ok("bcd2ba49218906704ab6c1aa796996da409d3eb1")),
         ])
         summary = bs.bootstrap(ctx, runner, probe=False, forward_binding=forward_binding, environ={})
         return ctx, summary
@@ -959,23 +961,52 @@ class ScaffoldAutoAddTest(unittest.TestCase):
                               origin_repo="widget", default_branch="main"), Path(tmp.name)
 
     _SHA = "5afcf98fcd03f1c2f92c3c83f58ae24323cc57fd"
+    _APP_SHA = "bcd2ba49218906704ab6c1aa796996da409d3eb1"
 
     def _scaffold_runner(self, owner_type="User"):
         return FakeRunner([
             (["api", "users/acme", "--jq", ".type"], _ok(owner_type)),
             (["api", "repos/actions/add-to-project/commits/v2", "--jq", ".sha"], _ok(self._SHA)),
+            (["api", "repos/actions/create-github-app-token/commits/v3", "--jq", ".sha"],
+             _ok(self._APP_SHA)),
         ])
 
+    def _render(self, url="https://github.com/users/acme/projects/5", owner="acme"):
+        return bs.render_add_to_project_workflow(url, self._SHA, "v2.0.0",
+                                                 owner, self._APP_SHA, "v3")
+
     def test_render_is_hardened(self) -> None:
-        y = bs.render_add_to_project_workflow(
-            "https://github.com/users/acme/projects/5", self._SHA, "v2.0.0")
+        y = self._render()
         self.assertEqual(y.count("permissions: {}"), 2)          # top + job level
         self.assertIn(f"actions/add-to-project@{self._SHA}", y)  # SHA-pinned
-        self.assertIn("${{ secrets.ADD_TO_PROJECT_PAT }}", y)
+        self.assertIn(f"actions/create-github-app-token@{self._APP_SHA}", y)
         self.assertIn("project-url: https://github.com/users/acme/projects/5", y)
         # No run: step (the only "run:" is inside the security comment).
         self.assertNotIn("\n      - run:", y)
         self.assertNotIn("\n        run:", y)
+
+    def test_render_uses_app_token_not_pat(self) -> None:
+        y = self._render()
+        self.assertNotIn("ADD_TO_PROJECT_PAT", y)
+        self.assertIn("id: app-token", y)
+        self.assertIn("client-id: ${{ vars.LWD_APP_CLIENT_ID }}", y)   # v3 deprecated app-id
+        self.assertIn("private-key: ${{ secrets.LWD_APP_PRIVATE_KEY }}", y)
+        self.assertIn("owner: acme", y)
+        self.assertIn("github-token: ${{ steps.app-token.outputs.token }}", y)
+        # `repositories:` stays unset so the token spans the whole owner — a
+        # shared board loses cross-repo visibility the moment it is narrowed.
+        self.assertNotIn("\n          repositories:", y)
+
+    def test_render_rejects_unsafe_interpolations(self) -> None:
+        for kwargs in ({"action_sha": "v2"}, {"action_ref": "v2\ninjected: true"},
+                       {"app_sha": "v3"}, {"app_ref": "v3\nname: evil"},
+                       {"owner": "acme\nname: evil"}):
+            with self.subTest(**kwargs):
+                args = {"project_url": "https://github.com/users/acme/projects/5",
+                        "action_sha": self._SHA, "action_ref": "v2.0.0", "owner": "acme",
+                        "app_sha": self._APP_SHA, "app_ref": "v3", **kwargs}
+                with self.assertRaises(ValueError):
+                    bs.render_add_to_project_workflow(**args)
 
     def test_scaffolds_user_url_when_absent(self) -> None:
         ctx, root = self._ctx()
@@ -986,6 +1017,33 @@ class ScaffoldAutoAddTest(unittest.TestCase):
         self.assertIn("https://github.com/users/acme/projects/5", text)
         # Cross-consistency: the doctor's detector must find what bootstrap wrote.
         self.assertEqual(lb._auto_add_candidates(ctx)[0][0], bs.WORKFLOW_FILENAME)
+
+    def test_shared_workflow_contract_is_aliased_not_redeclared(self) -> None:
+        """The generator emits the workflow shape and the doctor asserts it, so
+        every name both modules touch has exactly one definition. Identity, not
+        equality: two equal literals pass an equality check right up until
+        someone edits one of them. Redeclaring here is the drift this guards —
+        it would ship a doctor that reddens on its own scaffold."""
+        for name in ("ADD_TO_PROJECT_REPO", "APP_TOKEN_REPO", "APP_CLIENT_ID_VAR",
+                     "APP_PRIVATE_KEY_SECRET", "WORKFLOW_FILENAME"):
+            with self.subTest(name=name):
+                self.assertIs(getattr(bs, name), getattr(lb, name))
+
+    def test_scaffolded_workflow_passes_the_doctor(self) -> None:
+        """The round trip, not a substring: whatever bootstrap emits must satisfy
+        the doctor that validates it. The two agree only by convention — the
+        generator builds a string and the doctor reads one back with regexes —
+        so without this, tightening either side silently reds out every repo the
+        other side scaffolded. Both segments, since the URL is interpolated."""
+        for owner_type, segment in (("User", "users"), ("Organization", "orgs")):
+            with self.subTest(owner_type=owner_type):
+                ctx, _root = self._ctx()
+                project = bs.Project(number=5, id="P", created=True)
+                bs.scaffold_add_to_project_workflow(
+                    project, ctx, self._scaffold_runner(owner_type))
+                url = f"https://github.com/{segment}/acme/projects/5"
+                inspection = lb.inspect_auto_add_workflow(ctx, url)
+                self.assertTrue(inspection.valid, inspection.detail)
 
     def test_scaffolds_org_url(self) -> None:
         ctx, root = self._ctx()
@@ -1007,19 +1065,26 @@ class ScaffoldAutoAddTest(unittest.TestCase):
         self.assertEqual(wf.read_text(encoding="utf-8"), "# user's own workflow\n")  # untouched
 
     def test_action_ref_falls_back_when_resolve_fails(self) -> None:
-        runner = FakeRunner([
-            (["api", "repos/actions/add-to-project/commits/v2", "--jq", ".sha"], _fail("offline")),
-        ])
-        sha, ref = bs._resolve_action_ref(runner)
-        self.assertEqual(sha, bs.ADD_TO_PROJECT_PINNED_SHA)
-        self.assertEqual(ref, bs.ADD_TO_PROJECT_PINNED_REF)
+        for repo, tag, sha_const, ref_const in (
+                ("actions/add-to-project", "v2",
+                 bs.ADD_TO_PROJECT_PINNED_SHA, bs.ADD_TO_PROJECT_PINNED_REF),
+                ("actions/create-github-app-token", "v3",
+                 bs.APP_TOKEN_PINNED_SHA, bs.APP_TOKEN_PINNED_REF)):
+            with self.subTest(repo=repo):
+                runner = FakeRunner([
+                    (["api", f"repos/{repo}/commits/{tag}", "--jq", ".sha"], _fail("offline")),
+                ])
+                sha, ref = bs._resolve_action_ref(runner, repo, tag, sha_const, ref_const)
+                self.assertEqual((sha, ref), (sha_const, ref_const))
 
     def test_action_ref_rejects_non_sha_output(self) -> None:
         # A garbled response must not become the pin — fall back to the constant.
         runner = FakeRunner([
             (["api", "repos/actions/add-to-project/commits/v2", "--jq", ".sha"], _ok("not-a-sha")),
         ])
-        sha, _ref = bs._resolve_action_ref(runner)
+        sha, _ref = bs._resolve_action_ref(runner, "actions/add-to-project", "v2",
+                                           bs.ADD_TO_PROJECT_PINNED_SHA,
+                                           bs.ADD_TO_PROJECT_PINNED_REF)
         self.assertEqual(sha, bs.ADD_TO_PROJECT_PINNED_SHA)
 
     def test_dependabot_created_when_absent(self) -> None:
@@ -1076,17 +1141,12 @@ class ScaffoldAutoAddTest(unittest.TestCase):
         runner = FakeRunner([
             (["api", "users/acme", "--jq", ".type"], _fail("HTTP 503")),
             (["api", "repos/actions/add-to-project/commits/v2", "--jq", ".sha"], _ok(self._SHA)),
+            (["api", "repos/actions/create-github-app-token/commits/v3", "--jq", ".sha"],
+             _ok(self._APP_SHA)),
         ])
         result = bs.scaffold_add_to_project_workflow(project, ctx, runner)
         self.assertTrue(result["scaffolded"])
         self.assertIsNotNone(result["warning"])  # segment-unresolved warning propagated
-
-    def test_render_rejects_non_sha_and_unsafe_ref(self) -> None:
-        with self.assertRaises(ValueError):
-            bs.render_add_to_project_workflow("https://github.com/users/a/projects/1", "v2", "v2")
-        with self.assertRaises(ValueError):
-            bs.render_add_to_project_workflow(
-                "https://github.com/users/a/projects/1", self._SHA, "v2\ninjected: true")
 
 
 class ProbeTest(unittest.TestCase):
