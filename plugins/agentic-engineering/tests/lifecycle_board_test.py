@@ -2027,6 +2027,24 @@ class AutoAddWorkflowTest(unittest.TestCase):
         inspection = lb.inspect_auto_add_workflow(ctx, url)
         self.assertTrue(inspection.valid, inspection.detail)
 
+    def test_step_guards_do_not_fire_on_legitimate_yaml(self) -> None:
+        """Positive control for the widened `uses:`/`run:` key guards and the
+        flow-style rejection. Every other case here is a rejection, so a future
+        broadening of those regexes would keep the suite green while turning the
+        doctor red on working repos. These three constructs must keep passing:
+        a flow SEQUENCE that is not a step, `permissions: {}`, and the scaffold's
+        own comment telling the reader not to add `run:` steps."""
+        url = "https://github.com/orgs/acme/projects/5"
+        ctx = self._write(
+            "# SECURITY: do NOT add `run:` steps that interpolate issue content\n"
+            "on:\n  issues:\n    types: [opened]\n\npermissions: {}\n\n"
+            "jobs:\n  add:\n    permissions: {}\n    steps:\n"
+            "      - uses: actions/add-to-project@" + "a" * 40 + "\n"
+            "        with:\n          project-url: " + url + "\n"
+            "          github-token: ${{ secrets.ADD_TO_PROJECT_PAT }}\n")
+        inspection = lb.inspect_auto_add_workflow(ctx, url)
+        self.assertTrue(inspection.valid, inspection.detail)
+
     def test_rejects_broken_app_token_wiring(self) -> None:
         url = "https://github.com/orgs/acme/projects/5"
         app = ("      - uses: actions/create-github-app-token@" + "b" * 40 + "\n"

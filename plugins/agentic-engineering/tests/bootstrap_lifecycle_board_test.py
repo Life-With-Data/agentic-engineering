@@ -1018,6 +1018,22 @@ class ScaffoldAutoAddTest(unittest.TestCase):
         # Cross-consistency: the doctor's detector must find what bootstrap wrote.
         self.assertEqual(lb._auto_add_candidates(ctx)[0][0], bs.WORKFLOW_FILENAME)
 
+    def test_scaffolded_workflow_passes_the_doctor(self) -> None:
+        """The round trip, not a substring: whatever bootstrap emits must satisfy
+        the doctor that validates it. The two agree only by convention — the
+        generator builds a string and the doctor reads one back with regexes —
+        so without this, tightening either side silently reds out every repo the
+        other side scaffolded. Both segments, since the URL is interpolated."""
+        for owner_type, segment in (("User", "users"), ("Organization", "orgs")):
+            with self.subTest(owner_type=owner_type):
+                ctx, _root = self._ctx()
+                project = bs.Project(number=5, id="P", created=True)
+                bs.scaffold_add_to_project_workflow(
+                    project, ctx, self._scaffold_runner(owner_type))
+                url = f"https://github.com/{segment}/acme/projects/5"
+                inspection = lb.inspect_auto_add_workflow(ctx, url)
+                self.assertTrue(inspection.valid, inspection.detail)
+
     def test_scaffolds_org_url(self) -> None:
         ctx, root = self._ctx()
         project = bs.Project(number=5, id="P", created=True)
