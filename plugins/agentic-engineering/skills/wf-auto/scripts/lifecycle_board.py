@@ -3300,6 +3300,14 @@ APP_CLIENT_ID_VAR = "LWD_APP_CLIENT_ID"
 APP_PRIVATE_KEY_SECRET = "LWD_APP_PRIVATE_KEY"
 LEGACY_ADD_TO_PROJECT_SECRET = "ADD_TO_PROJECT_PAT"
 
+# A step key in the spellings YAML allows: dash-led or not (key order inside a
+# step is free), quoted or bare. The doctor recognizes only what bootstrap
+# emits, so it counts every spelling rather than trusting the canonical one.
+_STEP_KEY_RE = r"""(?m)^[ \t]*(?:-[ \t]*)?['"]?{key}['"]?[ \t]*:"""
+# Flow style (`- {{uses: evil/action@v1}}`) hides an entire step on one line,
+# past every block-style anchor above. Fail closed instead of parsing it.
+_FLOW_STEP_RE = r"(?m)^[ \t]*-[ \t]*[\{\[]"
+
 
 @dataclass(frozen=True)
 class AutoAddWorkflowInspection:
@@ -3387,7 +3395,12 @@ def inspect_auto_add_workflow(ctx: RepoContext,
         r"(?m)^(?P<indent>[ \t]*)-[ \t]*uses:[ \t]*actions/add-to-project@"
         r"(?P<ref>[^\s#]+)[ \t]*(?:#.*)?$",
         text))
-    all_uses = re.findall(r"(?m)^[ \t]*-[ \t]*uses:[ \t]*[^\s#]+", text)
+    # Count EVERY `uses:` key, not just the dash-led one. A step may spell its
+    # keys in any order (`- name:` first, then `uses:` on a later line) or quote
+    # them, and both spellings run inside the credential-bearing job — so a
+    # dash-anchored count would let an unpinned action slip past the step budget
+    # below with the board credential in scope.
+    all_uses = re.findall(_STEP_KEY_RE.format(key="uses"), text)
     action = action_matches[0] if len(action_matches) == 1 else None
     if len(action_matches) != 1:
         errors.append("workflow must contain exactly one actions/add-to-project step")
@@ -3452,13 +3465,22 @@ def inspect_auto_add_workflow(ctx: RepoContext,
                 rf"(?m)^{' ' * id_indent}id:[ \t]*([^\s#]+)[ \t]*(?:#.*)?$", app_body)
             if ids != [step_ref.group(1)]:
                 errors.append(f"github-token must reference the id of the {APP_TOKEN_REPO} step")
+        # Parity with the PAT branch: the credential may be named exactly where
+        # it is consumed. A second reference (a job-level `env:`, an input to
+        # another step) is a copy of the token outside the action that earned it.
+        if text.count(token) != 1:
+            errors.append("the App token output must appear exactly once, "
+                          "only in the action step")
     else:
         errors.append(f"github-token must reference {legacy_secret} or the token output of "
                       f"a {APP_TOKEN_REPO} step")
     if expected_project_url is not None and text.count(expected_project_url) != 1:
         errors.append("the exact project URL must appear once, only under the action's with mapping")
-    if re.search(r"(?m)^[ \t]*-?[ \t]*run[ \t]*:", text):
+    if re.search(_STEP_KEY_RE.format(key="run"), text):
         errors.append("run steps are forbidden in the credential-bearing auto-add workflow")
+    if re.search(_FLOW_STEP_RE, text):
+        errors.append("flow-style steps are not recognized; use block style so every "
+                      "step is inspectable")
 
     if errors:
         return AutoAddWorkflowInspection(
