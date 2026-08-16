@@ -58,6 +58,20 @@ HEAD_BOUND_REVIEW_GATE: dict[str, tuple[str, ...]] = {
     "wf-delivery": ("reviewed SHA", "stale"),
 }
 
+# Screenshot evidence gate (issue #447): a UI/UX-changing PR must carry
+# screenshots on the PR itself before it is acceptable — a written "verified
+# in browser" note does not count. wf-development requires attaching them,
+# wf-review treats their absence as a blocking finding rather than a polite
+# request, and wf-delivery must not land a PR that lacks them. Tokens are
+# category-level (screenshot requirement + not-acceptance wording), matched
+# anywhere in the skill's concatenated text — never a frozen sentence or line
+# position, per this module's guardrail policy (see the docstring above).
+SCREENSHOT_EVIDENCE_GATE: dict[str, tuple[str, ...]] = {
+    "wf-development": ("screenshots", "required", "not acceptance evidence"),
+    "wf-review": ("screenshots", "not ready", "P2"),
+    "wf-delivery": ("screenshot",),
+}
+
 # Coarse inverse-guard keyword: a `wf-*` skill whose `Owns:` block claims a
 # "transition" but is absent from OWNED_TRANSITIONS must be added to the map (and
 # route to its engine procedure). Single keyword by design — a prompt to update
@@ -202,6 +216,22 @@ class HeadBoundReviewGateIntegrationTest(unittest.TestCase):
                     [],
                     f"{skill_name}: missing head-bound review gate tokens {absent} "
                     f"(issue #405) in SKILL.md + references/*.md.",
+                )
+
+
+class ScreenshotEvidenceGateIntegrationTest(unittest.TestCase):
+    """Each mapped skill's real files must state the screenshot evidence gate."""
+
+    def test_mapped_skills_require_screenshot_evidence(self) -> None:
+        for skill_name, required in SCREENSHOT_EVIDENCE_GATE.items():
+            with self.subTest(skill=skill_name):
+                text = _concatenated_skill_text(skill_name)
+                absent = missing_tokens(text, required)
+                self.assertEqual(
+                    absent,
+                    [],
+                    f"{skill_name}: missing screenshot evidence gate tokens {absent} "
+                    f"(issue #447) in SKILL.md + references/*.md.",
                 )
 
 

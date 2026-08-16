@@ -51,9 +51,14 @@ the engine prevents burying open work under the parent PR.
 ## Verify and open the PR
 
 Run the repository-required checks from `test-execution`, inspect the complete
-diff, and compare it with the acceptance criteria. Add screenshots only for
-user-visible changes where they help prove the result. Add operational
-validation only when the change has operational impact.
+diff, and compare it with the acceptance criteria. When the change alters
+rendered UI/UX, attaching screenshots to the PR (body or comment) is required
+before the PR is ready — capture them with whatever the framework provides,
+the requirement is the screenshots on the PR, not a specific tool. A written
+"verified in browser" note is not acceptance evidence. Exempt only work with
+no rendered UI (docs, infra, backend-only changes), and state that exemption
+explicitly in the PR description. Add operational validation only when the
+change has operational impact.
 
 Open or update the PR with:
 

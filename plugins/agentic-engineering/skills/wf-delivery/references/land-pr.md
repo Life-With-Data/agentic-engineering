@@ -39,8 +39,10 @@ did not, move on without an audit comment.
 4. Reconcile with the base branch using repository guidance and rerun invalidated
    checks.
 5. Update the PR description with a concise summary and actual verification
-   evidence. Add screenshots or operational validation only when the change has
-   the corresponding user-visible or operational impact.
+   evidence. Do not land a UI/UX-changing PR that lacks the screenshot
+   evidence `wf-review`'s visual evidence gate requires — fix that before
+   merging, not after. Add operational validation only when the change has
+   operational impact.
 6. Ask before merging when invoked standalone. Merge without another prompt only
    when the user selected an autonomous/unattended run or already granted merge
    authority.
