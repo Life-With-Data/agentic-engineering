@@ -24,6 +24,14 @@ security-sensitive, destructive, cross-cutting, or explicitly requested work.
 Multiple reviewer agents are optional and should have distinct, relevant
 scopes.
 
+## Visual evidence gate
+
+A PR that changes rendered UI/UX without screenshots attached to the PR (body
+or comment) is not ready — treat missing screenshots as a P2 finding, not a
+P3 suggestion. A written "verified in browser" checkbox does not satisfy
+this; only screenshots on the PR do. Exempt work with no rendered UI (docs,
+infra, backend-only changes) when the PR states that exemption.
+
 ## Findings
 
 Every actionable finding includes impact, exact location, evidence or a concrete
