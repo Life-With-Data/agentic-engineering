@@ -5,6 +5,21 @@ All notable changes to the agentic-engineering plugin will be documented in this
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [9.4.0](https://github.com/Life-With-Data/agentic-engineering/compare/agentic-engineering-v9.3.1...agentic-engineering-v9.4.0) (2026-08-18)
+
+
+### Features
+
+* **grooming:** require an explicit milestone decision in the decompose spec ([#451](https://github.com/Life-With-Data/agentic-engineering/issues/451)) ([9d462c2](https://github.com/Life-With-Data/agentic-engineering/commit/9d462c2cbf636757bc8a8b495a4006ae9b7f4687)), closes [#450](https://github.com/Life-With-Data/agentic-engineering/issues/450)
+* **workflow:** require screenshots on PRs that change UI/UX ([#448](https://github.com/Life-With-Data/agentic-engineering/issues/448)) ([982a3d5](https://github.com/Life-With-Data/agentic-engineering/commit/982a3d56a5375c9ca07a79ee4831b332dfc4641b))
+
+
+### Bug Fixes
+
+* **ci:** auth auto-add with a GitHub App token instead of a PAT ([#440](https://github.com/Life-With-Data/agentic-engineering/issues/440)) ([5af68dc](https://github.com/Life-With-Data/agentic-engineering/commit/5af68dcdf4689d83a399fc7a1f85d0b3cbf77338))
+* **lifecycle:** scaffold App-token auto-add and accept both credential shapes ([#444](https://github.com/Life-With-Data/agentic-engineering/issues/444)) ([49f0b0d](https://github.com/Life-With-Data/agentic-engineering/commit/49f0b0d15deb864743374e7c3323d177b48e67ef))
+* **workflow:** make wf-review a mandatory hop before delivery ([#438](https://github.com/Life-With-Data/agentic-engineering/issues/438)) ([e8563a2](https://github.com/Life-With-Data/agentic-engineering/commit/e8563a2fdc3922a11f703dab37268d96d8904df6))
+
 ## [9.3.1](https://github.com/Life-With-Data/agentic-engineering/compare/agentic-engineering-v9.3.0...agentic-engineering-v9.3.1) (2026-08-12)
 
 
