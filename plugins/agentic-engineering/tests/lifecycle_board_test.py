@@ -2740,7 +2740,7 @@ class ParseCreatedIssueNumberTest(unittest.TestCase):
 
 class DecomposeSpecValidationTest(unittest.TestCase):
     def test_valid_spec_returns_ordered_subs(self) -> None:
-        spec = {"plan_path": "docs/plans/p.md", "priority": "p2", "sub_issues": [
+        spec = {"plan_path": "docs/plans/p.md", "priority": "p2", "milestone": None, "sub_issues": [
             {"title": "a", "body_file": "s1.md"},
             {"title": "b", "body_file": "s2.md", "blocked_by": [0]}]}
         subs = lb.validate_decompose_spec(spec, has_parent=True)
@@ -2748,19 +2748,19 @@ class DecomposeSpecValidationTest(unittest.TestCase):
 
     def test_missing_plan_path_rejected(self) -> None:
         with self.assertRaises(lb.BoardError) as cm:
-            lb.validate_decompose_spec({"priority": "p2", "sub_issues": []}, has_parent=True)
+            lb.validate_decompose_spec({"priority": "p2", "milestone": None, "sub_issues": []}, has_parent=True)
         self.assertEqual(cm.exception.code, "invalid_decompose_spec")
 
     def test_required_priority_accepted(self) -> None:
         for value in lb.PRIORITY_VALUES:
-            spec = {"plan_path": "p", "priority": value, "sub_issues": []}
+            spec = {"plan_path": "p", "priority": value, "milestone": None, "sub_issues": []}
             self.assertEqual(lb.validate_decompose_spec(spec, has_parent=True), [])
 
     def test_omitted_or_invalid_priority_rejected(self) -> None:
         for bad in (
-            {"plan_path": "p", "sub_issues": []},
-            {"plan_path": "p", "priority": None, "sub_issues": []},
-            {"plan_path": "p", "priority": "p0", "sub_issues": []},
+            {"plan_path": "p", "milestone": None, "sub_issues": []},
+            {"plan_path": "p", "priority": None, "milestone": None, "sub_issues": []},
+            {"plan_path": "p", "priority": "p0", "milestone": None, "sub_issues": []},
         ):
             with self.assertRaises(lb.BoardError) as cm:
                 lb.validate_decompose_spec(bad, has_parent=True)
@@ -2768,7 +2768,7 @@ class DecomposeSpecValidationTest(unittest.TestCase):
             self.assertIn("priority", str(cm.exception))
 
     def test_sub_level_priority_rejected_with_spec_level_hint(self) -> None:
-        spec = {"plan_path": "p", "priority": "p2", "sub_issues": [
+        spec = {"plan_path": "p", "priority": "p2", "milestone": None, "sub_issues": [
             {"title": "a", "body_file": "s", "priority": "p1"}]}
         with self.assertRaises(lb.BoardError) as cm:
             lb.validate_decompose_spec(spec, has_parent=True)
@@ -2777,9 +2777,9 @@ class DecomposeSpecValidationTest(unittest.TestCase):
 
     def test_forward_and_self_dependency_rejected(self) -> None:
         # forward: sub 0 depends on sub 1 (not yet created)
-        fwd = {"plan_path": "p", "priority": "p2", "sub_issues": [{"title": "a", "body_file": "s", "blocked_by": [1]}]}
+        fwd = {"plan_path": "p", "priority": "p2", "milestone": None, "sub_issues": [{"title": "a", "body_file": "s", "blocked_by": [1]}]}
         # self: sub 0 depends on itself
-        selfdep = {"plan_path": "p", "priority": "p2", "sub_issues": [{"title": "a", "body_file": "s", "blocked_by": [0]}]}
+        selfdep = {"plan_path": "p", "priority": "p2", "milestone": None, "sub_issues": [{"title": "a", "body_file": "s", "blocked_by": [0]}]}
         for bad in (fwd, selfdep):
             with self.assertRaises(lb.BoardError) as cm:
                 lb.validate_decompose_spec(bad, has_parent=True)
@@ -2795,7 +2795,7 @@ class DecomposeSpecValidationTest(unittest.TestCase):
         # `milestones` is the likelier typo than `titel`, and falling through
         # spec.get() would write nothing — indistinguishable from omitting it.
         for key in ("milestones", "Milestone", "prioritY", "subissues"):
-            spec = {"plan_path": "p", "priority": "p2", "sub_issues": [], key: "x"}
+            spec = {"plan_path": "p", "priority": "p2", "milestone": None, "sub_issues": [], key: "x"}
             with self.assertRaises(lb.BoardError) as cm:
                 lb.validate_decompose_spec(spec, has_parent=True)
             self.assertEqual(cm.exception.code, "invalid_decompose_spec")
@@ -2809,10 +2809,17 @@ class DecomposeSpecValidationTest(unittest.TestCase):
         self.assertEqual(set(spec), set(lb.DECOMPOSE_SPEC_KEYS))
         self.assertEqual(len(lb.validate_decompose_spec(spec, has_parent=True)), 1)
 
-    def test_omitted_or_null_milestone_still_valid(self) -> None:
-        for spec in ({"plan_path": "p", "priority": "p2", "sub_issues": []},
-                     {"plan_path": "p", "priority": "p2", "milestone": None, "sub_issues": []}):
-            self.assertEqual(lb.validate_decompose_spec(spec, has_parent=True), [])
+    def test_explicit_null_milestone_valid_but_missing_key_rejected(self) -> None:
+        # The milestone decision is mandatory: an explicit null records a
+        # deliberate no-milestone choice; silently omitting the key fails
+        # closed, exactly like priority.
+        spec = {"plan_path": "p", "priority": "p2", "milestone": None, "sub_issues": []}
+        self.assertEqual(lb.validate_decompose_spec(spec, has_parent=True), [])
+        with self.assertRaises(lb.BoardError) as cm:
+            lb.validate_decompose_spec(
+                {"plan_path": "p", "priority": "p2", "sub_issues": []}, has_parent=True)
+        self.assertEqual(cm.exception.code, "invalid_decompose_spec")
+        self.assertIn("milestone", str(cm.exception))
 
     def test_invalid_milestone_rejected(self) -> None:
         for milestone in ("Non-demo data",            # not an object
@@ -2833,18 +2840,18 @@ class DecomposeSpecValidationTest(unittest.TestCase):
         # A dependency on an issue that ALREADY exists has no ordering problem —
         # both the bare and the hashed spelling name the same issue.
         for entry in ("257", "#257", " #257 "):
-            spec = {"plan_path": "p", "priority": "p2", "sub_issues": [
+            spec = {"plan_path": "p", "priority": "p2", "milestone": None, "sub_issues": [
                 {"title": "a", "body_file": "s", "blocked_by": [entry]}]}
             self.assertEqual(len(lb.validate_decompose_spec(spec, has_parent=True)), 1)
 
     def test_mixed_index_and_existing_issue_blocked_by_accepted(self) -> None:
-        spec = {"plan_path": "p", "priority": "p2", "sub_issues": [
+        spec = {"plan_path": "p", "priority": "p2", "milestone": None, "sub_issues": [
             {"title": "a", "body_file": "s1"},
             {"title": "b", "body_file": "s2", "blocked_by": [0, "#257"]}]}
         self.assertEqual(len(lb.validate_decompose_spec(spec, has_parent=True)), 2)
 
     def test_blocked_by_naming_the_parent_is_rejected_as_a_cycle(self) -> None:
-        spec = {"plan_path": "p", "priority": "p2", "sub_issues": [
+        spec = {"plan_path": "p", "priority": "p2", "milestone": None, "sub_issues": [
             {"title": "a", "body_file": "s", "blocked_by": ["#182"]}]}
         with self.assertRaises(lb.BoardError) as cm:
             lb.validate_decompose_spec(spec, has_parent=True, parent=182)
@@ -2853,14 +2860,14 @@ class DecomposeSpecValidationTest(unittest.TestCase):
 
     def test_non_numeric_and_zero_blocked_by_strings_rejected(self) -> None:
         for entry in ("#abc", "", "#0", "0", "12x", "#-3"):
-            spec = {"plan_path": "p", "priority": "p2", "sub_issues": [
+            spec = {"plan_path": "p", "priority": "p2", "milestone": None, "sub_issues": [
                 {"title": "a", "body_file": "s", "blocked_by": [entry]}]}
             with self.assertRaises(lb.BoardError) as cm:
                 lb.validate_decompose_spec(spec, has_parent=True)
             self.assertEqual(cm.exception.code, "invalid_decompose_spec")
 
     def test_parent_title_required_only_when_creating(self) -> None:
-        spec = {"plan_path": "p", "priority": "p2", "sub_issues": []}
+        spec = {"plan_path": "p", "priority": "p2", "milestone": None, "sub_issues": []}
         # creating (no parent number) needs a title
         with self.assertRaises(lb.BoardError):
             lb.validate_decompose_spec(spec, has_parent=False)
@@ -2868,20 +2875,20 @@ class DecomposeSpecValidationTest(unittest.TestCase):
         self.assertEqual(lb.validate_decompose_spec(spec, has_parent=True), [])
 
     def test_valid_complexity_on_parent_and_subs_accepted(self) -> None:
-        spec = {"plan_path": "p", "priority": "p2", "complexity": "low", "sub_issues": [
+        spec = {"plan_path": "p", "priority": "p2", "complexity": "low", "milestone": None, "sub_issues": [
             {"title": "a", "body_file": "s1", "complexity": "high"},
             {"title": "b", "body_file": "s2"}]}  # sub omitting complexity stays valid
         subs = lb.validate_decompose_spec(spec, has_parent=True)
         self.assertEqual(len(subs), 2)
 
     def test_omitted_complexity_still_valid(self) -> None:
-        spec = {"plan_path": "p", "priority": "p2", "sub_issues": [{"title": "a", "body_file": "s"}]}
+        spec = {"plan_path": "p", "priority": "p2", "milestone": None, "sub_issues": [{"title": "a", "body_file": "s"}]}
         # No complexity anywhere is backward compatible — no raise.
         self.assertEqual(len(lb.validate_decompose_spec(spec, has_parent=True)), 1)
 
     def test_out_of_vocabulary_complexity_rejected(self) -> None:
-        parent_bad = {"plan_path": "p", "priority": "p2", "complexity": "epic", "sub_issues": []}
-        sub_bad = {"plan_path": "p", "priority": "p2", "sub_issues": [
+        parent_bad = {"plan_path": "p", "priority": "p2", "complexity": "epic", "milestone": None, "sub_issues": []}
+        sub_bad = {"plan_path": "p", "priority": "p2", "milestone": None, "sub_issues": [
             {"title": "a", "body_file": "s", "complexity": "huge"}]}
         for bad in (parent_bad, sub_bad):
             with self.assertRaises(lb.BoardError) as cm:
@@ -2890,17 +2897,17 @@ class DecomposeSpecValidationTest(unittest.TestCase):
 
     def test_valid_posture_on_parent_accepted(self) -> None:
         for value in ("standard", "autonomous"):
-            spec = {"plan_path": "p", "priority": "p2", "posture": value, "sub_issues": [
+            spec = {"plan_path": "p", "priority": "p2", "posture": value, "milestone": None, "sub_issues": [
                 {"title": "a", "body_file": "s"}]}
             subs = lb.validate_decompose_spec(spec, has_parent=True)
             self.assertEqual(len(subs), 1)
 
     def test_omitted_posture_still_valid(self) -> None:
-        spec = {"plan_path": "p", "priority": "p2", "sub_issues": [{"title": "a", "body_file": "s"}]}
+        spec = {"plan_path": "p", "priority": "p2", "milestone": None, "sub_issues": [{"title": "a", "body_file": "s"}]}
         self.assertEqual(len(lb.validate_decompose_spec(spec, has_parent=True)), 1)
 
     def test_out_of_vocabulary_posture_rejected(self) -> None:
-        spec = {"plan_path": "p", "priority": "p2", "posture": "yolo", "sub_issues": []}
+        spec = {"plan_path": "p", "priority": "p2", "posture": "yolo", "milestone": None, "sub_issues": []}
         with self.assertRaises(lb.BoardError) as cm:
             lb.validate_decompose_spec(spec, has_parent=True)
         self.assertEqual(cm.exception.code, "invalid_decompose_spec")
@@ -2909,7 +2916,7 @@ class DecomposeSpecValidationTest(unittest.TestCase):
         # Posture governs the claimed PARENT across implement->review->deliver,
         # never an individual sub-issue — a hint must name the spec-level fix,
         # not silently ignore an author's mistaken placement.
-        spec = {"plan_path": "p", "priority": "p2", "sub_issues": [
+        spec = {"plan_path": "p", "priority": "p2", "milestone": None, "sub_issues": [
             {"title": "a", "body_file": "s", "posture": "autonomous"}]}
         with self.assertRaises(lb.BoardError) as cm:
             lb.validate_decompose_spec(spec, has_parent=True)
@@ -3445,7 +3452,7 @@ class DecomposeVerbTest(unittest.TestCase):
             plan.write_text("---\ntitle: t\n---\n\nbody\n", encoding="utf-8")
             (root / "s1.md").write_text("sub1", encoding="utf-8")
             (root / "s2.md").write_text("sub2", encoding="utf-8")
-            spec = {"body_file": "docs/plans/p.md", "priority": "p2", "sub_issues": [
+            spec = {"body_file": "docs/plans/p.md", "priority": "p2", "milestone": None, "sub_issues": [
                 {"title": "core", "body_file": "s1.md"},
                 {"title": "follow", "body_file": "s2.md", "blocked_by": [0]}]}
             spec_path = root / "spec.json"
@@ -3498,7 +3505,7 @@ class DecomposeVerbTest(unittest.TestCase):
             root = Path(d)
             (root / "p.md").write_text("body", encoding="utf-8")
             (root / "s1.md").write_text("sub1", encoding="utf-8")
-            spec = {"body_file": "p.md", "priority": "p2", "sub_issues": [{"title": "core", "body_file": "s1.md"}]}
+            spec = {"body_file": "p.md", "priority": "p2", "milestone": None, "sub_issues": [{"title": "core", "body_file": "s1.md"}]}
             spec_path = root / "spec.json"
             spec_path.write_text(json.dumps(spec), encoding="utf-8")
             runner = FakeRunner([
@@ -3526,7 +3533,7 @@ class DecomposeVerbTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             root = Path(d)
             spec_path = root / "spec.json"
-            spec_path.write_text(json.dumps({"sub_issues": []}), encoding="utf-8")  # no plan_path
+            spec_path.write_text(json.dumps({"milestone": None, "sub_issues": []}), encoding="utf-8")  # no plan_path
             runner = FakeRunner([])  # must never be called
             with mock.patch.object(lb, "read_board_config",
                                    return_value=lb.BoardConfig(owner="o", number=1, source="committed")):
@@ -3542,7 +3549,7 @@ class DecomposeVerbTest(unittest.TestCase):
             (root / "p.md").write_text("parent", encoding="utf-8")
             (root / "s1.md").write_text("sub1", encoding="utf-8")
             (root / "s2.md").write_text("sub2", encoding="utf-8")
-            spec = {"body_file": "p.md", "priority": "p2", "sub_issues": [
+            spec = {"body_file": "p.md", "priority": "p2", "milestone": None, "sub_issues": [
                 {"title": "core", "body_file": "s1.md"},
                 {"title": "follow", "body_file": "s2.md", "blocked_by": [0, "#257"]}]}
             spec_path = root / "spec.json"
@@ -3583,7 +3590,7 @@ class DecomposeVerbTest(unittest.TestCase):
             root = Path(d)
             (root / "p.md").write_text("parent", encoding="utf-8")
             (root / "s1.md").write_text("sub1", encoding="utf-8")
-            spec = {"body_file": "p.md", "priority": "p2", "sub_issues": [
+            spec = {"body_file": "p.md", "priority": "p2", "milestone": None, "sub_issues": [
                 {"title": "core", "body_file": "s1.md", "blocked_by": ["257"]}]}
             spec_path = root / "spec.json"
             spec_path.write_text(json.dumps(spec), encoding="utf-8")
@@ -3611,7 +3618,7 @@ class DecomposeVerbTest(unittest.TestCase):
             root = Path(d)
             (root / "p.md").write_text("parent", encoding="utf-8")
             (root / "s1.md").write_text("sub1", encoding="utf-8")
-            spec = {"body_file": "p.md", "priority": "p2", "sub_issues": [
+            spec = {"body_file": "p.md", "priority": "p2", "milestone": None, "sub_issues": [
                 {"title": "core", "body_file": "s1.md", "blocked_by": ["#999999"]}]}
             spec_path = root / "spec.json"
             spec_path.write_text(json.dumps(spec), encoding="utf-8")
@@ -3637,7 +3644,7 @@ class DecomposeVerbTest(unittest.TestCase):
             (root / "p.md").write_text("parent", encoding="utf-8")
             (root / "s1.md").write_text("sub1", encoding="utf-8")
             (root / "s2.md").write_text("sub2", encoding="utf-8")
-            spec = {"body_file": "p.md", "priority": "p2", "sub_issues": [
+            spec = {"body_file": "p.md", "priority": "p2", "milestone": None, "sub_issues": [
                 {"title": "core", "body_file": "s1.md"},
                 {"title": "follow", "body_file": "s2.md", "blocked_by": [0]}]}
             spec_path = root / "spec.json"
@@ -3914,7 +3921,7 @@ class DecomposeVerbTest(unittest.TestCase):
             (root / "p.md").write_text("parent", encoding="utf-8")
             (root / "s1.md").write_text("sub1", encoding="utf-8")
             spec = {"body_file": "p.md", "priority": "p2",
-                    "sub_issues": [{"title": "core", "body_file": "s1.md"}]}
+                    "milestone": None, "sub_issues": [{"title": "core", "body_file": "s1.md"}]}
             spec_path = root / "spec.json"
             spec_path.write_text(json.dumps(spec), encoding="utf-8")
             runner = FakeRunner([
@@ -3935,7 +3942,7 @@ class DecomposeVerbTest(unittest.TestCase):
             root = Path(d)
             (root / "parent.md").write_text("parent", encoding="utf-8")
             (root / "s1.md").write_text("first", encoding="utf-8")
-            spec = {"body_file": "parent.md", "priority": "p2", "sub_issues": [
+            spec = {"body_file": "parent.md", "priority": "p2", "milestone": None, "sub_issues": [
                 {"title": "first", "body_file": "s1.md"},
                 {"title": "missing", "body_file": "s2.md"}]}
             spec_path = root / "spec.json"
@@ -3958,7 +3965,7 @@ class DecomposeVerbTest(unittest.TestCase):
             (root / "s2.md").write_text("sub2", encoding="utf-8")
             # Parent spec-level complexity is `low`, but children are high+low, so
             # the parent ROLLUP must be `high` (max child), not the spec-level value.
-            spec = {"body_file": "parent.md", "priority": "p2", "complexity": "low", "sub_issues": [
+            spec = {"body_file": "parent.md", "priority": "p2", "complexity": "low", "milestone": None, "sub_issues": [
                 {"title": "core", "body_file": "s1.md", "complexity": "high"},
                 {"title": "follow", "body_file": "s2.md", "blocked_by": [0], "complexity": "low"}]}
             spec_path = root / "spec.json"
@@ -4008,7 +4015,7 @@ class DecomposeVerbTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             root = Path(d)
             (root / "parent.md").write_text("parent", encoding="utf-8")
-            spec = {"body_file": "parent.md", "priority": "p2", "complexity": "medium", "sub_issues": []}
+            spec = {"body_file": "parent.md", "priority": "p2", "complexity": "medium", "milestone": None, "sub_issues": []}
             spec_path = root / "spec.json"
             spec_path.write_text(json.dumps(spec), encoding="utf-8")
 
@@ -4038,7 +4045,7 @@ class DecomposeVerbTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             root = Path(d)
             (root / "parent.md").write_text("parent", encoding="utf-8")
-            spec = {"body_file": "parent.md", "priority": "p2", "posture": "autonomous", "sub_issues": []}
+            spec = {"body_file": "parent.md", "priority": "p2", "posture": "autonomous", "milestone": None, "sub_issues": []}
             spec_path = root / "spec.json"
             spec_path.write_text(json.dumps(spec), encoding="utf-8")
 
@@ -4078,7 +4085,7 @@ class DecomposeVerbTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             root = Path(d)
             (root / "parent.md").write_text("parent", encoding="utf-8")
-            spec = {"body_file": "parent.md", "priority": "p1", "sub_issues": []}
+            spec = {"body_file": "parent.md", "priority": "p1", "milestone": None, "sub_issues": []}
             spec_path = root / "spec.json"
             spec_path.write_text(json.dumps(spec), encoding="utf-8")
 
@@ -4111,7 +4118,7 @@ class DecomposeVerbTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             root = Path(d)
             (root / "parent.md").write_text("parent", encoding="utf-8")
-            spec = {"body_file": "parent.md", "priority": "p2", "sub_issues": []}
+            spec = {"body_file": "parent.md", "priority": "p2", "milestone": None, "sub_issues": []}
             spec_path = root / "spec.json"
             spec_path.write_text(json.dumps(spec), encoding="utf-8")
 
@@ -4137,9 +4144,9 @@ class DecomposeVerbTest(unittest.TestCase):
         # and a `complexity`, rather than adding a runtime guard on a
         # constant no refactor has proposed.
         specs = [
-            {"body_file": "parent.md", "priority": "p2", "sub_issues": []},
+            {"body_file": "parent.md", "priority": "p2", "milestone": None, "sub_issues": []},
             {"body_file": "parent.md", "priority": "p2", "posture": "autonomous", "complexity": "high",
-             "sub_issues": []},
+             "milestone": None, "sub_issues": []},
         ]
         for spec in specs:
             with self.subTest(spec=spec):
@@ -4237,7 +4244,7 @@ class DecomposeReceiptTest(unittest.TestCase):
     def test_repeat_new_parent_run_creates_one_issue_set(self) -> None:
         # AC1 + AC3: `--decompose --spec X` twice, no --issue.
         root, spec = self._repo({"body_file": "p.md", "parent_title": "epic",
-                                 "priority": "p2", "sub_issues": self.SUBS})
+                                 "priority": "p2", "milestone": None, "sub_issues": self.SUBS})
         first = self._run(root, FakeRunner([
             (["project", "field-list", "1", "--owner", "o"], _decompose_field_list()),
             (["issue", "create", "--repo", "o/r", "--title", "epic"],
@@ -4263,7 +4270,7 @@ class DecomposeReceiptTest(unittest.TestCase):
         # AC2: `--decompose <N> --spec X` twice bounds duplication to the sub
         # set today, which is still a duplicate set under the same parent.
         root, spec = self._repo({"body_file": "p.md", "priority": "p2",
-                                 "sub_issues": self.SUBS})
+                                 "milestone": None, "sub_issues": self.SUBS})
         first = self._run(root, self._existing_parent_runner())
         self.assertEqual([s["number"] for s in first["sub_issues"]], [183, 184])
 
@@ -4278,7 +4285,7 @@ class DecomposeReceiptTest(unittest.TestCase):
         # AC3 + AC4: `reused` and `receipt_path` on every result; a run that
         # reaches the end leaves the complete result JSON with partial: false.
         root, spec = self._repo({"body_file": "p.md", "priority": "p2",
-                                 "sub_issues": self.SUBS})
+                                 "milestone": None, "sub_issues": self.SUBS})
         out = self._run(root, self._existing_parent_runner())
         self.assertFalse(out["reused"])
         self.assertFalse(out["partial"])
@@ -4296,7 +4303,7 @@ class DecomposeReceiptTest(unittest.TestCase):
     def test_force_recreates_the_set_and_overwrites_the_receipt(self) -> None:
         # AC5: the deliberate escape hatch after the recorded set was closed.
         root, spec = self._repo({"body_file": "p.md", "priority": "p2",
-                                 "sub_issues": self.SUBS})
+                                 "milestone": None, "sub_issues": self.SUBS})
         self._run(root, self._existing_parent_runner())
         forced = self._run(root, FakeRunner([
             (["project", "field-list", "1", "--owner", "o"], _decompose_field_list()),
@@ -4317,7 +4324,7 @@ class DecomposeReceiptTest(unittest.TestCase):
         # AC6: the issue set already exists by the time either write runs, so
         # discarding the result over a failed local write is strictly worse.
         root, _ = self._repo({"body_file": "p.md", "priority": "p2",
-                              "sub_issues": self.SUBS})
+                              "milestone": None, "sub_issues": self.SUBS})
         boom = lb.BoardError("packet_write_failed", "disk is full", "free space")
         with mock.patch.object(lb, "_atomic_private_write", side_effect=boom):
             out = self._run(root, self._existing_parent_runner())
@@ -4327,7 +4334,7 @@ class DecomposeReceiptTest(unittest.TestCase):
 
     def test_receipt_path_refuses_symlinks_and_stays_contained(self) -> None:
         # AC7: the same guards packet_path applies.
-        root, _ = self._repo({"body_file": "p.md", "priority": "p2", "sub_issues": []})
+        root, _ = self._repo({"body_file": "p.md", "priority": "p2", "milestone": None, "sub_issues": []})
         ctx = _ctx(str(root))
         key = lb.decompose_receipt_key("o/r", 182, {"a": 1})
         path = lb.decompose_receipt_path(key, ctx)
@@ -4369,7 +4376,7 @@ class DecomposeReceiptTest(unittest.TestCase):
         # BEFORE the first set_status argv is what an end-of-run receipt cannot
         # satisfy; asserting only that a receipt exists would false-pass.
         root, spec = self._repo({"body_file": "p.md", "priority": "p2",
-                                 "posture": "standard", "sub_issues": self.SUBS})
+                                 "posture": "standard", "milestone": None, "sub_issues": self.SUBS})
         path = self._receipt_path(root, 182, spec)
         at_set_status = {}
 
@@ -4423,7 +4430,7 @@ class DecomposeReceiptTest(unittest.TestCase):
         # receipt fixes: a missing issue set plus a confidently wrong report.
         # The repeat-invocation cases above only prove key(X) == key(X); each
         # builds its own tempdir, so nothing there proves key(X) != key(Y).
-        spec = {"body_file": "p.md", "priority": "p2", "sub_issues": self.SUBS}
+        spec = {"body_file": "p.md", "priority": "p2", "milestone": None, "sub_issues": self.SUBS}
         base = lb.decompose_receipt_key("o/r", 182, spec)
         for label, other in (
                 ("slug", lb.decompose_receipt_key("o/other", 182, spec)),
@@ -4431,7 +4438,7 @@ class DecomposeReceiptTest(unittest.TestCase):
                 ("new-vs-existing parent", lb.decompose_receipt_key("o/r", None, spec)),
                 ("spec", lb.decompose_receipt_key("o/r", 182, {**spec, "priority": "p1"})),
                 ("sub_issues", lb.decompose_receipt_key("o/r", 182,
-                                                        {**spec, "sub_issues": []}))):
+                                                        {**spec, "milestone": None, "sub_issues": []}))):
             self.assertNotEqual(base, other, f"key must discriminate on {label}")
         # ...while staying stable across byte-different but equivalent JSON,
         # which is what makes a legitimate repeat invocation a hit at all.
@@ -4443,7 +4450,7 @@ class DecomposeReceiptTest(unittest.TestCase):
         # an invocation. A receipt copied between clones (or a 64-bit prefix
         # collision) would otherwise be replayed as this spec's own result.
         root, spec = self._repo({"body_file": "p.md", "priority": "p2",
-                                 "sub_issues": self.SUBS})
+                                 "milestone": None, "sub_issues": self.SUBS})
         first = self._run(root, self._existing_parent_runner())
         path = Path(first["receipt_path"])
         recorded = json.loads(path.read_text(encoding="utf-8"))
@@ -4466,7 +4473,7 @@ class DecomposeReceiptTest(unittest.TestCase):
         # (refusing to decompose over a rotted local file would be worse), but
         # they must not masquerade as "no previous run".
         root, spec = self._repo({"body_file": "p.md", "priority": "p2",
-                                 "sub_issues": self.SUBS})
+                                 "milestone": None, "sub_issues": self.SUBS})
         path = self._receipt_path(root, 182, spec)
         path.parent.mkdir(parents=True, exist_ok=True)
         for junk in ("{truncated", "[1, 2]", "null", '"a string"', "{}",
@@ -4496,7 +4503,7 @@ class DecomposeReceiptTest(unittest.TestCase):
         for name, text in (("p.md", "parent"), ("s1.md", "sub1"), ("s2.md", "sub2")):
             (root / name).write_text(text, encoding="utf-8")
         (root / "spec.json").write_text(
-            json.dumps({"body_file": "p.md", "priority": "p2", "sub_issues": self.SUBS}),
+            json.dumps({"body_file": "p.md", "priority": "p2", "milestone": None, "sub_issues": self.SUBS}),
             encoding="utf-8")
         out = self._run(root, self._existing_parent_runner())
         self.assertIsNone(out["receipt_path"])
