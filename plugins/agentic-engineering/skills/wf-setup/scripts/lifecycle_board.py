@@ -1359,15 +1359,22 @@ def validate_decompose_spec(spec: dict, has_parent: bool,
 
     check_priority(spec.get("priority"), "spec")
 
-    # `milestone` is optional (the epic tier above parent+subs). Omitted or null
-    # writes nothing. A present value is checked strictly, unknown keys included:
-    # a `titel` typo that silently produced no milestone would be indistinguishable
-    # from omitting the key, so it must fail loudly instead.
+    # `milestone` is a REQUIRED decision (the epic tier above parent+subs), like
+    # `priority`: the key must be present. An object assigns the milestone; an
+    # explicit null records a deliberate no-milestone choice. A missing key fails
+    # closed — silent omission is indistinguishable from a typo, and grooming
+    # must decide, not forget. A present value is checked strictly, unknown keys
+    # included: a `titel` typo that silently produced no milestone would be
+    # indistinguishable from opting out, so it must fail loudly instead.
+    if "milestone" not in spec:
+        raise bad("spec.milestone is required: {title, description?} to assign the "
+                  "parent and sub-issues to a milestone, or an explicit null to "
+                  "record a deliberate no-milestone decision")
     milestone = spec.get("milestone")
     if milestone is not None:
         if not isinstance(milestone, dict):
             raise bad(f"spec.milestone={milestone!r} must be an object "
-                      "{title, description?} (or omitted)")
+                      "{title, description?} (or an explicit null)")
         if not isinstance(milestone.get("title"), str) or not milestone["title"].strip():
             raise bad("spec.milestone.title (non-empty string) is required")
         description = milestone.get("description")

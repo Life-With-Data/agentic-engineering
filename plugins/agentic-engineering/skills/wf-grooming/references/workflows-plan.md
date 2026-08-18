@@ -134,19 +134,22 @@ milestones first:
 gh api repos/{owner}/{repo}/milestones --jq '.[] | {number, title}'
 ```
 
-Assign the parent to a fitting open milestone through the spec `milestone` key.
-Consider creating a new milestone when the scope starts a new named body of
-work. A standalone parent that fits no milestone may omit the key — record that
-judgment in the plan.
+**Grooming sets the milestone.** Assign the parent to a fitting open milestone
+through the spec `milestone` key, creating a new one when the scope starts a
+new named body of work. The key is **required**: the engine rejects a spec
+that omits it. A standalone parent that genuinely fits no named body of work
+carries an explicit `"milestone": null` — a deliberate opt-out, recorded as
+such in the issue body, never a silent default.
 
-Two optional spec keys carry the tier:
+Two spec keys carry the tier:
 
-- `milestone` — a top-level `{title, description?}` object. The engine resolves
-  it create-or-reuse by **exact** title, then assigns it to the parent and to
-  every created sub-issue. Re-running the same spec reuses the milestone
-  instead of creating a second one. Reuse requires an **open** milestone;
-  a closed one with the same title fails in preflight, before any write, since
-  issues cannot be assigned to it.
+- `milestone` — **required**; either a top-level `{title, description?}`
+  object or an explicit `null` (deliberate no-milestone). The engine resolves
+  an object create-or-reuse by **exact** title, then assigns it to the parent
+  and to every created sub-issue. Re-running the same spec reuses the
+  milestone instead of creating a second one. Reuse requires an **open**
+  milestone; a closed one with the same title fails in preflight, before any
+  write, since issues cannot be assigned to it.
 - `blocked_by` — entries may name an issue that **already exists** (`"#257"` or
   `"257"`) alongside the earlier-index integers. The engine confirms every
   referenced issue exists before creating anything; a closed blocker is a
@@ -166,7 +169,7 @@ Two optional spec keys carry the tier:
 ```
 
 `--decompose` reports the resolved milestone as `{title, number, created}`, or
-`null` when the spec omits the key.
+`null` when the spec records the explicit no-milestone decision.
 
 **Cross-milestone edges.** Express a dependency on work in another milestone as
 an existing-issue `blocked_by`, never as prose ordering or a "start here"
