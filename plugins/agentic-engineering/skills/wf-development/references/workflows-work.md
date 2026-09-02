@@ -33,7 +33,10 @@ agent behavior, credentials, tooling, or unrelated scope.
    create a repository-compliant feature branch. Never commit directly to the
    default branch without explicit authority.
 2. Read the relevant code and repository guidance. Make the smallest coherent
-   change that satisfies the request.
+   change that satisfies the request. A small defect met inside the code you
+   touch is part of that change; file a follow-up only under the fix-or-defer
+   threshold in
+   [review findings](../../wf-review/references/workflows-review.md#findings).
 3. Use sub-issues when they already provide useful decomposition. Do not create
    or churn sub-issues for a small change merely to populate a workflow.
 4. Implement inline by default. Delegate independent units when parallel work

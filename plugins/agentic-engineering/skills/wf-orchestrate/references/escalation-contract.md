@@ -88,9 +88,9 @@ distinctive "stop and ask" triggers once those routine gates are suppressed.
 
 Standard mode is this same contract **plus** the routine gates autonomous mode
 suppresses: plan approval, non-blocking findings triage
-([orchestrate](orchestrate.md) "Decision and merge
-boundaries": autonomous mode fixes P2 and defers P3 in the tracker, steered
-mode asks which non-blocking findings to address), and the interactive merge
+([workflows-review](../../wf-review/references/workflows-review.md#findings)
+"Findings": autonomous mode fixes P2 and applies the P3 fix-or-defer
+threshold itself, steered mode asks which non-blocking findings to address), and the interactive merge
 `[y/N]` ([land-pr](../../wf-delivery/references/land-pr.md) "Default
 (interactive)").
 

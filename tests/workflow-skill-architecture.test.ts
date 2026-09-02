@@ -231,6 +231,48 @@ describe("workflow skill architecture", () => {
     expect(broken).toEqual([]);
   });
 
+  test("fragment links between skill references resolve to a real heading", () => {
+    // A policy pointer ("see workflows-review Findings") is only as good as
+    // the heading it names. The escalation contract once cited an orchestrate
+    // section that had been deleted, and nothing failed. Resolve every
+    // #fragment the way GitHub does and demand the heading exists.
+    const slug = (heading: string) =>
+      heading
+        .replace(/`/g, "")
+        .replace(/\[([^\]]+)\]\([^)]*\)/g, "$1")
+        .toLowerCase()
+        .trim()
+        .replace(/[^\w\s-]/g, "")
+        .replace(/ /g, "-");
+    const headings = new Map<string, Set<string>>();
+    const headingsOf = (file: string) => {
+      let found = headings.get(file);
+      if (!found) {
+        const source = readFileSync(file, "utf8").replace(/```[\s\S]*?```/g, "");
+        found = new Set(
+          [...source.matchAll(/^#{1,6}\s+(.+?)\s*$/gm)].map((m) => slug(m[1])),
+        );
+        headings.set(file, found);
+      }
+      return found;
+    };
+    const dangling: string[] = [];
+    for (const file of recursiveFiles(SKILLS).filter((item) => item.endsWith(".md"))) {
+      const source = readFileSync(file, "utf8").replace(/```[\s\S]*?```/g, "");
+      for (const match of source.matchAll(/\[[^\]]+\]\(([^)]+)\)/g)) {
+        const raw = match[1].trim();
+        if (/^[a-z]+:/i.test(raw) || raw.includes("<") || !raw.includes("#")) continue;
+        const [target, fragment] = raw.split("#", 2);
+        const resolved = target ? path.resolve(path.dirname(file), target) : file;
+        if (!existsSync(resolved)) continue; // the test above reports these
+        if (!headingsOf(resolved).has(fragment)) {
+          dangling.push(`${path.relative(ROOT, file)} -> ${raw}`);
+        }
+      }
+    }
+    expect(dangling).toEqual([]);
+  });
+
   test("active planning is issue-canonical and has no plan-only landing machinery", () => {
     expect(existsSync(path.join(
       SKILLS, "wf-grooming", "references", "land-plan-docs.md",
