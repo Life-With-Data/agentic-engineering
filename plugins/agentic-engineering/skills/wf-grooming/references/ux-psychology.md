@@ -3,8 +3,8 @@
 Behavioral principles for UI work items that carry a conversion, onboarding, or
 commitment step. Grooming consults this to turn "how the surface should look"
 into observable acceptance criteria for how it should behave. Review consults
-the same file as a lens; see the
-[UX gate](../../wf-review/references/workflows-review.md#conditional-ux-gate).
+the same file as a lens; see
+[choose lenses](../../wf-review/references/workflows-review.md#choose-lenses).
 
 Each principle below states the concept, the design move, and the shape of an
 acceptance criterion that makes it verifiable. Write criteria as observable

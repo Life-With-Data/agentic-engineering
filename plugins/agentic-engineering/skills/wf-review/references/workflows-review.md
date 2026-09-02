@@ -44,6 +44,11 @@ failure path, and a bounded fix direction.
 Do not turn style preferences, missing optional boilerplate, or hypothetical
 edge cases with no plausible path into blockers. Deduplicate by root cause.
 
+Fix a P3 in the same change when it sits inside the code the change already
+touches. Defer it to a follow-up only when the fix needs its own design
+decision, its own independent review, or reaches code outside the diff. Filing
+a ticket does not resolve a finding that fails that test.
+
 ## Verdict
 
 Return `ready` when acceptance criteria are met, required validation is

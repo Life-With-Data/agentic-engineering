@@ -239,7 +239,7 @@ the engine decides unattended.
 `--decompose` returns the written value as `parent_posture`. `--groom-verify`
 reports the ticket's clearance and the fused `hands_off` verdict; read-side
 semantics are owned by
-[orchestrate](../../wf-orchestrate/references/orchestrate.md#delivery-posture).
+[orchestrate](../../wf-orchestrate/references/orchestrate.md#default-posture).
 
 **Returning to the default takes an explicit write.** On a ticket that
 already carries `posture:standard`, omitting `posture` leaves it **intact** —
