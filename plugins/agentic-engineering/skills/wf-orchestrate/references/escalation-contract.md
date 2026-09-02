@@ -90,8 +90,8 @@ Standard mode is this same contract **plus** the routine gates autonomous mode
 suppresses: plan approval, non-blocking findings triage
 ([workflows-review](../../wf-review/references/workflows-review.md#findings)
 "Findings": autonomous mode fixes P2 and applies the P3 fix-or-defer
-threshold itself, steered mode asks which non-blocking findings to address), and the interactive merge
-`[y/N]` ([land-pr](../../wf-delivery/references/land-pr.md) "Default
+threshold itself, steered mode asks which non-blocking findings to address),
+and the interactive merge `[y/N]` ([land-pr](../../wf-delivery/references/land-pr.md) "Default
 (interactive)").
 
 ## The tracker comment is canonical
