@@ -5016,5 +5016,157 @@ class PacketVerbTest(unittest.TestCase):
             self.assertEqual(neighbor.read_text(encoding="utf-8"), "neighbor")
 
 
+class PacketDirectoryTest(unittest.TestCase):
+    """Issue #457: the per-issue packet subdirectory the orchestrator writes into."""
+
+    _payload = staticmethod(PacketVerbTest._payload)
+
+    def _run(self, common, stage="planned", state="OPEN"):
+        return PacketVerbTest._run(self, common, stage, state)
+
+    @staticmethod
+    def _seed(directory: Path) -> Path:
+        """A packet directory holding the artifacts the orchestrator writes."""
+        (directory / "units").mkdir(parents=True)
+        (directory / "ledger.md").write_text("ruling", encoding="utf-8")
+        (directory / "units" / "unit-1-report.md").write_text("report", encoding="utf-8")
+        return directory
+
+    def test_packet_dir_is_the_packet_file_stem_beside_the_packet(self) -> None:
+        with tempfile.TemporaryDirectory() as d:
+            common = Path(d)
+            (common / "worktree").mkdir()
+            ctx = _ctx(str(common / "worktree"))
+            with mock.patch.object(lb, "git_common_dir", return_value=common / ".git"):
+                directory = lb.packet_dir(182, ctx)
+                packet = lb.packet_path(182, ctx)
+            self.assertEqual(directory.parent, packet.parent)
+            self.assertEqual(
+                directory,
+                common / ".git" / "agentic-engineering" / "work-items" / "o--r--182")
+
+    def test_packet_dir_inherits_the_packet_path_guards(self) -> None:
+        with tempfile.TemporaryDirectory() as d:
+            common = Path(d)
+            (common / "worktree").mkdir()
+            ctx = _ctx(str(common / "worktree"))
+            with mock.patch.object(lb, "git_common_dir", return_value=common / ".git"):
+                with self.assertRaises(lb.BoardError) as bad_issue:
+                    lb.packet_dir(0, ctx)
+                self.assertEqual(bad_issue.exception.code, "invalid_issue")
+                with self.assertRaises(lb.BoardError) as bad_origin:
+                    lb.packet_dir(182, _ctx(str(common / "worktree"), slug=("../escape", "r")))
+                self.assertEqual(bad_origin.exception.code, "origin_unresolved")
+            # A symlinked ancestor is refused before any path is returned.
+            (common / ".git").mkdir()
+            escape = common / "escape"
+            escape.mkdir()
+            (common / ".git" / "agentic-engineering").symlink_to(escape, target_is_directory=True)
+            with mock.patch.object(lb, "git_common_dir", return_value=common / ".git"):
+                with self.assertRaises(lb.BoardError) as symlinked:
+                    lb.packet_dir(182, ctx)
+            self.assertEqual(symlinked.exception.code, "packet_path_unsafe")
+
+    def test_materialize_reports_and_creates_a_private_empty_directory(self) -> None:
+        with tempfile.TemporaryDirectory() as d:
+            common = Path(d)
+            (common / "worktree").mkdir()
+            ctx, runner, board = self._run(common)
+            with mock.patch.object(lb, "read_board_config", return_value=board), \
+                    mock.patch.object(lb, "git_common_dir", return_value=common / ".git"):
+                out = lb.verb_materialize_packet(182, ctx, runner)
+            directory = Path(out["packet_dir"])
+            self.assertEqual(
+                directory,
+                common / ".git" / "agentic-engineering" / "work-items" / "o--r--182")
+            self.assertTrue(directory.is_dir())
+            self.assertEqual(directory.stat().st_mode & 0o777, 0o700)
+            # The engine names the directory; it never generates its contents.
+            self.assertEqual(list(directory.iterdir()), [])
+
+    def test_delete_removes_the_directory_recursively_and_only_it(self) -> None:
+        with tempfile.TemporaryDirectory() as d:
+            common = Path(d)
+            (common / "worktree").mkdir()
+            ctx, runner, board = self._run(common, "done", "CLOSED")
+            base = common / ".git" / "agentic-engineering" / "work-items"
+            base.mkdir(parents=True)
+            (base / "o--r--182.md").write_text("packet", encoding="utf-8")
+            directory = self._seed(base / "o--r--182")
+            neighbor = self._seed(base / "o--r--183")
+            with mock.patch.object(lb, "read_board_config", return_value=board), \
+                    mock.patch.object(lb, "git_common_dir", return_value=common / ".git"):
+                out = lb.verb_delete_packet(182, ctx, runner)
+            self.assertTrue(out["deleted"])
+            self.assertTrue(out["dir_deleted"])
+            self.assertFalse(directory.exists())
+            self.assertTrue((neighbor / "ledger.md").exists())
+
+    def test_delete_is_idempotent_when_the_directory_is_absent(self) -> None:
+        with tempfile.TemporaryDirectory() as d:
+            common = Path(d)
+            (common / "worktree").mkdir()
+            ctx, runner, board = self._run(common, "done", "CLOSED")
+            base = common / ".git" / "agentic-engineering" / "work-items"
+            base.mkdir(parents=True)
+            with mock.patch.object(lb, "read_board_config", return_value=board), \
+                    mock.patch.object(lb, "git_common_dir", return_value=common / ".git"):
+                out = lb.verb_delete_packet(182, ctx, runner)
+            self.assertFalse(out["deleted"])
+            self.assertFalse(out["dir_deleted"])
+
+    def test_symlinked_packet_directory_is_refused_not_followed(self) -> None:
+        with tempfile.TemporaryDirectory() as d:
+            common = Path(d)
+            (common / "worktree").mkdir()
+            ctx, runner, board = self._run(common, "done", "CLOSED")
+            base = common / ".git" / "agentic-engineering" / "work-items"
+            base.mkdir(parents=True)
+            (base / "o--r--182.md").write_text("packet", encoding="utf-8")
+            escape = self._seed(common / "escape")
+            (base / "o--r--182").symlink_to(escape, target_is_directory=True)
+            with mock.patch.object(lb, "read_board_config", return_value=board), \
+                    mock.patch.object(lb, "git_common_dir", return_value=common / ".git"):
+                with self.assertRaises(lb.BoardError) as caught:
+                    lb.verb_delete_packet(182, ctx, runner)
+            self.assertEqual(caught.exception.code, "packet_delete_failed")
+            self.assertTrue((escape / "ledger.md").exists())
+
+    def test_terminal_cleanup_removes_the_directory(self) -> None:
+        with tempfile.TemporaryDirectory() as d:
+            common = Path(d)
+            (common / "worktree").mkdir()
+            ctx, runner, board = self._run(common, "done", "CLOSED")
+            base = common / ".git" / "agentic-engineering" / "work-items"
+            base.mkdir(parents=True)
+            (base / "o--r--182.md").write_text("stale", encoding="utf-8")
+            directory = self._seed(base / "o--r--182")
+            with mock.patch.object(lb, "read_board_config", return_value=board), \
+                    mock.patch.object(lb, "git_common_dir", return_value=common / ".git"):
+                with self.assertRaises(lb.BoardError) as caught:
+                    lb.verb_materialize_packet(182, ctx, runner)
+            self.assertEqual(caught.exception.code, "packet_materialize_terminal")
+            self.assertFalse(directory.exists())
+
+    def test_reconcile_cleanup_removes_the_directory(self) -> None:
+        with tempfile.TemporaryDirectory() as d:
+            common = Path(d)
+            (common / "worktree").mkdir()
+            ctx = _ctx(str(common / "worktree"))
+            payload = json.loads(self._payload("abandoned", "CLOSED"))
+            payload["data"]["repository"]["issue"]["subIssues"]["nodes"] = []
+            runner = FakeRunner([(["api", "graphql"], _ok(json.dumps(payload)))])
+            board = lb.BoardConfig(owner="o", number=1, source="committed")
+            base = common / ".git" / "agentic-engineering" / "work-items"
+            base.mkdir(parents=True)
+            (base / "o--r--182.md").write_text("packet", encoding="utf-8")
+            directory = self._seed(base / "o--r--182")
+            with mock.patch.object(lb, "read_board_config", return_value=board), \
+                    mock.patch.object(lb, "git_common_dir", return_value=common / ".git"):
+                out = lb.verb_reconcile(ctx, runner, issue=182, force=True)
+            self.assertTrue(out["packet_cleanup"][0]["dir_deleted"])
+            self.assertFalse(directory.exists())
+
+
 if __name__ == "__main__":
     unittest.main()

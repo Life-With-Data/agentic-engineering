@@ -59,6 +59,13 @@ by relative path instead of restating its own list.
   delegation, comment resolution) cites it rather than restating it — or the
   doubt-driven 3-cycle bound when the artifact under scrutiny is a decision
   rather than a gate.
+
+  The measurable part is the whole of it. A reviewer and an implementer
+  disagreeing about a finding is **not** a dry attempt: nothing measurable
+  moves there because nobody has decided yet, not because attempts keep
+  failing. Rule on it and the counts move again. Reading a disagreement as a
+  stall converts a decision the run is equipped to make into a question for a
+  human, which is the failure this item exists to prevent, not cause.
 - **(e) Externally-imposed gates** — `mergeStateStatus: BLOCKED` by branch
   protection, which [land-pr](../../wf-delivery/references/land-pr.md) treats as
   a genuine blocker no retry can clear, or any credential entry.
@@ -71,6 +78,40 @@ by relative path instead of restating its own list.
 **Everything else proceeds.** A run that hits none of (a)–(f) keeps going
 without a check-in; hitting any one of them is what makes a stop legitimate
 rather than optional caution.
+
+### The bounded fix loop under (d)
+
+Open findings on a delegated unit do not stop the run. They enter a bounded
+loop the orchestrator drives, sized by (d) rather than by a separate bound
+each caller invents. One round is one fix dispatch plus one scoped re-review,
+and a unit gets at most five rounds.
+
+- **Rounds 1-3 resume the same implementer**, carrying the open findings
+  verbatim: its context is intact, so it already knows the unit, the code, and
+  its own choices. Where the host cannot resume a finished sub-agent,
+  re-dispatch a fresh one carrying the brief and report paths, which are the
+  persistent memory either way.
+- **Rounds 4-5 dispatch a fresh implementer one model tier above** the one
+  that got stuck, told plainly that earlier attempts failed and where the
+  report of them lives. A loop that survives three resumes usually means the
+  implementer cannot see its own problem; fresh eyes and a capability bump are
+  one move.
+- **Every re-review is scoped to the fix range** — the review package for the
+  fix commits, not the unit again. Blocking breakage inside that range joins
+  the open findings; observations outside it are recorded as deferred and
+  never extend the loop.
+- **At the cap the orchestrator adjudicates** each still-open finding instead
+  of dispatching a sixth round. Park a finding with a ruling that says why the
+  code stands, or that it is real and deferred; when it is load-bearing for
+  later work, rule on the smallest change that unblocks that work and carry
+  the ruling forward. Every ruling is a recorded line — what was decided, why,
+  and what it costs if wrong. A silent discard is not an adjudication.
+- **Adjudicate only at the cap.** Adjudicating earlier to end a loop is
+  pre-judging under another name, and pre-judging a finding for the reviewer
+  before it is raised is the same error one step earlier.
+
+The loop adds no check-in of its own. It reaches a human only through (c),
+when the cap leaves every path forward a guess.
 
 ### Absolute vs. autonomous-specific
 

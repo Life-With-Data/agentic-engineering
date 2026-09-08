@@ -158,8 +158,16 @@ python3 "<skill-directory>/scripts/lifecycle_board.py" --delete-packet <N>
 Packets are non-authoritative, shared by linked worktrees, absent from
 `git status`, and safe to regenerate — grooming materializes after a
 successful GitHub update; development refreshes at every start or resume.
-`--delete-packet` refuses unless the issue is terminal (`done`/`abandoned`);
-never delete a guessed path.
+
+`--materialize-packet` also reports a per-issue `packet_dir` beside the packet
+file. The engine names that directory and never generates its contents: an
+orchestrated run writes its own dispatch artifacts there — per-unit briefs,
+implementer reports, review packages, and the ledger — with ordinary file
+writes. Address it by the reported path, never a constructed one.
+
+`--delete-packet` refuses unless the issue is terminal (`done`/`abandoned`),
+and removes the packet file and that exact directory together; never delete a
+guessed path.
 
 ## Mode and identity
 

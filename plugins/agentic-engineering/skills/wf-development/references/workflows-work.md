@@ -69,7 +69,11 @@ Open or update the PR with:
 
 - a concise summary of what and why;
 - actual tests and verification performed;
-- `Closes #<N>` when the PR should close the tracked parent; and
+- `Closes #<N>` when the PR should close the tracked parent;
+- every ruling the run made without asking, under the heading "Decisions made
+  without asking", one line each with what was decided, why, and what it costs
+  if wrong — take them from the run's ledger and omit the heading entirely
+  when there were none; and
 - material risks, migrations, screenshots, or monitoring details only when
   applicable.
 

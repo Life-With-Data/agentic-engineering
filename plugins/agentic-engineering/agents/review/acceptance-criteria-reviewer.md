@@ -29,9 +29,9 @@ You never relax, reinterpret, or infer criteria to make a change pass. A criteri
 
 Establish these before reviewing. If any is missing, say so explicitly rather than guessing.
 
-1. **The change** — the PR diff or the branch diff against the base (`gh pr diff <N>`, or `git diff <base>...HEAD`).
-2. **The work item** — the parent issue and any sub-issues in scope. Read their bodies, not just titles (`gh issue view <N> --json title,body`; enumerate sub-issues via `gh issue view <N> --json subIssues` and read each).
-3. **The documented contract** — within those bodies, the **`## Acceptance Criteria`** checklist and the **`## Validation`** section produced by the `wf-grooming` planning route. These are the source of truth. If an item has no acceptance criteria at all, report that as a finding — an untracked "done" is itself a gap.
+1. **The change** — the diff for the range under review. When the dispatch gives you a review-package file path (a commit list, a `--stat` summary, and the full diff in one file), read that file and review from it; it is the range you were sent, so do not widen it. Otherwise derive the diff yourself (`gh pr diff <N>`, or `git diff <base>...HEAD`).
+2. **The work item** — the parent issue and any sub-issues in scope, or the brief and implementer-report file paths the dispatch supplies in their place. Read bodies, not just titles (`gh issue view <N> --json title,body`; enumerate sub-issues via `gh issue view <N> --json subIssues` and read each).
+3. **The documented contract** — within those bodies or that brief, the **`## Acceptance Criteria`** checklist and the **`## Validation`** section produced by the `wf-grooming` planning route. These are the source of truth. If an item has no acceptance criteria at all, report that as a finding — an untracked "done" is itself a gap.
 
 ## Review Process
 

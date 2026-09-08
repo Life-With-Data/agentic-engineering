@@ -51,7 +51,7 @@ model, never a gate on the work itself.
 | Stage | Delegate to sub-agents | Orchestrator retains |
 |---|---|---|
 | Grooming | Codebase reconnaissance, prior-art and learnings research, reproduction attempts, the scope challenge that argues for cutting proposed work | Scope decisions, user interviews, plan readiness, issue writes |
-| Development | Implementation of each planned unit, isolated diagnosis experiments | Decomposition, wave planning, diff verification, gate reruns, board writes |
+| Development | Implementation of each planned unit, per-unit conformance review of its packaged diff, isolated diagnosis experiments | Decomposition, wave planning, review packaging, verdict adjudication, gate reruns, board writes |
 | Testing | Test authoring per surface, failure analysis | Test strategy, evidence sufficiency, ready/not-ready verdicts, independent gate rerun |
 | Review | One reviewer per selected review lens | Lens selection, deduplication, severity classification, fix/defer decisions |
 | Delivery | Per-job CI-failure diagnosis, release-note and PR-body drafting | Merge decisions, PR and tracker state writes, release evidence |
@@ -114,12 +114,43 @@ Every brief is self-contained and includes:
 5. **Exclusions** — no tracker/board/PR writes, no scope growth, no
    speculative extras, no adopting the orchestrator role: the recipient must
    not load workflow routers to re-route its unit or delegate further.
-6. **Report format** — files touched, criterion-by-criterion evidence, exact
-   gate results, assumptions made, and blockers stated explicitly.
+6. **Report format** — the full report goes to a file, never into the reply.
+   Name that path in the brief: the item's packet directory, the per-issue
+   directory the lifecycle engine reports beside the work packet. The report
+   holds files touched, criterion-by-criterion evidence, exact gate results,
+   assumptions made, and blockers stated explicitly. The reply is the short
+   status contract below.
+
+Hand artifacts over as files in both directions. Everything pasted into a
+brief and everything printed back stays resident for the rest of the run and
+is re-read on every later turn, so a report that arrives inline is paid for
+once per remaining turn rather than once. Write each unit's brief into the
+packet directory at dispatch time, resolving its paths against the checkout
+as it stands then; the durable tracker item keeps stating requirements and
+keeps forbidding resolved paths.
 
 Parallelize only file-disjoint units; otherwise serialize or isolate with the
 [git worktree](../../wf-development/references/git-worktree.md) reference and
 its bundled manager.
+
+### Status contract
+
+A sub-agent's reply is under roughly fifteen lines: one status code, the
+commits it made, a one-line test summary, its concerns, and the report path.
+Exactly four status codes exist, and the orchestrator handles each:
+
+- **DONE** — the unit is finished. Package its diff and dispatch the per-unit
+  review below.
+- **DONE_WITH_CONCERNS** — finished, with doubts the sub-agent chose not to
+  act on. Read the concerns, then dispatch the review with them forwarded so
+  the reviewer weighs them against the criteria.
+- **BLOCKED** — the unit cannot be finished as briefed. Read the report file,
+  decide what changes, and either re-dispatch with that change or escalate
+  under the [escalation contract](escalation-contract.md). Never re-dispatch
+  the same brief to the same model unchanged.
+- **NEEDS_CONTEXT** — something the brief should have carried is missing.
+  Supply it in a fresh brief and re-dispatch. Answering inline leaves the
+  next dispatch carrying the same gap.
 
 ## Waiting on dispatched sub-agents
 
@@ -134,14 +165,24 @@ stuck child is noticed within minutes rather than at session end.
 
 ## Verification
 
-Accept a delegated result only after independent verification: review the
-diff against the unit's criteria and rerun the relevant repository gates at
-the top level, through a channel independent of the sub-agent's own report.
+Accept a delegated result only after independent verification, and obtain it
+without reading the unit's diff. Before dispatching, record the head the unit
+starts from. After the unit reports, write its review package into the packet
+directory — the commit list, the stat summary, and the full diff for that
+recorded head through the current head, never the last commit alone, which
+silently drops every earlier commit of a multi-commit unit. Then dispatch the
+`acceptance-criteria-reviewer` agent by name with three paths: the brief, the
+report, and the review package. The orchestrator reads the verdict, not the
+diff.
 
-- Bound retries at ~2 per unit, re-dispatching with the concrete failure
-  appended. Two dry attempts is a stall — block and escalate instead of
-  looping ([escalation contract](escalation-contract.md) item (d) defines a
-  dry attempt).
+Independent gate reruns stay with the orchestrator: rerun the relevant
+repository gates at the top level, through a channel independent of the
+sub-agent's own report. Per-unit review is a unit-scoped check, not the final
+one — `wf-review` still runs once over the whole branch before delivery.
+
+- Findings the review leaves open enter the bounded fix loop in the
+  [escalation contract](escalation-contract.md), which owns the round bound,
+  the dry-attempt definition, and the adjudication step at the cap.
 - Work a sub-agent discovers becomes a tracked follow-on item, never silent
   extra scope inside the same dispatch.
 - Stage sequencing, gates, and completion criteria stay with the owning

@@ -39,7 +39,9 @@ did not, move on without an audit comment.
 4. Reconcile with the base branch using repository guidance and rerun invalidated
    checks.
 5. Update the PR description with a concise summary and actual verification
-   evidence. Do not land a UI/UX-changing PR that lacks the screenshot
+   evidence. Keep its "Decisions made without asking" section current when
+   landing added rulings; a ruling that never reaches the PR was a decision
+   made in private. Do not land a UI/UX-changing PR that lacks the screenshot
    evidence `wf-review`'s visual evidence gate requires — fix that before
    merging, not after. Add operational validation only when the change has
    operational impact.
