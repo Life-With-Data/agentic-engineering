@@ -32,6 +32,16 @@ severity judgments, shared-state writes, and final
 validation. Purely conversational turns and single-line mechanical edits may
 stay inline; everything with an exit check defaults to a sub-agent.
 
+When several units are the same shape of small edit across files — a constant
+change, a field addition, a rename — compose one brief that lists every file
+and its change, and dispatch once instead of one sub-agent per file: each
+dispatch pays a full context build regardless of how small its edit is, so
+batching same-shape units is what keeps that cost proportional to the work.
+The per-unit reviewer checks the resulting diff file by file against the
+brief's list; a listed file with no hunk is a Missing finding. Reserve one
+dispatch per unit for work that has its own judgment, its own tests, or its
+own review surface.
+
 Use only the host's documented sub-agent mechanism. If the host has none,
 run the same sequence inline in stage order — delegation is an execution
 model, never a gate on the work itself.
