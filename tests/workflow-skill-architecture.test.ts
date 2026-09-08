@@ -789,15 +789,11 @@ describe("workflow skill architecture", () => {
       .map((file) => readFileSync(file, "utf8"))
       .join("\n");
 
-    // Restored to a route by issue #457, which lands separately. Remove this
-    // allowance once #457 has merged and cites the agent under skills/.
-    const PENDING_ROUTE_RESTORE = new Set(["acceptance-criteria-reviewer"]);
 
     const orphaned: string[] = [];
     for (const file of recursiveFiles(path.join(PLUGIN, "agents"))
       .filter((file) => file.endsWith(".md"))) {
       const name = path.basename(file, ".md");
-      if (PENDING_ROUTE_RESTORE.has(name)) continue;
       if (new RegExp(`\\b${name}\\b`).test(skillProse)) continue;
       const { data } = parseFrontmatter(readFileSync(file, "utf8"));
       if (String(data.description ?? "").includes(USER_INVOKED)) continue;
