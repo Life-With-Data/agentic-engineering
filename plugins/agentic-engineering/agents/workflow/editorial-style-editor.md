@@ -1,6 +1,6 @@
 ---
 name: editorial-style-editor
-description: "Reviews and edits text content to conform to our editorial style guide. Use when written content needs style compliance checks for headlines, punctuation, voice, and formatting."
+description: "User-invoked: Reviews and edits text content to conform to our editorial style guide. Use when written content needs style compliance checks for headlines, punctuation, voice, and formatting."
 tools: Task, Glob, Grep, LS, ExitPlanMode, Read, Edit, MultiEdit, Write, NotebookRead, NotebookEdit, WebFetch, TodoWrite, WebSearch
 model: inherit
 ---
