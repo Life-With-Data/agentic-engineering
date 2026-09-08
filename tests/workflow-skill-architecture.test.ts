@@ -20,6 +20,8 @@ const WORKFLOW_REFERENCES: Record<string, string[]> = {
   "wf-auto": ["auto-run"],
   "wf-grooming": [
     "brainstorming", "deepen-plan", "design-context", "interview-me",
+    "lens-best-practices-researcher", "lens-framework-docs-researcher",
+    "lens-learnings-researcher", "lens-spec-flow-analyzer",
     "report-bug", "reproduce-bug", "triage", "workflows-brainstorm",
     "workflows-groom", "workflows-plan",
   ],
@@ -34,7 +36,9 @@ const WORKFLOW_REFERENCES: Record<string, string[]> = {
     "verification-loop",
   ],
   "wf-review": [
-    "agent-native-audit", "doubt-driven-development", "resolve-pr-parallel",
+    "agent-native-audit", "doubt-driven-development",
+    "lens-agent-native-reviewer", "lens-data-integrity-guardian",
+    "lens-deployment-verification", "resolve-pr-parallel",
     "security-and-hardening", "workflows-review",
   ],
   "wf-delivery": [
@@ -767,5 +771,38 @@ describe("workflow skill architecture", () => {
     expect(triage.replace(/\s+/g, " ")).toContain(
       "Estimate priority and record it without asking",
     );
+  });
+
+  test("every shipped agent is route-dispatched or marked user-invoked (issue #464)", () => {
+    // An agent's description is loaded into every session's system prompt
+    // whether or not anything dispatches it. Twelve agents were reachable by
+    // no route and marked as nothing, so the cost was paid for capability the
+    // agent could not find. Both sets are DERIVED from the filesystem on every
+    // run per repo guardrail policy (docs/solutions/testing-patterns/
+    // grep-acceptance-checks-and-subset-fixtures-give-false-confidence.md);
+    // freezing the roster here would false-pass the next unreachable agent.
+    const USER_INVOKED = "User-invoked:";
+
+    const skillProse = recursiveFiles(SKILLS)
+      .filter((file) => file.endsWith(".md"))
+      .map((file) => readFileSync(file, "utf8"))
+      .join("\n");
+
+    // Restored to a route by issue #457, which lands separately. Remove this
+    // allowance once #457 has merged and cites the agent under skills/.
+    const PENDING_ROUTE_RESTORE = new Set(["acceptance-criteria-reviewer"]);
+
+    const orphaned: string[] = [];
+    for (const file of recursiveFiles(path.join(PLUGIN, "agents"))
+      .filter((file) => file.endsWith(".md"))) {
+      const name = path.basename(file, ".md");
+      if (PENDING_ROUTE_RESTORE.has(name)) continue;
+      if (new RegExp(`\\b${name}\\b`).test(skillProse)) continue;
+      const { data } = parseFrontmatter(readFileSync(file, "utf8"));
+      if (String(data.description ?? "").includes(USER_INVOKED)) continue;
+      orphaned.push(path.relative(ROOT, file));
+    }
+
+    expect(orphaned).toEqual([]);
   });
 });
