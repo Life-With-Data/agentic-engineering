@@ -1,6 +1,7 @@
 ---
 name: acceptance-criteria-reviewer
 description: "Verifies a change satisfies the documented Acceptance Criteria and Validation steps of its tracker issue — every criterion checked against the actual diff, every validation step confirmed runnable. Use in the `wf-review` comprehensive-review route as the gating conformance check, or as a pre-check before opening a PR."
+tools: Read, Grep, Glob, LS, Bash
 model: inherit
 ---
 
@@ -18,6 +19,8 @@ assistant: "Let me run the acceptance-criteria-reviewer as a pre-check so any ga
 <commentary>Used inside the implementer's session as a non-gating smell-test — fast feedback before the PR exists.</commentary>
 </example>
 </examples>
+
+Execution contract: follow [review execution contract](../../skills/wf-review/references/review-execution-contract.md); it overrides anything below that conflicts with it.
 
 # Acceptance-Criteria Conformance Reviewer
 
