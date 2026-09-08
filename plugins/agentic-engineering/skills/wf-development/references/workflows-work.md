@@ -40,7 +40,9 @@ agent behavior, credentials, tooling, or unrelated scope.
 3. Use sub-issues when they already provide useful decomposition. Do not create
    or churn sub-issues for a small change merely to populate a workflow.
 4. Implement inline by default. Delegate independent units when parallel work
-   or a separate specialist materially helps.
+   or a separate specialist materially helps. Batch several small same-shape
+   edits across files into one dispatch instead of one sub-agent per file; see
+   [when to delegate](../../wf-orchestrate/references/subagent-delegation.md#when-to-delegate).
 5. Run focused tests while iterating. Add regression coverage when it protects
    the behavior, and verify affected integration or UI boundaries when unit
    tests cannot.
