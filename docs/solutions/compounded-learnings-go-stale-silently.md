@@ -1,7 +1,7 @@
 ---
 title: "A change can falsify a compounded learning, and no CI check will tell you — grep the `module:` backlinks"
 category: process
-tags: [compounding, docs-solutions, stale-docs, learnings-researcher, module-frontmatter, superseded, doc-health, backlink]
+tags: [compounding, docs-solutions, stale-docs, learnings-lens, module-frontmatter, superseded, doc-health, backlink]
 module: docs/solutions/
 symptom: "A merged change silently inverted the central lesson of an existing docs/solutions entry, leaving the compounding layer teaching the opposite of the shipped code"
 root_cause: "docs/solutions entries record a conclusion that was true at a point in time, but nothing links a code change back to the entries whose lesson it invalidates — the module: frontmatter already names the coupling and no check reads it"
@@ -34,7 +34,9 @@ Nothing flagged it:
 - `bun test`, `typecheck`, `docs:check`, and `skills:check` do not read `docs/solutions/`.
 - The change's own guardrail tests passed, because they guard the *skill docs*, not the learnings.
 
-The failure mode is worse than a merely outdated doc. `learnings-researcher` exists to surface
+The failure mode is worse than a merely outdated doc. The institutional learnings lens
+(`plugins/agentic-engineering/skills/wf-grooming/references/lens-learnings-researcher.md`)
+exists to surface
 `docs/solutions/` as prior art during grooming. A future posture-adjacent work item would have hit
 that entry, concluded the resolution rule belongs duplicated in prose, and re-introduced the exact
 duplication PR #312 removed — which the new guardrail then rejects. The compounding layer would have

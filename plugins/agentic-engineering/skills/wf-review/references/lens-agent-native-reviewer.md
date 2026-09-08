@@ -1,23 +1,6 @@
----
-name: agent-native-reviewer
-description: "Reviews code to ensure agent-native parity — any action a user can take, an agent can also take. Use after adding UI features, agent tools, or system prompts."
-model: inherit
----
+# Agent-native parity lens
 
-<examples>
-<example>
-Context: The user added a new feature to their application.
-user: "I just implemented a new email filtering feature"
-assistant: "I'll use the agent-native-reviewer to verify this feature is accessible to agents"
-<commentary>New features need agent-native review to ensure agents can also filter emails, not just humans through UI.</commentary>
-</example>
-<example>
-Context: The user created a new UI workflow.
-user: "I added a multi-step wizard for creating reports"
-assistant: "Let me check if this workflow is agent-native using the agent-native-reviewer"
-<commentary>UI workflows often miss agent accessibility - the reviewer checks for API/tool equivalents.</commentary>
-</example>
-</examples>
+Dispatch this lens through the host's general-purpose sub-agent with this file as the brief.
 
 # Agent-Native Architecture Reviewer
 
