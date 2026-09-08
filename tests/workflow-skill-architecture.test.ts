@@ -806,6 +806,41 @@ describe("workflow skill architecture", () => {
 
     expect(orphaned).toEqual([]);
   });
+
+  test("route-orphaned agents pin a non-inherit model floor (issue #459)", () => {
+    // An agent no route dispatches is only ever reached by an ad-hoc call
+    // with no model set, so `model: inherit` silently buys the most
+    // expensive tier for it. The route-dispatched set is DERIVED from the
+    // filesystem on every run, same as the #464 guardrail above: freezing
+    // the roster here would false-pass the next agent a route stops citing.
+    const skillProse = recursiveFiles(SKILLS)
+      .filter((file) => file.endsWith(".md"))
+      .map((file) => readFileSync(file, "utf8"))
+      .join("\n");
+
+    const stillInherited: string[] = [];
+    for (const file of recursiveFiles(path.join(PLUGIN, "agents"))
+      .filter((file) => file.endsWith(".md"))) {
+      const name = path.basename(file, ".md");
+      if (new RegExp(`\\b${name}\\b`).test(skillProse)) continue;
+      const { data } = parseFrontmatter(readFileSync(file, "utf8"));
+      if (data.model === "inherit") stillInherited.push(path.relative(ROOT, file));
+    }
+
+    expect(stillInherited).toEqual([]);
+  });
+
+  test("model selection floors reviewers at the standard tier (issue #459)", () => {
+    const delegation = readFileSync(
+      path.join(SKILLS, "wf-orchestrate", "references", "subagent-delegation.md"),
+      "utf8",
+    );
+    const section = delegation.split("## Model selection")[1]
+      .split(/\n## /)[0]
+      .toLowerCase();
+    expect(section).toContain("floor");
+    expect(section).toContain("reviewers");
+  });
 });
 
 describe("context-economical execution loop (issue #457)", () => {
