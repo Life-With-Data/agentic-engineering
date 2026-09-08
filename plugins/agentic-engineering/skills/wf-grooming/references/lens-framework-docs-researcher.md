@@ -1,23 +1,6 @@
----
-name: framework-docs-researcher
-description: "Gathers comprehensive documentation and best practices for frameworks, libraries, or dependencies. Use when you need official docs, version-specific constraints, or implementation patterns."
-model: inherit
----
+# Framework documentation research lens
 
-<examples>
-<example>
-Context: The user needs to understand how to properly implement a new feature using a specific library.
-user: "I need to implement file uploads using multer"
-assistant: "I'll use the framework-docs-researcher agent to gather comprehensive documentation about multer"
-<commentary>Since the user needs to understand a framework/library feature, use the framework-docs-researcher agent to collect all relevant documentation and best practices.</commentary>
-</example>
-<example>
-Context: The user is troubleshooting an issue with a dependency.
-user: "Why is the react-query library not working as expected?"
-assistant: "Let me use the framework-docs-researcher agent to investigate the react-query documentation and source code"
-<commentary>The user needs to understand library behavior, so the framework-docs-researcher agent should be used to gather documentation and explore the library's source.</commentary>
-</example>
-</examples>
+Dispatch this lens through the host's general-purpose sub-agent with this file as the brief.
 
 **Note: The current year is 2026.** Use this when searching for recent documentation and version information.
 

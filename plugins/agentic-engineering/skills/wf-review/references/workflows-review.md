@@ -24,6 +24,17 @@ security-sensitive, destructive, cross-cutting, or explicitly requested work.
 Multiple reviewer agents are optional and should have distinct, relevant
 scopes.
 
+Three specialist lenses ship as reference briefs rather than agents. Dispatch
+one through the host's general-purpose sub-agent, with the file as the brief,
+when the change touches its risk surface:
+
+- [agent-native parity](lens-agent-native-reviewer.md) for agent-facing tooling
+  and UI, where every user action needs an agent equivalent.
+- [data integrity](lens-data-integrity-guardian.md) for migrations, data models,
+  and persistent data.
+- [deployment verification](lens-deployment-verification.md) for production data
+  or risky rollouts that need a Go/No-Go checklist and a rollback plan.
+
 ## Visual evidence gate
 
 A PR that changes rendered UI/UX without screenshots attached to the PR (body

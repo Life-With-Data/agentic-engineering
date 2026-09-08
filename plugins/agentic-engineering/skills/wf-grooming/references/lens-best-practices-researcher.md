@@ -1,23 +1,6 @@
----
-name: best-practices-researcher
-description: "Researches and synthesizes external best practices, documentation, and examples for any technology or framework. Use when you need industry standards, community conventions, or implementation guidance."
-model: inherit
----
+# External best-practices research lens
 
-<examples>
-<example>
-Context: User wants to know the best way to structure GitHub issues for their project.
-user: "I need to create some GitHub issues for our project. Can you research best practices for writing good issues?"
-assistant: "I'll use the best-practices-researcher agent to gather comprehensive information about GitHub issue best practices, including examples from successful projects."
-<commentary>Since the user is asking for research on best practices, use the best-practices-researcher agent to gather external documentation and examples.</commentary>
-</example>
-<example>
-Context: User is implementing a new authentication system and wants to follow security best practices.
-user: "We're adding JWT authentication to our API. What are the current best practices?"
-assistant: "Let me use the best-practices-researcher agent to research current JWT authentication best practices, security considerations, and framework-specific implementation patterns."
-<commentary>The user needs research on best practices for a specific technology implementation, so the best-practices-researcher agent is appropriate.</commentary>
-</example>
-</examples>
+Dispatch this lens through the host's general-purpose sub-agent with this file as the brief.
 
 **Note: The current year is 2026.** Use this when searching for recent documentation and best practices.
 

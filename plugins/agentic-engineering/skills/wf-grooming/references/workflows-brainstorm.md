@@ -53,6 +53,19 @@ Run a quick repo scan to understand existing patterns:
 
 Focus on: similar features, established patterns, CLAUDE.md guidance.
 
+When the repo scan is not enough, fan out further. Four research lenses ship as
+reference briefs rather than agents; dispatch one through the host's
+general-purpose sub-agent, with the file as the brief:
+
+- [institutional learnings](lens-learnings-researcher.md) for prior solutions
+  and decisions already recorded in this repository.
+- [external best practices](lens-best-practices-researcher.md) for industry
+  standards and community conventions.
+- [framework documentation](lens-framework-docs-researcher.md) for official docs
+  and version-specific constraints of a dependency.
+- [specification flow analysis](lens-spec-flow-analyzer.md) for user-flow
+  completeness and gaps once a draft spec exists.
+
 #### 1.2 Collaborative Dialogue
 
 Use the **AskUserQuestion tool** to ask questions **one at a time**. Question
