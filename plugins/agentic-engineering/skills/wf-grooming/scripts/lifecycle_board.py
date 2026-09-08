@@ -48,7 +48,9 @@ CLI verbs (used by workflow commands; humans/CI may call them directly):
                                  the clearance read (cleared/posture), and the fused
                                  `hands_off` dispatch verdict; exit 1 if not groomed
   --materialize-packet <N>       refresh generated issue context under git-common-dir
-  --delete-packet <N>            delete that exact packet after done/abandoned
+                                 and report its per-issue `packet_dir`
+  --delete-packet <N>            delete that exact packet and its per-issue
+                                 directory after done/abandoned
 """
 from __future__ import annotations
 
@@ -646,6 +648,28 @@ def packet_path(issue: int, ctx: RepoContext) -> pathlib.Path:
     # so future naming changes cannot turn exact deletion into path traversal.
     if candidate.parent != base:
         raise BoardError("packet_path_unsafe", "Packet path escaped its work-items directory",
+                         "Fix the repository identity and retry")
+    return candidate
+
+
+def packet_dir(issue: int, ctx: RepoContext) -> pathlib.Path:
+    """Per-issue packet subdirectory beside `packet_path`, guarded the same way.
+
+    The engine only names this directory and deletes it with the packet. Its
+    contents are the orchestrator's dispatch artifacts for one issue -- per-unit
+    briefs, implementer reports, review packages, the ledger -- written with
+    ordinary file writes, never generated here. Deriving it from `packet_path`
+    is deliberate: the issue, owner, and repository validation, the symlink
+    refusal, and the containment assertion all happen exactly once.
+    """
+    packet = packet_path(issue, ctx)
+    base = packet.parent
+    candidate = base / packet.stem
+    # Same explicit containment assertion as packet_path: the components are
+    # validated there, but a future naming change must not be able to turn
+    # recursive deletion into path traversal.
+    if candidate.parent != base or candidate == base:
+        raise BoardError("packet_path_unsafe", "Packet directory escaped its work-items directory",
                          "Fix the repository identity and retry")
     return candidate
 
@@ -2608,11 +2632,21 @@ def verb_materialize_packet(issue: int, ctx: RepoContext, runner: GhRunner) -> d
         )
     path = packet_path(issue, ctx)
     _atomic_private_write(path, _render_packet(state, ctx))
-    return {"issue": issue, "packet_path": str(path), "stage": state.stage, "refreshed": True}
+    directory = packet_dir(issue, ctx)
+    if directory.is_symlink():
+        raise BoardError("packet_path_unsafe", f"Refusing symlinked packet directory {directory}",
+                         "Replace it with a real directory under Git's common directory")
+    try:
+        directory.mkdir(mode=0o700, exist_ok=True)
+    except OSError as exc:
+        raise BoardError("packet_write_failed", f"Could not create packet directory {directory}: {exc}",
+                         "Make the Git common directory writable and retry") from exc
+    return {"issue": issue, "packet_path": str(path), "packet_dir": str(directory),
+            "stage": state.stage, "refreshed": True}
 
 
 def _delete_packet_file(issue: int, ctx: RepoContext) -> dict:
-    """Idempotently unlink only the deterministic packet for one issue."""
+    """Idempotently remove only this issue's packet file and packet directory."""
     path = packet_path(issue, ctx)
     try:
         path.unlink()
@@ -2622,7 +2656,23 @@ def _delete_packet_file(issue: int, ctx: RepoContext) -> dict:
     except OSError as exc:
         raise BoardError("packet_delete_failed", f"Could not delete exact packet {path}: {exc}",
                          "Check Git common-directory permissions and retry") from exc
-    return {"issue": issue, "packet_path": str(path), "deleted": deleted}
+    directory = packet_dir(issue, ctx)
+    # A symlink here would make `rmtree` an instruction to delete somewhere
+    # else, so refuse it loudly rather than following it.
+    if directory.is_symlink():
+        raise BoardError("packet_delete_failed", f"Refusing symlinked packet directory {directory}",
+                         "Replace it with a real directory under Git's common directory")
+    try:
+        shutil.rmtree(directory)
+        dir_deleted = True
+    except FileNotFoundError:
+        dir_deleted = False
+    except OSError as exc:
+        raise BoardError("packet_delete_failed",
+                         f"Could not delete exact packet directory {directory}: {exc}",
+                         "Check Git common-directory permissions and retry") from exc
+    return {"issue": issue, "packet_path": str(path), "deleted": deleted,
+            "packet_dir": str(directory), "dir_deleted": dir_deleted}
 
 
 def _cleanup_packet_for_terminal_state(state: IssueState, ctx: RepoContext) -> Optional[dict]:
