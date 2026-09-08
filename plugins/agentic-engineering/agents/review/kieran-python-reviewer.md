@@ -2,7 +2,7 @@
 name: kieran-python-reviewer
 description: "User-invoked: Reviews Python code with an extremely high quality bar for Pythonic patterns, type safety, and maintainability. Use after implementing features, modifying code, or creating new Python modules."
 tools: Read, Grep, Glob, LS, Bash
-model: inherit
+model: sonnet
 ---
 
 <examples>

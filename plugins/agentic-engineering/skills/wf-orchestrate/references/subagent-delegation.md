@@ -92,11 +92,15 @@ exit check, reasoning depth required, and blast radius of a wrong answer.
 
 Selection rules:
 
-- When uncertain between two tiers, start with the lower one; the retry path
-  below is the recovery mechanism, and a cheap failed attempt costs less than
-  routinely over-provisioning every dispatch. Exception: when a wrong answer
-  would be expensive to detect or undo, take the stronger tier — retry only
-  recovers from failures the exit checks can catch.
+- Turn count beats token price on multi-step work: the cheapest tier
+  routinely takes two to three times the turns of the standard tier, so an
+  under-provisioned dispatch can cost more in wall clock and context than
+  starting stronger. Floor at the standard tier for reviewers and for
+  implementers working from a prose brief. Drop to the economy tier only
+  when the brief is transcription: the exact edit is spelled out and the
+  exit check is mechanical. Exception: when a wrong answer would be
+  expensive to detect or undo, take the stronger tier regardless of brief
+  shape; retry only recovers from failures the exit checks can catch.
 - Escalate one tier when re-dispatching after a dry attempt.
 - The orchestrator keeps the session's own model for verification and triage;
   never validate a result with a weaker model than the one that produced it.
