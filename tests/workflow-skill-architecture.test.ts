@@ -806,3 +806,97 @@ describe("workflow skill architecture", () => {
     expect(orphaned).toEqual([]);
   });
 });
+
+describe("context-economical execution loop (issue #457)", () => {
+  const ref = (skill: string, name: string) =>
+    readFileSync(path.join(SKILLS, skill, "references", `${name}.md`), "utf8");
+  const flow = (s: string) => s.replace(/\s+/g, " ");
+
+  test("the dispatch contract names all four sub-agent status codes", () => {
+    // Category-level (repo guardrail policy: freeze the category, not the
+    // spelling). The four codes ARE the contract's vocabulary: an orchestrator
+    // that only handles three silently drops the case it cannot name, so the
+    // set is what this pins, not the prose around it. The file handoff is what
+    // makes the short reply possible, so it is pinned beside them.
+    const delegation = ref("wf-orchestrate", "subagent-delegation");
+    for (const code of ["DONE", "DONE_WITH_CONCERNS", "BLOCKED", "NEEDS_CONTEXT"]) {
+      expect(delegation).toContain(code);
+    }
+    expect(flow(delegation)).toMatch(/report goes to a file/i);
+    expect(delegation).toContain("packet directory");
+  });
+
+  test("per-unit review is dispatched to a named reviewer agent, not read inline", () => {
+    // The "every agent name cited in skill prose resolves to a shipped agent"
+    // test above proves the name is real; it cannot see the dispatch go
+    // missing. Assert the citation lives in a wf-orchestrate reference and that
+    // the packaged-diff handoff is still described there.
+    const AGENT = "acceptance-criteria-reviewer";
+    const dir = path.join(SKILLS, "wf-orchestrate", "references");
+    const orchestrateRefs = readdirSync(dir)
+      .filter((file) => file.endsWith(".md"))
+      .map((file) => readFileSync(path.join(dir, file), "utf8"))
+      .join("\n");
+    expect(orchestrateRefs).toContain(AGENT);
+    expect(orchestrateRefs).toContain("review package");
+
+    // The whole-branch review is still the final one; per-unit review must not
+    // be written as its replacement.
+    expect(ref("wf-orchestrate", "subagent-delegation")).toContain("wf-review");
+  });
+
+  test("a disputed finding is not a stall, and the fix loop is bounded and adjudicated", () => {
+    // Item (d) is the contract's stall bound. A reviewer/implementer
+    // disagreement moves no counter because nobody has decided, so classifying
+    // it as a dry attempt turns a decidable call into a human question. Assert
+    // stable tokens (a negation inside the (d) region, "adjudicat", a round
+    // bound), never a sentence.
+    const contract = ref("wf-orchestrate", "escalation-contract");
+    const start = contract.indexOf("**(d) Stall bounds**");
+    expect(start).toBeGreaterThan(-1);
+    const end = contract.indexOf("**(e)", start);
+    expect(end).toBeGreaterThan(start);
+    expect(flow(contract.slice(start, end))).toMatch(/\bnot\b[^.]{0,40}\bdry attempt\b/i);
+
+    expect(contract).toContain("adjudicat");
+    expect(flow(contract)).toMatch(/(five|5) rounds|rounds 1-3|rounds 4-5/i);
+
+    // The bound is owned here, so delegation cites it instead of restating one.
+    const delegation = flow(ref("wf-orchestrate", "subagent-delegation"));
+    expect(delegation).toContain("escalation-contract.md");
+    expect(delegation).not.toMatch(/Bound retries at ~?\d/);
+  });
+
+  test("orchestrate specifies the ledger and resuming from it after compaction", () => {
+    // The ledger is the run's resume point, and Status remains the gate: a
+    // ledger written as a gate would fork the lifecycle's single gate.
+    const orchestrate = ref("wf-orchestrate", "orchestrate");
+    expect(orchestrate).toContain("ledger.md");
+    expect(orchestrate).toContain("packet directory");
+    const normalized = flow(orchestrate);
+    expect(normalized).toMatch(/resume/i);
+    expect(normalized).toMatch(/never a gate/i);
+    expect(normalized).toMatch(/Status is the gate/i);
+    expect(normalized).toMatch(/re-dispatch only the units|never re-run/i);
+  });
+
+  test("the PR opened at in_review carries the rulings section", () => {
+    // Rulings made without asking reach the human through the PR body or not
+    // at all. Pin the heading (it is the contract with the reader) and the
+    // omit-when-empty rule, not the sentence carrying them.
+    const work = flow(ref("wf-development", "workflows-work"));
+    expect(work).toContain("Decisions made without asking");
+    expect(work).toMatch(/omit[^.]{0,60}when there were none/i);
+  });
+
+  test("the execution loop adds no human-input pause", () => {
+    // Every path this issue touched stays unattended-safe: the loop escalates
+    // through the escalation contract only, never with a prompt of its own.
+    for (const name of ["subagent-delegation", "escalation-contract", "orchestrate"]) {
+      const source = flow(ref("wf-orchestrate", name));
+      expect(source).not.toMatch(/\[y\/N\]|\[Y\/n\]/);
+      expect(source).not.toMatch(/wait for (the )?user (to )?(confirm|approve)/i);
+      expect(source).not.toMatch(/ask the user (before|whether) (each|every)/i);
+    }
+  });
+});

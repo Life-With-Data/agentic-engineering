@@ -58,6 +58,26 @@ not justify them; `wf-review` still runs regardless.
 7. Deliver when required checks pass, blocking findings are resolved, the head
    is mergeable, and the run has merge authority.
 
+## The ledger
+
+A delegated run keeps one ledger, `ledger.md`, in the item's packet directory
+alongside the briefs, reports, and review packages the run hands over as
+files. It records, one line each: every ruling as what was decided, why, and
+what it costs if wrong; every completed unit with its commit range; and every
+fix round with what it addressed and what stayed open. Write the line when the
+thing happens, not at the end.
+
+The ledger is advisory resumption evidence and never a gate. Status is the
+gate ([lifecycle](../../wf-setup/references/lifecycle.md)), exactly as it is
+for a plan file or a packet.
+
+On resume — after compaction, in a new session, or when another agent picks
+the item up — read the board state first and let Status route the run. Then
+read the ledger and re-dispatch only the units it does not show completed. A
+unit the ledger records as complete is never re-run: its commits exist in
+history whether or not the session remembers making them, and re-dispatching
+a finished sequence is the most expensive way to lose a run.
+
 ## Review and documentation thresholds
 
 `wf-review` always runs after development and before delivery; it is never
