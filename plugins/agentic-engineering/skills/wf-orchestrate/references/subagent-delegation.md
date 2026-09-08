@@ -111,6 +111,17 @@ Parallelize only file-disjoint units; otherwise serialize or isolate with the
 [git worktree](../../wf-development/references/git-worktree.md) reference and
 its bundled manager.
 
+## Waiting on dispatched sub-agents
+
+Never poll a wait for dispatched work with short timeouts; that burns turns
+without shortening the wait. While local work remains — reading a report
+that already arrived, preparing the next brief, packaging the next review,
+updating local state — keep doing it and let results arrive on their own.
+Only when genuinely idle, wait in bounded stretches (five to ten minutes
+where the host allows). Between stretches, post one status line and
+reconcile the set of live children against the set dispatched, so a lost or
+stuck child is noticed within minutes rather than at session end.
+
 ## Verification
 
 Accept a delegated result only after independent verification: review the
