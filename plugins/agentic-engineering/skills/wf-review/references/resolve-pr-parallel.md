@@ -1,6 +1,7 @@
-# Resolve PR Comments in Parallel
+# Resolve PR Comments
 
-Resolve all unresolved PR review comments by spawning parallel agents for each thread.
+Resolve all unresolved PR review comments with one context build and one
+suite run by default.
 
 ## Context Detection
 
@@ -29,23 +30,24 @@ gh api repos/{owner}/{repo}/pulls/PR_NUMBER/comments
 
 ### 2. Plan
 
-Create a TodoWrite list of all unresolved items grouped by type:
-- Code changes requested
-- Questions to answer
-- Style/convention fixes
-- Test additions needed
+Create a TodoWrite list of all unresolved threads grouped by handling:
+- Code-change threads (file, line, comment body, thread id) — fixed by a
+  `pr-comment-resolver` agent
+- Reply-only threads (questions, threads needing a reply rather than a code
+  change) — answered by the orchestrator itself
 
-### 3. Implement (PARALLEL)
+### 3. Implement
 
-Spawn a `pr-comment-resolver` agent for each unresolved item in parallel.
+Default: dispatch one `pr-comment-resolver` agent with the complete list of
+code-change threads (file, line, comment body, thread id for each). One
+context build, one suite run, one commit.
 
-If there are 3 comments, spawn 3 agents:
+Dispatch one agent per thread in parallel only when threads are file-disjoint
+and each is substantial enough to justify its own context build — see the
+[dispatch contract](../../wf-orchestrate/references/subagent-delegation.md#dispatch-contract).
 
-1. Task pr-comment-resolver(comment1)
-2. Task pr-comment-resolver(comment2)
-3. Task pr-comment-resolver(comment3)
-
-Always run all in parallel subagents/Tasks for each Todo item.
+Reply-only threads are not sent to a fixer. The orchestrator posts the reply
+itself; each thread is then resolved individually in step 4 like any other.
 
 ### 4. Commit & Resolve
 
