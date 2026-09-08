@@ -39,6 +39,7 @@ const WORKFLOW_REFERENCES: Record<string, string[]> = {
     "agent-native-audit", "doubt-driven-development",
     "lens-agent-native-reviewer", "lens-data-integrity-guardian",
     "lens-deployment-verification", "resolve-pr-parallel",
+    "review-execution-contract",
     "security-and-hardening", "workflows-review",
   ],
   "wf-delivery": [
