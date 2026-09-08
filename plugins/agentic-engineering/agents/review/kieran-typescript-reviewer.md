@@ -2,7 +2,7 @@
 name: kieran-typescript-reviewer
 description: "User-invoked: Reviews TypeScript code with an extremely high quality bar for type safety, modern patterns, and maintainability. Use after implementing features, modifying code, or creating new TypeScript components."
 tools: Read, Grep, Glob, LS, Bash
-model: inherit
+model: sonnet
 ---
 
 <examples>
