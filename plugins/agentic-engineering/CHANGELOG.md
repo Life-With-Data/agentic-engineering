@@ -5,6 +5,45 @@ All notable changes to the agentic-engineering plugin will be documented in this
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [9.4.0](https://github.com/Life-With-Data/agentic-engineering/compare/agentic-engineering-v9.3.1...agentic-engineering-v9.4.0) (2026-09-09)
+
+
+### Features
+
+* **grooming:** classify groomed requests by shape ([#470](https://github.com/Life-With-Data/agentic-engineering/issues/470)) ([6529347](https://github.com/Life-With-Data/agentic-engineering/commit/65293475ee079587297f84d3bf40957fdfa2fb26)), closes [#462](https://github.com/Life-With-Data/agentic-engineering/issues/462)
+* **grooming:** require an explicit milestone decision in the decompose spec ([#451](https://github.com/Life-With-Data/agentic-engineering/issues/451)) ([9d462c2](https://github.com/Life-With-Data/agentic-engineering/commit/9d462c2cbf636757bc8a8b495a4006ae9b7f4687)), closes [#450](https://github.com/Life-With-Data/agentic-engineering/issues/450)
+* **review:** add cyclomatic complexity check to code-simplicity-reviewer ([#476](https://github.com/Life-With-Data/agentic-engineering/issues/476)) ([b0295b2](https://github.com/Life-With-Data/agentic-engineering/commit/b0295b2346919a916c34ab66d670c303070156f2))
+* **review:** shared execution contract for review agents enforced through the tools allowlist ([#473](https://github.com/Life-With-Data/agentic-engineering/issues/473)) ([6127dfc](https://github.com/Life-With-Data/agentic-engineering/commit/6127dfce3c6274e32a80e79862867db89748d842))
+* **workflow:** batch same-shape micro-units into one sub-agent dispatch ([#468](https://github.com/Life-With-Data/agentic-engineering/issues/468)) ([3f39631](https://github.com/Life-With-Data/agentic-engineering/commit/3f39631772877e16e1a34e5cdbe8cf81d881a94b)), closes [#461](https://github.com/Life-With-Data/agentic-engineering/issues/461)
+* **workflow:** context-economical execution loop with file handoff, per-unit review, bounded fix loop, and rulings ledger ([#472](https://github.com/Life-With-Data/agentic-engineering/issues/472)) ([1a47173](https://github.com/Life-With-Data/agentic-engineering/commit/1a4717393a2781e14071935e98b0ce5966e5f6cb))
+* **workflow:** pin model floors on route-orphaned agents and add the turn-count rule ([#474](https://github.com/Life-With-Data/agentic-engineering/issues/474)) ([1e71ccf](https://github.com/Life-With-Data/agentic-engineering/commit/1e71ccf6a9eb993d1185cc7f7c4cdf790facdaac))
+* **workflow:** require screenshots on PRs that change UI/UX ([#448](https://github.com/Life-With-Data/agentic-engineering/issues/448)) ([982a3d5](https://github.com/Life-With-Data/agentic-engineering/commit/982a3d56a5375c9ca07a79ee4831b332dfc4641b))
+
+
+### Bug Fixes
+
+* **ci:** auth auto-add with a GitHub App token instead of a PAT ([#440](https://github.com/Life-With-Data/agentic-engineering/issues/440)) ([5af68dc](https://github.com/Life-With-Data/agentic-engineering/commit/5af68dcdf4689d83a399fc7a1f85d0b3cbf77338))
+* **lifecycle:** scaffold App-token auto-add and accept both credential shapes ([#444](https://github.com/Life-With-Data/agentic-engineering/issues/444)) ([49f0b0d](https://github.com/Life-With-Data/agentic-engineering/commit/49f0b0d15deb864743374e7c3323d177b48e67ef))
+* **wf-review:** default resolve-pr-parallel to one fixer, not one per thread ([#469](https://github.com/Life-With-Data/agentic-engineering/issues/469)) ([0ab1079](https://github.com/Life-With-Data/agentic-engineering/commit/0ab107984eb2287de243ae0874bc16e819dc7644)), closes [#460](https://github.com/Life-With-Data/agentic-engineering/issues/460)
+* **workflow:** cite land-pr's real merge-prompt text in escalation contract ([#466](https://github.com/Life-With-Data/agentic-engineering/issues/466)) ([57f3b5e](https://github.com/Life-With-Data/agentic-engineering/commit/57f3b5e7404b9c2b77719a82535269f0c74845bb))
+* **workflow:** fix minor work in the current change instead of deferring it ([#455](https://github.com/Life-With-Data/agentic-engineering/issues/455)) ([7125c11](https://github.com/Life-With-Data/agentic-engineering/commit/7125c1116f02dc3f1e1e31e2d4469fa2306065ba))
+* **workflow:** make wf-review a mandatory hop before delivery ([#438](https://github.com/Life-With-Data/agentic-engineering/issues/438)) ([e8563a2](https://github.com/Life-With-Data/agentic-engineering/commit/e8563a2fdc3922a11f703dab37268d96d8904df6))
+
+
+### Documentation
+
+* **wf-orchestrate:** add bounded sub-agent wait guidance ([#467](https://github.com/Life-With-Data/agentic-engineering/issues/467)) ([803cdde](https://github.com/Life-With-Data/agentic-engineering/commit/803cdde6e6dd6b2fadc58af7ff70ec6d5d8a9c39)), closes [#463](https://github.com/Life-With-Data/agentic-engineering/issues/463)
+
+
+### Code Refactoring
+
+* **agents:** audit route-orphaned agents into dispatched, user-invoked, or template lenses ([#471](https://github.com/Life-With-Data/agentic-engineering/issues/471)) ([7dd9e57](https://github.com/Life-With-Data/agentic-engineering/commit/7dd9e57f52d5b954e7c089c987fe38599f9d0b55))
+
+
+### Miscellaneous Chores
+
+* **test:** drop the [#457](https://github.com/Life-With-Data/agentic-engineering/issues/457) route-restore allowance from the agent inventory guardrail ([#475](https://github.com/Life-With-Data/agentic-engineering/issues/475)) ([7c748eb](https://github.com/Life-With-Data/agentic-engineering/commit/7c748eb777d2a4976aa43e72753cd868265d83cb))
+
 ## [9.3.1](https://github.com/Life-With-Data/agentic-engineering/compare/agentic-engineering-v9.3.0...agentic-engineering-v9.3.1) (2026-08-12)
 
 
