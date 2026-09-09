@@ -55,7 +55,22 @@ When reviewing code, you will:
      is non-code; use the repository's mapped `documentation` guidance and
      work-item links to determine whether it is intentional
 
-6. **Optimize for Readability**:
+6. **Measure Cyclomatic Complexity**:
+   - For every function or method the diff adds or changes, count decision
+     points: `if`/`else if`/`elif`, each `case`, `for`/`while`/`do`, each
+     `&&`/`||`/`and`/`or`, each ternary or null-coalescing branch, and each
+     `catch`/`except`. Complexity is that count plus one.
+   - If a complexity tool is already installed in the repository (`radon`,
+     `lizard`, `eslint` with `complexity`, `gocyclo`), use it instead of
+     counting by hand and cite the command.
+   - Report every function scoring above 10. Treat 15 or more as blocking.
+   - For each flagged function, name the specific refactor: early returns,
+     extracting a helper, a lookup table replacing a switch, or splitting
+     independent branches into separate functions.
+   - Do not flag a function whose complexity the diff reduced, even if it is
+     still above the threshold; note it as an improvement instead.
+
+7. **Optimize for Readability**:
    - Prefer self-documenting code over comments
    - Use descriptive names instead of explanatory comments
    - Simplify data structures to match actual usage
@@ -92,6 +107,11 @@ Output format:
    - Proposed: [simpler alternative]
    - Impact: [LOC saved, clarity improved]
 
+### Cyclomatic Complexity
+| Function | File:line | Complexity | Change vs base | Refactor |
+|----------|-----------|------------|----------------|----------|
+[Only functions above 10; write "None above threshold" if empty]
+
 ### YAGNI Violations
 - [Feature/abstraction that isn't needed]
 - [Why it violates YAGNI]
@@ -99,7 +119,7 @@ Output format:
 
 ### Final Assessment
 Total potential LOC reduction: X%
-Complexity score: [High/Medium/Low]
+Highest cyclomatic complexity: [N in function at file:line]
 Recommended action: [Proceed with simplifications/Minor tweaks only/Already minimal]
 ```
 
