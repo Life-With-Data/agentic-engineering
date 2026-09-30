@@ -33,6 +33,21 @@ def strip_quotes(command: str) -> str:
     return command
 
 
+# Here-document body: `<<[-] [quote]DELIM[quote] … \n DELIM`. Non-greedy with a
+# per-heredoc backref so each body is matched to its own closer, and a real
+# command chained *after* the heredoc still shows.
+HEREDOC = re.compile(
+    r"<<-?\s*(?P<q>['\"]?)(?P<delim>\w+)(?P=q).*?^\s*(?P=delim)\s*$",
+    re.DOTALL | re.MULTILINE,
+)
+
+
+def strip_heredocs(command: str) -> str:
+    """Drop here-document bodies. They are data (PR/issue bodies, commit
+    messages), not commands, so prose inside them must not trip a guard."""
+    return HEREDOC.sub("", command)
+
+
 def normalize(data: dict) -> dict:
     """Return a Claude-shaped hook payload dict."""
     if not isinstance(data, dict):

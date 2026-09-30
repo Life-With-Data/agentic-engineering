@@ -92,11 +92,16 @@ def _run_payload(payload: dict, cwd: Path) -> subprocess.CompletedProcess[str]:
     )
 
 
-def _run(command: str, cwd: Path, tool_name: str = "Bash") -> subprocess.CompletedProcess[str]:
-    return _run_payload(
-        {"tool_name": tool_name, "tool_input": {"command": command}},
-        cwd,
-    )
+def _run(
+    command: str,
+    cwd: Path,
+    tool_name: str = "Bash",
+    payload_cwd: Path | None = None,
+) -> subprocess.CompletedProcess[str]:
+    payload: dict = {"tool_name": tool_name, "tool_input": {"command": command}}
+    if payload_cwd is not None:
+        payload["cwd"] = str(payload_cwd)
+    return _run_payload(payload, cwd)
 
 
 class PreventMainCommitTest(unittest.TestCase):
@@ -206,6 +211,121 @@ class PreventMainCommitTest(unittest.TestCase):
         self.assertEqual(
             _run('git commit -m "wip"', self.repo, tool_name="Read").returncode, ALLOW
         )
+
+
+class CommitVerbParsingTest(unittest.TestCase):
+    """Issue #364: git global options between `git` and `commit` must not hide
+    the verb, and heredoc bodies must not fake it."""
+
+    def setUp(self) -> None:
+        self._tmp = tempfile.TemporaryDirectory()
+        self.repo = Path(self._tmp.name)
+        _git(self.repo, "init", "-b", "main")
+
+    def tearDown(self) -> None:
+        self._tmp.cleanup()
+
+    def test_global_options_before_commit_still_block_on_main(self) -> None:
+        # Generated: every flag-style and value-style global option git accepts
+        # in front of a subcommand, so an unlisted spelling cannot slip through.
+        flags = ("--no-pager", "--paginate", "--no-replace-objects", "--literal-pathspecs")
+        valued = ("-c user.name=x", '-c user.name="a b"', "-C .", "--git-dir=.git", "--git-dir .git")
+        for prefix in flags + valued + ("--no-pager -c user.name=x -C .",):
+            command = f"git {prefix} commit -m wip"
+            with self.subTest(command=command):
+                self.assertEqual(_run(command, self.repo).returncode, BLOCK)
+
+    def test_wrapped_and_env_prefixed_commit_blocks_on_main(self) -> None:
+        for command in ("time git commit -m wip", "GIT_AUTHOR_NAME=x git commit -m wip"):
+            with self.subTest(command=command):
+                self.assertEqual(_run(command, self.repo).returncode, BLOCK)
+
+    def test_commands_that_only_name_the_verb_allow_on_main(self) -> None:
+        for command in (
+            "git log --grep commit",
+            "git help commit",
+            "git config --get commit.template",
+            "git -c user.name=x log --grep commit",
+        ):
+            with self.subTest(command=command):
+                self.assertEqual(_run(command, self.repo).returncode, ALLOW)
+
+    def test_heredoc_body_mentioning_commit_allows_on_main(self) -> None:
+        command = "gh pr create --body-file - <<'EOF'\nthen git commit -m wip\nEOF"
+        self.assertEqual(_run(command, self.repo).returncode, ALLOW)
+
+    def test_commit_chained_after_heredoc_blocks_on_main(self) -> None:
+        command = "gh pr create --body-file - <<'EOF'\nbody\nEOF\ngit commit -m wip"
+        self.assertEqual(_run(command, self.repo).returncode, BLOCK)
+
+    def test_commit_message_heredoc_blocks_on_main(self) -> None:
+        command = "git commit -F - <<'EOF'\nfix: thing\nEOF"
+        self.assertEqual(_run(command, self.repo).returncode, BLOCK)
+
+
+class WorktreeTargetTest(unittest.TestCase):
+    """The branch is read where the commit runs, not in the hook's own cwd.
+
+    Claude Code starts hooks in the project root. With the main checkout on
+    `main` and the session working in a linked worktree on a feature branch,
+    reading the hook's cwd blocked every commit in the worktree.
+    """
+
+    def setUp(self) -> None:
+        self._tmp = tempfile.TemporaryDirectory()
+        root = Path(self._tmp.name)
+        self.main = root / "main"
+        self.wt = root / "wt"
+        _git(root, "init", "-b", "main", str(self.main))
+        _git(self.main, "-c", "user.name=t", "-c", "user.email=t@x", "commit", "--allow-empty", "-m", "init")
+        _git(self.main, "worktree", "add", "-b", "feature/x", str(self.wt))
+
+    def tearDown(self) -> None:
+        self._tmp.cleanup()
+
+    def test_payload_cwd_in_feature_worktree_allows(self) -> None:
+        result = _run("git commit -m wip", self.main, payload_cwd=self.wt)
+        self.assertEqual(result.returncode, ALLOW)
+
+    def test_cd_into_feature_worktree_allows(self) -> None:
+        for command in (
+            f"cd {self.wt} && git add -A && git commit -m wip",
+            f"cd {self.wt}; git commit -m wip",
+            f"(cd {self.wt} && git commit -m wip)",
+            f"cd {self.wt.parent} && cd wt && git commit -m wip",
+        ):
+            with self.subTest(command=command):
+                result = _run(command, self.main, payload_cwd=self.main)
+                self.assertEqual(result.returncode, ALLOW)
+
+    def test_dash_c_to_feature_worktree_allows(self) -> None:
+        result = _run(f"git -C {self.wt} commit -m wip", self.main, payload_cwd=self.main)
+        self.assertEqual(result.returncode, ALLOW)
+
+    def test_relative_dash_c_resolves_against_payload_cwd(self) -> None:
+        result = _run("git -C wt commit -m wip", self.main, payload_cwd=self.wt.parent)
+        self.assertEqual(result.returncode, ALLOW)
+
+    def test_dash_c_to_main_checkout_from_worktree_blocks(self) -> None:
+        result = _run(f"git -C {self.main} commit -m wip", self.wt, payload_cwd=self.wt)
+        self.assertEqual(result.returncode, BLOCK)
+
+    def test_cd_to_main_checkout_from_worktree_blocks(self) -> None:
+        result = _run(f"cd {self.main} && git commit -m wip", self.wt, payload_cwd=self.wt)
+        self.assertEqual(result.returncode, BLOCK)
+
+    def test_worktree_on_main_blocks(self) -> None:
+        _git(self.main, "checkout", "-b", "other")
+        _git(self.wt, "checkout", "main")
+        result = _run("git commit -m wip", self.main, payload_cwd=self.wt)
+        self.assertEqual(result.returncode, BLOCK)
+
+    def test_plain_checkout_on_main_without_payload_cwd_blocks(self) -> None:
+        self.assertEqual(_run("git commit -m wip", self.main).returncode, BLOCK)
+
+    def test_any_commit_on_main_in_a_chain_blocks(self) -> None:
+        command = f"git -C {self.wt} commit -m a && git -C {self.main} commit -m b"
+        self.assertEqual(_run(command, self.wt, payload_cwd=self.wt).returncode, BLOCK)
 
 
 if __name__ == "__main__":
