@@ -32,7 +32,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from hook_payload import emit_allow, normalize, strip_quotes
+from hook_payload import emit_allow, normalize, strip_heredocs, strip_quotes
 
 COMMIT_BYPASS = re.compile(r"\bgit\s+commit\b[^&|;]*?(?:^|\s)(?:-n|--no-verify)\b")
 PUSH_BYPASS = re.compile(r"\bgit\s+push\b[^&|;]*?(?:^|\s)--no-verify\b")
@@ -86,17 +86,8 @@ def uses_no_verify_bypass(command: str) -> bool:
     )
 
 
-# Here-document body: `<<[-] [quote]DELIM[quote] … \n DELIM`. Non-greedy with a
-# per-heredoc backref so each body is matched to its own closer, and a real
-# bypass chained *after* the heredoc still shows.
-HEREDOC = re.compile(
-    r"<<-?\s*(?P<q>['\"]?)(?P<delim>\w+)(?P=q).*?^\s*(?P=delim)\s*$",
-    re.DOTALL | re.MULTILINE,
-)
-
-
 def sanitize(command: str) -> str:
-    command = HEREDOC.sub("", command)           # here-document bodies (PR/issue bodies)
+    command = strip_heredocs(command)              # here-document bodies (PR/issue bodies)
     command = strip_quotes(command)
     command = re.sub(r"#.*", "", command)
     return command
