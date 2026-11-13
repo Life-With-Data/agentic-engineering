@@ -32,7 +32,7 @@ jobs:
           # board is shared across bluestar-intel, agent-leverage, agentic-engineering
           # and lifewithdata, and cross-org visibility is the point. Do not narrow it.
           owner: Life-With-Data
-      - uses: actions/add-to-project@5afcf98fcd03f1c2f92c3c83f58ae24323cc57fd  # v2
+      - uses: actions/add-to-project@f2c1f1fa649a891be84948ea89b5dfba1526ef05  # v2
         with:
           project-url: https://github.com/orgs/Life-With-Data/projects/1
           github-token: ${{ steps.app-token.outputs.token }}
